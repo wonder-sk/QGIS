@@ -518,15 +518,15 @@ bool QgsFeatureRendererV2::legendSymbolItemsCheckable() const
   return false;
 }
 
-bool QgsFeatureRendererV2::legendSymbolItemChecked( int index )
+bool QgsFeatureRendererV2::legendSymbolItemChecked( QString key )
 {
-  Q_UNUSED( index );
+  Q_UNUSED( key );
   return false;
 }
 
-void QgsFeatureRendererV2::checkLegendSymbolItem( int index, bool state )
+void QgsFeatureRendererV2::checkLegendSymbolItem( QString key, bool state )
 {
-  Q_UNUSED( index );
+  Q_UNUSED( key );
   Q_UNUSED( state );
 }
 
@@ -547,7 +547,7 @@ QgsLegendSymbolListV2 QgsFeatureRendererV2::legendSymbolItemsV2() const
     QgsLegendSymbolItemV2 item;
     item.symbol = it->second ? it->second->clone() : 0;
     item.label = it->first;
-    item.index = i;
+    item.key = QString::number( i );
     lst2 << item;
   }
   return lst2;
