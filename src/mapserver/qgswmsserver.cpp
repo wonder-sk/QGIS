@@ -837,7 +837,9 @@ void QgsWMSServer::runHitTestLayer( QgsVectorLayer* vl, SymbolV2Set& usedSymbols
   bool moreSymbolsPerFeature = r->capabilities() & QgsFeatureRendererV2::MoreSymbolsPerFeature;
   r->startRender( context, vl->pendingFields() );
   QgsFeature f;
-  QgsFeatureIterator fi = vl->getFeatures( QgsFeatureRequest( context.extent() ) );
+  QgsFeatureRequest request( context.extent() );
+  request.setFlags( QgsFeatureRequest::ExactIntersect );
+  QgsFeatureIterator fi = vl->getFeatures( request );
   while ( fi.nextFeature( f ) )
   {
     if ( moreSymbolsPerFeature )
