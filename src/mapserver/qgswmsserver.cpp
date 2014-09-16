@@ -724,7 +724,7 @@ QImage* QgsWMSServer::getLegendGraphics()
   {
     legendSettings.setMapScale( mMapRenderer->scale() );
     double scaleFactor = mMapRenderer->outputUnits() == QgsMapRenderer::Millimeters ? mMapRenderer->outputDpi() / 25.4 : 1.0;
-    legendSettings.setMmPerMapUnit( 1 / ( mMapRenderer->mapUnitsPerPixel() * scaleFactor )  );
+    legendSettings.setMmPerMapUnit( 1 / ( mMapRenderer->mapUnitsPerPixel() * scaleFactor ) );
   }
 
   if ( !rule.isEmpty() )
@@ -798,7 +798,7 @@ void QgsWMSServer::runHitTest( QPainter* painter, HitTest& hitTest )
   QgsRenderContext context;
   context.setPainter( painter ); // we are not going to draw anything, but we still need a working painter
   context.setRenderingStopped( false );
-  context.setRasterScaleFactor( ( thePaintDevice->logicalDpiX() + thePaintDevice->logicalDpiY() ) / 2.0 / mMapRenderer->outputDpi() );
+  context.setRasterScaleFactor(( thePaintDevice->logicalDpiX() + thePaintDevice->logicalDpiY() ) / 2.0 / mMapRenderer->outputDpi() );
   context.setScaleFactor( mMapRenderer->outputUnits() == QgsMapRenderer::Millimeters ? mMapRenderer->outputDpi() / 25.4 : 1.0 );
   context.setRendererScale( mMapRenderer->scale() );
   context.setMapToPixel( *mMapRenderer->coordinateTransform() );
@@ -842,11 +842,11 @@ void QgsWMSServer::runHitTestLayer( QgsVectorLayer* vl, SymbolV2Set& usedSymbols
   {
     if ( moreSymbolsPerFeature )
     {
-      foreach ( QgsSymbolV2* s, r->symbolsForFeature( f ) )
+      foreach ( QgsSymbolV2* s, r->originalSymbolsForFeature( f ) )
         usedSymbols.insert( s );
     }
     else
-      usedSymbols.insert( r->symbolForFeature( f ) );
+      usedSymbols.insert( r->originalSymbolForFeature( f ) );
   }
   r->stopRender( context );
 }
