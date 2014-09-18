@@ -279,27 +279,28 @@ QSizeF QgsSymbolV2LegendNode::drawSymbol( const QgsLegendSettings& settings, Ite
 
     p->save();
     p->setRenderHint( QPainter::Antialiasing );
+    p->translate( currentXPosition + widthOffset, currentYCoord + heightOffset );
+    p->scale( 1.0 / dotsPerMM, 1.0 / dotsPerMM );
     if ( opacity != 255 && settings.useAdvancedEffects() )
     {
       //semi transparent layer, so need to draw symbol to an image (to flatten it first)
       //create image which is same size as legend rect, in case symbol bleeds outside its alloted space
-      QImage tempImage = QImage( QSize( width * dotsPerMM, height * dotsPerMM ), QImage::Format_ARGB32 );
-      QPainter imagePainter( &tempImage );
+      QSize tempImageSize( width * dotsPerMM, height * dotsPerMM );
+      QImage tempImage = QImage( tempImageSize, QImage::Format_ARGB32 );
       tempImage.fill( Qt::transparent );
-      imagePainter.translate( dotsPerMM * ( currentXPosition + widthOffset ),
-                              dotsPerMM * ( currentYCoord + heightOffset ) );
-      s->drawPreviewIcon( &imagePainter, QSize( width * dotsPerMM, height * dotsPerMM ), &context );
+      QPainter imagePainter( &tempImage );
+      context.setPainter( &imagePainter );
+      s->drawPreviewIcon( &imagePainter, tempImageSize, &context );
+      context.setPainter( ctx->painter );
       //reduce opacity of image
       imagePainter.setCompositionMode( QPainter::CompositionMode_DestinationIn );
       imagePainter.fillRect( tempImage.rect(), QColor( 0, 0, 0, opacity ) );
+      imagePainter.end();
       //draw rendered symbol image
-      p->scale( 1.0 / dotsPerMM, 1.0 / dotsPerMM );
       p->drawImage( 0, 0, tempImage );
     }
     else
     {
-      p->translate( currentXPosition + widthOffset, currentYCoord + heightOffset );
-      p->scale( 1.0 / dotsPerMM, 1.0 / dotsPerMM );
       s->drawPreviewIcon( p, QSize( width * dotsPerMM, height * dotsPerMM ), &context );
     }
     p->restore();
