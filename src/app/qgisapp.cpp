@@ -2333,6 +2333,14 @@ void QgisApp::initLayerTreeView()
   btnVisibilityPresets->setPopupMode( QToolButton::InstantPopup );
   btnVisibilityPresets->setMenu( QgsVisibilityPresets::instance()->menu() );
 
+  // filter legend tool button
+  QToolButton* btnFilterLegend = new QToolButton;
+  btnFilterLegend->setAutoRaise( true );
+  btnFilterLegend->setCheckable( true );
+  btnFilterLegend->setToolTip( tr( "Filter Legend By Map Content" ) );
+  btnFilterLegend->setIcon( QgsApplication::getThemeIcon( "/mActionFilter.png" ) );
+  connect( btnFilterLegend, SIGNAL( clicked() ), this,  SLOT( toggleFilterLegendByMap() ) );
+
   // expand / collapse tool buttons
   QToolButton* btnExpandAll = new QToolButton;
   btnExpandAll->setAutoRaise( true );
@@ -2353,6 +2361,7 @@ void QgisApp::initLayerTreeView()
   toolbarLayout->setContentsMargins( QMargins( 5, 0, 5, 0 ) );
   toolbarLayout->addWidget( btnAddGroup );
   toolbarLayout->addWidget( btnVisibilityPresets );
+  toolbarLayout->addWidget( btnFilterLegend );
   toolbarLayout->addWidget( btnExpandAll );
   toolbarLayout->addWidget( btnCollapseAll );
   toolbarLayout->addWidget( btnRemoveItem );
@@ -4211,6 +4220,26 @@ void QgisApp::activateDeuteranopePreview()
 {
   mMapCanvas->setPreviewModeEnabled( true );
   mMapCanvas->setPreviewMode( QgsPreviewEffect::PreviewDeuteranope );
+}
+
+void QgisApp::toggleFilterLegendByMap()
+{
+  QgsLayerTreeModel* model = layerTreeView()->layerTreeModel();
+  if ( model->legendFilterByMap() )
+  {
+    disconnect( mMapCanvas, SIGNAL( mapCanvasRefreshed() ), this, SLOT( updateFilterLegendByMap() ) );
+    model->setLegendFilterByMap( 0 );
+  }
+  else
+  {
+    connect( mMapCanvas, SIGNAL( mapCanvasRefreshed() ), this, SLOT( updateFilterLegendByMap() ) );
+    model->setLegendFilterByMap( &mMapCanvas->mapSettings() );
+  }
+}
+
+void QgisApp::updateFilterLegendByMap()
+{
+  layerTreeView()->layerTreeModel()->setLegendFilterByMap( &mMapCanvas->mapSettings() );
 }
 
 void QgisApp::saveMapAsImage()

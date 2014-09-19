@@ -24,7 +24,9 @@ class QgsLayerTreeNode;
 class QgsLayerTreeGroup;
 class QgsLayerTreeLayer;
 class QgsLayerTreeModelLegendNode;
+class QgsMapHitTest;
 class QgsMapLayer;
+class QgsMapSettings;
 
 
 /**
@@ -144,6 +146,13 @@ class CORE_EXPORT QgsLayerTreeModel : public QAbstractItemModel
     void setLegendFilterByScale( double scaleDenominator );
     double legendFilterByScale() const { return mLegendFilterByScale; }
 
+    //! Force only display of legend nodes which are valid for given map settings.
+    //! Setting null pointer or invalid map settings will disable the functionality.
+    //! Ownership of map settings pointer does not change.
+    //! @note added in 2.6
+    void setLegendFilterByMap( const QgsMapSettings* settings );
+    const QgsMapSettings* legendFilterByMap() const { return mLegendFilterByMapSettings.data(); }
+
     //! Return true if index represents a legend node (instead of layer node)
     //! @deprecated use index2legendNode()
     Q_DECL_DEPRECATED bool isIndexSymbologyNode( const QModelIndex& index ) const;
@@ -218,6 +227,9 @@ class CORE_EXPORT QgsLayerTreeModel : public QAbstractItemModel
 
     //! scale denominator for filtering of legend nodes (<= 0 means no filtering)
     double mLegendFilterByScale;
+
+    QScopedPointer<QgsMapSettings> mLegendFilterByMapSettings;
+    QScopedPointer<QgsMapHitTest> mLegendFilterByMapHitTest;
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS( QgsLayerTreeModel::Flags )

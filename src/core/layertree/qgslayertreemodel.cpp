@@ -22,6 +22,7 @@
 #include <QTextStream>
 
 #include "qgsdataitem.h"
+#include "qgsmaphittest.h"
 #include "qgsmaplayerlegend.h"
 #include "qgspluginlayer.h"
 #include "qgsrasterlayer.h"
@@ -571,6 +572,26 @@ void QgsLayerTreeModel::setLegendFilterByScale( double scaleDenominator )
     refreshLayerLegend( nodeLayer );
 }
 
+void QgsLayerTreeModel::setLegendFilterByMap( const QgsMapSettings* settings )
+{
+  if ( settings && settings->hasValidSettings() )
+  {
+    mLegendFilterByMapSettings.reset( new QgsMapSettings( *settings ) );
+    mLegendFilterByMapHitTest.reset( new QgsMapHitTest( *mLegendFilterByMapSettings ) );
+    mLegendFilterByMapHitTest->run();
+  }
+  else
+  {
+    mLegendFilterByMapSettings.reset();
+    mLegendFilterByMapHitTest.reset();
+  }
+
+  // this could be later done in more efficient way
+  // by just updating active legend nodes, without refreshing original legend nodes
+  foreach ( QgsLayerTreeLayer* nodeLayer, mRootNode->findLayers() )
+    refreshLayerLegend( nodeLayer );
+}
+
 void QgsLayerTreeModel::nodeWillAddChildren( QgsLayerTreeNode* node, int indexFrom, int indexTo )
 {
   Q_ASSERT( node );
@@ -1009,12 +1030,33 @@ const QIcon& QgsLayerTreeModel::iconGroup()
 QList<QgsLayerTreeModelLegendNode*> QgsLayerTreeModel::filterLegendNodes( const QList<QgsLayerTreeModelLegendNode*>& nodes )
 {
   QList<QgsLayerTreeModelLegendNode*> filtered;
-  foreach ( QgsLayerTreeModelLegendNode* node, nodes )
-  {
-    if ( mLegendFilterByScale > 0 && !node->isScaleOK( mLegendFilterByScale ) )
-      continue;
 
-    filtered << node;
+  if ( mLegendFilterByScale > 0 )
+  {
+    foreach ( QgsLayerTreeModelLegendNode* node, nodes )
+    {
+      if ( node->isScaleOK( mLegendFilterByScale ) )
+        filtered << node;
+    }
   }
+  else if ( mLegendFilterByMapSettings )
+  {
+    foreach ( QgsLayerTreeModelLegendNode* node, nodes )
+    {
+      QgsSymbolV2* ruleKey = ( QgsSymbolV2* ) node->data( QgsSymbolV2LegendNode::LegacyRuleKeyRole ).value<void*>();
+      if ( ruleKey )
+      {
+        if ( QgsVectorLayer* vl = qobject_cast<QgsVectorLayer*>( node->parent()->layer() ) )
+        {
+          if ( mLegendFilterByMapHitTest->symbolsForLayer( vl ).contains( ruleKey ) )
+            filtered << node;
+        }
+      }
+      else  // unknown node type
+        filtered << node;
+    }
+  }
+  else
+    return nodes;
   return filtered;
 }

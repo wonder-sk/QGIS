@@ -41,7 +41,8 @@ class CORE_EXPORT QgsLayerTreeModelLegendNode : public QObject
 
     enum LegendNodeRoles
     {
-      RuleKeyRole = Qt::UserRole
+      RuleKeyRole = Qt::UserRole,
+      LegacyRuleKeyRole
     };
 
     /** Return pointer to the parent layer node */

@@ -1231,6 +1231,9 @@ class APP_EXPORT QgisApp : public QMainWindow, private Ui::MainWindow
      * @note added in 2.3 */
     void activateDeuteranopePreview();
 
+    void toggleFilterLegendByMap();
+    void updateFilterLegendByMap();
+
     /** Make the user feel dizzy */
     void dizzy();
 
