@@ -1233,6 +1233,7 @@ class APP_EXPORT QgisApp : public QMainWindow, private Ui::MainWindow
 
     void toggleFilterLegendByMap();
     void updateFilterLegendByMap();
+    void setFilterLegendByMapEnabled( bool enabled );
 
     /** Make the user feel dizzy */
     void dizzy();
@@ -1620,6 +1621,9 @@ class APP_EXPORT QgisApp : public QMainWindow, private Ui::MainWindow
     QWidget *mMacrosWarn;
 
     QgsVectorLayerTools* mVectorLayerTools;
+
+    QToolButton* mBtnFilterLegend;
+
 #ifdef HAVE_TOUCH
     bool gestureEvent( QGestureEvent *event );
     void tapAndHoldTriggered( QTapAndHoldGesture *gesture );
