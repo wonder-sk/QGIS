@@ -1043,7 +1043,7 @@ QList<QgsLayerTreeModelLegendNode*> QgsLayerTreeModel::filterLegendNodes( const 
   {
     foreach ( QgsLayerTreeModelLegendNode* node, nodes )
     {
-      QgsSymbolV2* ruleKey = ( QgsSymbolV2* ) node->data( QgsSymbolV2LegendNode::LegacyRuleKeyRole ).value<void*>();
+      QgsSymbolV2* ruleKey = ( QgsSymbolV2* ) node->data( QgsSymbolV2LegendNode::SymbolV2LegacyRuleKeyRole ).value<void*>();
       if ( ruleKey )
       {
         if ( QgsVectorLayer* vl = qobject_cast<QgsVectorLayer*>( node->parent()->layer() ) )
