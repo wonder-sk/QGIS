@@ -531,8 +531,8 @@ void QgsComposerLegendWidget::on_mMoveDownToolButton_clicked()
   }
   else // legend node
   {
-    _moveLegendNode( legendNode->parent(), index.row(), 1 );
-    mItemTreeView->layerTreeModel()->refreshLayerLegend( legendNode->parent() );
+    _moveLegendNode( legendNode->layerNode(), index.row(), 1 );
+    mItemTreeView->layerTreeModel()->refreshLayerLegend( legendNode->layerNode() );
   }
 
   mItemTreeView->setCurrentIndex( mItemTreeView->layerTreeModel()->index( index.row() + 1, 0, parentIndex ) );
@@ -568,8 +568,8 @@ void QgsComposerLegendWidget::on_mMoveUpToolButton_clicked()
   }
   else // legend node
   {
-    _moveLegendNode( legendNode->parent(), index.row(), -1 );
-    mItemTreeView->layerTreeModel()->refreshLayerLegend( legendNode->parent() );
+    _moveLegendNode( legendNode->layerNode(), index.row(), -1 );
+    mItemTreeView->layerTreeModel()->refreshLayerLegend( legendNode->layerNode() );
   }
 
   mItemTreeView->setCurrentIndex( mItemTreeView->layerTreeModel()->index( index.row() - 1, 0, parentIndex ) );
@@ -689,7 +689,7 @@ void QgsComposerLegendWidget::on_mRemoveToolButton_clicked()
   {
     if ( QgsLayerTreeModelLegendNode* legendNode = mItemTreeView->layerTreeModel()->index2legendNode( index ) )
     {
-      QgsLayerTreeLayer* nodeLayer = legendNode->parent();
+      QgsLayerTreeLayer* nodeLayer = legendNode->layerNode();
       nodesWithRemoval[nodeLayer].append( index.row() );
     }
   }
@@ -773,10 +773,10 @@ void QgsComposerLegendWidget::on_mEditPushButton_clicked()
   }
   else if ( legendNode )
   {
-    QList<int> order = QgsMapLayerLegendUtils::legendNodeOrder( legendNode->parent() );
+    QList<int> order = QgsMapLayerLegendUtils::legendNodeOrder( legendNode->layerNode() );
     int originalIndex = ( idx.row() >= 0 && idx.row() < order.count() ? order[idx.row()] : -1 );
-    QgsMapLayerLegendUtils::setLegendNodeUserLabel( legendNode->parent(), originalIndex, newText );
-    model->refreshLayerLegend( legendNode->parent() );
+    QgsMapLayerLegendUtils::setLegendNodeUserLabel( legendNode->layerNode(), originalIndex, newText );
+    model->refreshLayerLegend( legendNode->layerNode() );
   }
 
   mLegend->adjustBoxSize();
@@ -806,7 +806,7 @@ void QgsComposerLegendWidget::resetLayerNodeToDefaults()
   }
   if ( QgsLayerTreeModelLegendNode* legendNode = mItemTreeView->layerTreeModel()->index2legendNode( currentIndex ) )
   {
-    nodeLayer = legendNode->parent();
+    nodeLayer = legendNode->layerNode();
   }
 
   if ( !nodeLayer )

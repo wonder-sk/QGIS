@@ -8640,6 +8640,9 @@ void QgisApp::layersWereAdded( QList<QgsMapLayer *> theLayers )
 
 void QgisApp::showExtents()
 {
+  // allow symbols in the legend update their preview if they use map units
+  mLayerTreeView->layerTreeModel()->setLegendMapViewData( mMapCanvas->mapUnitsPerPixel(), mMapCanvas->mapSettings().outputDpi(), mMapCanvas->scale() );
+
   if ( !mToggleExtentsViewButton->isChecked() )
   {
     return;

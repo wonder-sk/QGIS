@@ -16,6 +16,7 @@
 #include "qgslayertreemodellegendnode.h"
 
 #include "qgslayertree.h"
+#include "qgslayertreemodel.h"
 #include "qgslegendsettings.h"
 #include "qgsrasterlayer.h"
 #include "qgsrendererv2.h"
@@ -33,6 +34,11 @@ QgsLayerTreeModelLegendNode::QgsLayerTreeModelLegendNode( QgsLayerTreeLayer* nod
 
 QgsLayerTreeModelLegendNode::~QgsLayerTreeModelLegendNode()
 {
+}
+
+QgsLayerTreeModel* QgsLayerTreeModelLegendNode::model() const
+{
+  return qobject_cast<QgsLayerTreeModel*>( parent() );
 }
 
 Qt::ItemFlags QgsLayerTreeModelLegendNode::flags() const
@@ -122,11 +128,15 @@ QSizeF QgsLayerTreeModelLegendNode::drawSymbolText( const QgsLegendSettings& set
 // -------------------------------------------------------------------------
 
 
-QgsSymbolV2LegendNode::QgsSymbolV2LegendNode( QgsLayerTreeLayer* nodeLayer, const QgsLegendSymbolItemV2& item )
-    : QgsLayerTreeModelLegendNode( nodeLayer )
+QgsSymbolV2LegendNode::QgsSymbolV2LegendNode( QgsLayerTreeLayer* nodeLayer, const QgsLegendSymbolItemV2& item, QObject* parent )
+    : QgsLayerTreeModelLegendNode( nodeLayer, parent )
     , mItem( item )
+    , mSymbolUsesMapUnits( false )
 {
   updateLabel();
+
+  if ( mItem.symbol() )
+    mSymbolUsesMapUnits = ( mItem.symbol()->outputUnit() != QgsSymbolV2::MM );
 }
 
 QgsSymbolV2LegendNode::~QgsSymbolV2LegendNode()
@@ -160,7 +170,21 @@ QVariant QgsSymbolV2LegendNode::data( int role ) const
     {
       QPixmap pix;
       if ( mItem.symbol() )
-        pix = QgsSymbolLayerV2Utils::symbolPreviewPixmap( mItem.symbol(), iconSize );
+      {
+        double scale, mupp;
+        int dpi;
+        if ( model() )
+          model()->legendMapViewData( &mupp, &dpi, &scale );
+        bool validData = mupp != 0 && dpi != 0 && scale != 0;
+
+        // setup temporary render context
+        QgsRenderContext context;
+        context.setScaleFactor( dpi / 25.4 );
+        context.setRendererScale( scale );
+        context.setMapToPixel( QgsMapToPixel( mupp ) ); // hope it's ok to leave out other params
+
+        pix = QgsSymbolLayerV2Utils::symbolPreviewPixmap( mItem.symbol(), iconSize, validData ? &context : 0 );
+      }
       else
       {
         pix = QPixmap( iconSize );
@@ -278,7 +302,7 @@ QSizeF QgsSymbolV2LegendNode::drawSymbol( const QgsLegendSettings& settings, Ite
     double dotsPerMM = context.scaleFactor();
 
     int opacity = 255;
-    if ( QgsVectorLayer* vectorLayer = dynamic_cast<QgsVectorLayer*>( parent()->layer() ) )
+    if ( QgsVectorLayer* vectorLayer = dynamic_cast<QgsVectorLayer*>( layerNode()->layer() ) )
       opacity = 255 - ( 255 * vectorLayer->layerTransparency() / 100 );
 
     p->save();
@@ -319,6 +343,16 @@ void QgsSymbolV2LegendNode::setEmbeddedInParent( bool embedded )
 {
   QgsLayerTreeModelLegendNode::setEmbeddedInParent( embedded );
   updateLabel();
+}
+
+
+void QgsSymbolV2LegendNode::invalidateMapBasedData()
+{
+  if ( mSymbolUsesMapUnits )
+  {
+    mPixmap = QPixmap();
+    emit dataChanged();
+  }
 }
 
 
@@ -431,7 +465,7 @@ QSizeF QgsRasterSymbolLegendNode::drawSymbol( const QgsLegendSettings& settings,
   if ( ctx )
   {
     QColor itemColor = mColor;
-    if ( QgsRasterLayer* rasterLayer = dynamic_cast<QgsRasterLayer*>( parent()->layer() ) )
+    if ( QgsRasterLayer* rasterLayer = dynamic_cast<QgsRasterLayer*>( layerNode()->layer() ) )
     {
       if ( QgsRasterRenderer* rasterRenderer = rasterLayer->renderer() )
         itemColor.setAlpha( rasterRenderer ? rasterRenderer->opacity() * 255.0 : 255 );

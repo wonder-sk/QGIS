@@ -20,9 +20,9 @@
 #include <QObject>
 
 class QgsLayerTreeLayer;
+class QgsLayerTreeModel;
 class QgsLegendSettings;
 class QgsSymbolV2;
-
 
 /**
  * The QgsLegendRendererItem class is abstract interface for legend items
@@ -46,7 +46,10 @@ class CORE_EXPORT QgsLayerTreeModelLegendNode : public QObject
     };
 
     /** Return pointer to the parent layer node */
-    QgsLayerTreeLayer* parent() const { return mLayerNode; }
+    QgsLayerTreeLayer* layerNode() const { return mLayerNode; }
+
+    /** Return pointer to model owning this legend node */
+    QgsLayerTreeModel* model() const;
 
     /** Return item flags associated with the item. Default implementation returns Qt::ItemIsEnabled. */
     virtual Qt::ItemFlags flags() const;
@@ -64,6 +67,10 @@ class CORE_EXPORT QgsLayerTreeModelLegendNode : public QObject
     virtual void setUserLabel( const QString& userLabel ) { mUserLabel = userLabel; }
 
     virtual bool isScaleOK( double scale ) const { Q_UNUSED( scale ); return true; }
+
+    /** Notification from model that information from associated map view has changed.
+     *  Default implementation does nothing. */
+    virtual void invalidateMapBasedData() {}
 
     struct ItemContext
     {
@@ -131,7 +138,7 @@ class CORE_EXPORT QgsLayerTreeModelLegendNode : public QObject
 class CORE_EXPORT QgsSymbolV2LegendNode : public QgsLayerTreeModelLegendNode
 {
   public:
-    QgsSymbolV2LegendNode( QgsLayerTreeLayer* nodeLayer, const QgsLegendSymbolItemV2& item );
+    QgsSymbolV2LegendNode( QgsLayerTreeLayer* nodeLayer, const QgsLegendSymbolItemV2& item, QObject* parent = 0 );
     ~QgsSymbolV2LegendNode();
 
     virtual Qt::ItemFlags flags() const;
@@ -146,6 +153,8 @@ class CORE_EXPORT QgsSymbolV2LegendNode : public QgsLayerTreeModelLegendNode
 
     virtual bool isScaleOK( double scale ) const { return mItem.isScaleOK( scale ); }
 
+    virtual void invalidateMapBasedData();
+
   private:
     void updateLabel();
 
@@ -153,6 +162,7 @@ class CORE_EXPORT QgsSymbolV2LegendNode : public QgsLayerTreeModelLegendNode
     QgsLegendSymbolItemV2 mItem;
     mutable QPixmap mPixmap; // cached symbol preview
     QString mLabel;
+    bool mSymbolUsesMapUnits;
 };
 
 

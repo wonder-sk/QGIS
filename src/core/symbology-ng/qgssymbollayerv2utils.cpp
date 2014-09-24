@@ -521,7 +521,7 @@ QIcon QgsSymbolLayerV2Utils::symbolPreviewIcon( QgsSymbolV2* symbol, QSize size 
   return QIcon( symbolPreviewPixmap( symbol, size ) );
 }
 
-QPixmap QgsSymbolLayerV2Utils::symbolPreviewPixmap( QgsSymbolV2* symbol, QSize size )
+QPixmap QgsSymbolLayerV2Utils::symbolPreviewPixmap( QgsSymbolV2* symbol, QSize size, QgsRenderContext* customContext )
 {
   Q_ASSERT( symbol );
 
@@ -530,7 +530,9 @@ QPixmap QgsSymbolLayerV2Utils::symbolPreviewPixmap( QgsSymbolV2* symbol, QSize s
   QPainter painter;
   painter.begin( &pixmap );
   painter.setRenderHint( QPainter::Antialiasing );
-  symbol->drawPreviewIcon( &painter, size );
+  if ( customContext )
+    customContext->setPainter( &painter );
+  symbol->drawPreviewIcon( &painter, size, customContext );
   painter.end();
   return pixmap;
 }
