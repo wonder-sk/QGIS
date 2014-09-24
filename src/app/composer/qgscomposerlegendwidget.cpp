@@ -145,6 +145,7 @@ void QgsComposerLegendWidget::setGuiElements()
   blockAllSignals( true );
   mTitleLineEdit->setText( mLegend->title() );
   mTitleAlignCombo->setCurrentIndex( alignment );
+  mFilterByMapToolButton->setChecked( mLegend->legendFilterByMapEnabled() );
   mColumnCountSpinBox->setValue( mLegend->columnCount() );
   mSplitLayerCheckBox->setChecked( mLegend->splitLayer() );
   mEqualColumnWidthCheckBox->setChecked( mLegend->equalColumnWidth() );
@@ -853,6 +854,15 @@ void QgsComposerLegendWidget::on_mCountToolButton_clicked( bool checked )
   mLegend->endCommand();
 }
 
+void QgsComposerLegendWidget::on_mFilterByMapToolButton_clicked( bool checked )
+{
+  mLegend->beginCommand( tr( "Legend updated" ) );
+  mLegend->setLegendFilterByMapEnabled( checked );
+  mLegend->update();
+  mLegend->adjustBoxSize();
+  mLegend->endCommand();
+}
+
 void QgsComposerLegendWidget::on_mUpdateAllPushButton_clicked()
 {
   updateLegend();
@@ -891,6 +901,7 @@ void QgsComposerLegendWidget::blockAllSignals( bool b )
   mItemTreeView->blockSignals( b );
   mCheckBoxAutoUpdate->blockSignals( b );
   mMapComboBox->blockSignals( b );
+  mFilterByMapToolButton->blockSignals( b );
   mColumnCountSpinBox->blockSignals( b );
   mSplitLayerCheckBox->blockSignals( b );
   mEqualColumnWidthCheckBox->blockSignals( b );

@@ -586,6 +586,9 @@ void QgsLayerTreeModel::setLegendFilterByMap( const QgsMapSettings* settings )
   }
   else
   {
+    if ( !mLegendFilterByMapSettings )
+      return; // no change
+
     mLegendFilterByMapSettings.reset();
     mLegendFilterByMapHitTest.reset();
   }
