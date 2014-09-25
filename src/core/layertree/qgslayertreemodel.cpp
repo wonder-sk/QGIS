@@ -593,10 +593,16 @@ void QgsLayerTreeModel::setLegendFilterByMap( const QgsMapSettings* settings )
     mLegendFilterByMapHitTest.reset();
   }
 
+  // temporarily disable autocollapse so that legend nodes stay visible
+  int bkAutoCollapse = autoCollapseLegendNodes();
+  setAutoCollapseLegendNodes( -1 );
+
   // this could be later done in more efficient way
   // by just updating active legend nodes, without refreshing original legend nodes
   foreach ( QgsLayerTreeLayer* nodeLayer, mRootNode->findLayers() )
     refreshLayerLegend( nodeLayer );
+
+  setAutoCollapseLegendNodes( bkAutoCollapse );
 }
 
 void QgsLayerTreeModel::setLegendMapViewData( double mapUnitsPerPixel, int dpi, double scale )
