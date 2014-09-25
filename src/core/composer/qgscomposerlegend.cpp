@@ -144,6 +144,7 @@ void QgsComposerLegend::setAutoUpdateModel( bool autoUpdate )
     return;
 
   setCustomLayerTree( autoUpdate ? 0 : QgsLayerTree::toGroup( QgsProject::instance()->layerTreeRoot()->clone() ) );
+  adjustBoxSize();
 }
 
 bool QgsComposerLegend::autoUpdateModel() const
@@ -469,6 +470,7 @@ void QgsComposerLegend::updateFilterByMap()
   else
     mLegendModel2->setLegendFilterByMap( 0 );
 
+  adjustBoxSize();
   update();
 }
 
