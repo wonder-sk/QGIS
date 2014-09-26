@@ -2,9 +2,9 @@ language: cpp
 compiler: gcc
 before-install:
   - sudo apt-get update
-  - sudo apt-get install -y libgdal-dev libqt4-dev
+  - sudo apt-get install -y libgdal1h libgdal-dev libqt4-dev
 script:
-  - sudo apt-get install -y libgdal-dev
+  - sudo apt-get install -y libgdal1h libgdal-dev
   - mkdir build
   - cd build
   - cmake ..
