@@ -13,6 +13,7 @@
  *                                                                         *
  ***************************************************************************/
 
+#undef QT_GUI_LIB // use QCoreApplication instead of QApplication
 #include <QtTest>
 #include <QObject>
 #include <QString>

@@ -15,6 +15,7 @@
  *                                                                         *
  ***************************************************************************/
 
+#undef QT_GUI_LIB // use QCoreApplication instead of QApplication
 #include "qgscolorscheme.h"
 #include <QObject>
 #include <QtTest>

@@ -15,6 +15,7 @@
  *                                                                         *
  ***************************************************************************/
 
+#undef QT_GUI_LIB // use QCoreApplication instead of QApplication
 #include "qgsapplication.h" //for standard test font
 #include "qgscomposerutils.h"
 #include "qgscomposition.h"
