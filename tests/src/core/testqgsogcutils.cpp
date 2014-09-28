@@ -14,7 +14,6 @@
  *                                                                         *
  ***************************************************************************/
 
-#undef QT_GUI_LIB // use QCoreApplication instead of QApplication
 #include <QtTest>
 
 //qgis includes...

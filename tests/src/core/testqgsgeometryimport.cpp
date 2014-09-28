@@ -13,7 +13,6 @@
  *                                                                         *
  ***************************************************************************/
 
-#undef QT_GUI_LIB // use QCoreApplication instead of QApplication
 #include "qgsapplication.h"
 #include "qgsgeometry.h"
 #include "qgspoint.h"

@@ -15,7 +15,6 @@
  *                                                                         *
  ***************************************************************************/
 
-#undef QT_GUI_LIB // use QCoreApplication instead of QApplication
 #include "qgscomposerhtml.h"
 #include "qgscomposerframe.h"
 #include "qgscomposition.h"

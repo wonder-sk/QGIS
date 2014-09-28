@@ -15,7 +15,6 @@
  *                                                                         *
  ***************************************************************************/
 
-#undef QT_GUI_LIB // use QCoreApplication instead of QApplication
 #include "qgsnetworkcontentfetcher.h"
 #include <QObject>
 #include <QtTest>
