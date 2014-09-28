@@ -3,6 +3,8 @@ compiler: gcc
 before_install:
   - sudo apt-get update
   - sudo apt-get install -y libgdal1h libgdal-dev libproj-dev libgsl0-dev libqscintilla2-dev libspatialindex-dev libqt4-dev libqwt-dev python-qt4 python-qt4-dev pyqt4-dev-tools
+  - "export DISPLAY=:99.0"
+  - "sh -e /etc/init.d/xvfb start"
 script:
   - mkdir build
   - cd build
@@ -10,5 +12,5 @@ script:
   - make -j2 core
   - make ogrprovider memoryprovider
   - cd tests/src/core && make
-  - ctest -V
+  - ctest
 
