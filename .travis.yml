@@ -9,4 +9,5 @@ script:
   - cmake -DCMAKE_BUILD_TYPE=Debug ..
   - make -j2 core
   - make ogrprovider memoryprovider
+  - cd tests/src/core && make
   - make test
