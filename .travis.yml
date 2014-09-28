@@ -10,4 +10,5 @@ script:
   - make -j2 core
   - make ogrprovider memoryprovider
   - cd tests/src/core && make
-  - make test
+  - ctest -V
+
