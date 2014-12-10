@@ -131,6 +131,7 @@ SET(QGIS_CORE_SRCS
   qgspluginlayer.cpp
   qgspluginlayerregistry.cpp
   qgspoint.cpp
+  qgspointlocator.cpp
   qgsproject.cpp
   qgsprojectfiletransform.cpp
   qgsprojectproperty.cpp
@@ -150,6 +151,7 @@ SET(QGIS_CORE_SRCS
   qgsscaleutils.cpp
   qgssimplifymethod.cpp
   qgssnapper.cpp
+  qgssnappingutils.cpp
   qgsspatialindex.cpp
   qgstolerance.cpp
   qgsvectordataprovider.cpp
@@ -353,9 +355,11 @@ SET(QGIS_CORE_MOC_HDRS
   qgsofflineediting.h
   qgscredentials.h
   qgspluginlayer.h
+  qgspointlocator.h
   qgsproject.h
   qgsrunprocess.h
   qgsrelationmanager.h
+  qgssnappingutils.h
   qgsvectorlayer.h
   qgsvectorlayereditbuffer.h
   qgsnetworkaccessmanager.h
@@ -518,6 +522,7 @@ SET(QGIS_CORE_HDRS
   qgspluginlayer.h
   qgspluginlayerregistry.h
   qgspoint.h
+  qgspointlocator.h
   qgsproject.h
   qgsprojectfiletransform.h
   qgsprojectproperty.h
@@ -537,6 +542,7 @@ SET(QGIS_CORE_HDRS
   qgsscaleutils.h
   qgssimplifymethod.h
   qgssnapper.h
+  qgssnappingutils.h
   qgsspatialindex.h
   qgssingleton.h
   qgstolerance.h
