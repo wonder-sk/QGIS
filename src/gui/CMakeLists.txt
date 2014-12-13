@@ -178,6 +178,7 @@ qgsmapcanvas.cpp
 qgsmapcanvasitem.cpp
 qgsmapcanvasmap.cpp
 qgsmapcanvassnapper.cpp
+qgsmapcanvassnappingutils.cpp
 qgsmaplayeractionregistry.cpp
 qgsmaplayercombobox.cpp
 qgsmaplayermodel.cpp
@@ -379,6 +380,7 @@ qgslonglongvalidator.h
 qgsludialog.h
 qgsmanageconnectionsdialog.h
 qgsmapcanvas.h
+qgsmapcanvassnappingutils.h
 qgsmaplayeractionregistry.h
 qgsmaplayercombobox.h
 qgsmaplayermodel.h
@@ -466,6 +468,7 @@ qgsmapcanvas.h
 qgsmapcanvasitem.h
 qgsmapcanvasmap.h
 qgsmapcanvassnapper.h
+qgsmapcanvassnappingutils.h
 qgsmaplayercombobox.h
 qgsmaplayermodel.h
 qgsmaplayerproxymodel.h

@@ -51,8 +51,6 @@ class APP_EXPORT QgisAppInterface : public QgisInterface
 
     QgsLayerTreeView* layerTreeView();
 
-    QgsSnappingUtils* snappingUtils();
-
     /* Exposed functions */
 
     //! Zoom map to full extent
