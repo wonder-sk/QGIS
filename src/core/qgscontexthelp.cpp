@@ -49,7 +49,10 @@ void QgsContextHelp::run( QString context )
     QString helpVersion = QString( "%1.%2" )
         .arg( QGis::QGIS_VERSION_INT / 10000 )
         .arg( QGis::QGIS_VERSION_INT / 100 % 100 );
-    helpVersion = "2.6";
+
+    // in case of unreleased version use the "testing" build
+    if ( QString( QGis::QGIS_VERSION ).endsWith( "Master" ) )
+      helpVersion = "testing";
 
     gHelpUrlBase = QString( "http://docs.qgis.org/%1/%2/docs/user_manual/" )
            .arg( helpVersion )
