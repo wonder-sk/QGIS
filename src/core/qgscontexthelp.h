@@ -25,12 +25,6 @@
 
 /** \ingroup core
  * Provides a context based help browser for a dialog.
- *
- * The help text is stored in SQLite and accessed by a context identifier
- * unique to each dialog. This is a singleton class which invokes the help
- * viewer using QProcess and ensures that only one viewer is open.
- * The viewer will be terminated if open when the main application quits.
- *
  */
 class CORE_EXPORT QgsContextHelp : public QObject
 {
@@ -38,25 +32,16 @@ class CORE_EXPORT QgsContextHelp : public QObject
   public:
     static void run( QString context );
 
-  private slots:
-    void processExited();
-    void error( QProcess::ProcessError error );
-
   private:
     //! Constructor
     QgsContextHelp();
     //! Destructor
     ~QgsContextHelp();
 
-    QProcess *start();
-    void showContext( QString context );
-
-    static QgsContextHelp *gContextHelp; // Singleton instance
-    QProcess *mProcess;
-
     static QHash<QString, QString> gContextHelpTexts;
+    static QString gHelpUrlBase;
 
-    void init();
+    static void init();
 };
 
 #endif //QGSCONTEXTHELP_H

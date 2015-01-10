@@ -16,92 +16,61 @@
  *                                                                         *
  ***************************************************************************/
 
-#include <QString>
-#include <QProcess>
-#include <QTcpSocket>
-#include <QTextStream>
+#include <QDesktopServices>
+#include <QLocale>
+#include <QSettings>
+#include <QUrl>
 
 #include "qgscontexthelp.h"
 #include "qgsmessagelog.h"
 #include "qgsapplication.h"
 #include "qgslogger.h"
 
+QString QgsContextHelp::gHelpUrlBase;
 
-QgsContextHelp *QgsContextHelp::gContextHelp = 0;  // Singleton instance
 
 void QgsContextHelp::run( QString context )
 {
-  if ( !gContextHelp )
+  init();
+
+  if ( gHelpUrlBase.isEmpty() )
   {
-    // Create singleton instance if it does not exist
-    gContextHelp = new QgsContextHelp();
+    // TODO: be able to switch to something else
+    // TODO: be able to use locally installed documentation
+
+    QSettings settings;
+    bool overrideLocale = settings.value( "locale/overrideFlag", false ).toBool();
+    QString userLocale = settings.value( "locale/userLocale", QString() ).toString();
+    QString localeName = QLocale::system().name();  // e.g. "en_US"
+    if ( overrideLocale && !userLocale.isEmpty() )
+      localeName = userLocale;
+
+    QString helpLanguage = localeName.split( '_' ).first();
+    QString helpVersion = QString( "%1.%2" )
+        .arg( QGis::QGIS_VERSION_INT / 10000 )
+        .arg( QGis::QGIS_VERSION_INT / 100 % 100 );
+    helpVersion = "2.6";
+
+    gHelpUrlBase = QString( "http://docs.qgis.org/%1/%2/docs/user_manual/" )
+           .arg( helpVersion )
+           .arg( helpLanguage );
   }
 
-  gContextHelp->showContext( context );
+
+  if ( !gContextHelpTexts.contains( context ) )
+  {
+    // TODO: say sorry
+    return;
+  }
+
+  QUrl url( gHelpUrlBase + gContextHelpTexts[context] );
+  QDesktopServices::openUrl( url );
 }
 
 QgsContextHelp::QgsContextHelp()
 {
-  mProcess = start();
 }
 
 QgsContextHelp::~QgsContextHelp()
 {
-  delete mProcess;
-}
-
-QProcess *QgsContextHelp::start()
-{
-  // Get the path to the help viewer
-  QString helpPath = QgsApplication::helpAppPath();
-  QgsDebugMsg( QString( "Help path is %1" ).arg( helpPath ) );
-
-  QProcess *process = new QProcess;
-
-  // Delete this object if the process terminates
-  connect( process, SIGNAL( finished( int, QProcess::ExitStatus ) ), SLOT( processExited() ) );
-
-  // Delete the process if the application quits
-  connect( qApp, SIGNAL( aboutToQuit() ), process, SLOT( terminate() ) );
-
-  connect( process, SIGNAL( error( QProcess::ProcessError ) ), this, SLOT( error( QProcess::ProcessError ) ) );
-
-#ifdef Q_OS_WIN
-  if ( QgsApplication::isRunningFromBuildDir() )
-  {
-    process->setEnvironment( QStringList() << QString( "PATH=%1;%2" ).arg( getenv( "PATH" ) ).arg( QApplication::applicationDirPath() ) );
-  }
-#endif
-
-  process->start( helpPath, QStringList() );
-
-  return process;
-}
-
-void QgsContextHelp::error( QProcess::ProcessError error )
-{
-  QgsMessageLog::logMessage( tr( "Error starting help viewer [%1]" ).arg( error ), tr( "Context help" ) );
-}
-
-void QgsContextHelp::showContext( QString context )
-{
-  init();
-
-  QString helpContents = gContextHelpTexts.value( context,
-                         tr( "<h3>Oops! QGIS can't find help for this form.</h3>"
-                             "The help file for %1 was not found for your language<br>"
-                             "If you would like to create it, contact the QGIS development team"
-                           ).arg( context ) );
-
-  QString myStyle = QgsApplication::reportStyleSheet();
-  helpContents = "<head><style>" + myStyle + "</style></head><body>" + helpContents + "</body>\nEOH\n";
-
-  mProcess->write( helpContents.toUtf8() );
-}
-
-void QgsContextHelp::processExited()
-{
-  // Delete this object if the process terminates
-  delete gContextHelp;
-  gContextHelp = NULL;
 }

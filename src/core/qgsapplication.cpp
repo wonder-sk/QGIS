@@ -476,17 +476,7 @@ const QString QgsApplication::licenceFilePath()
 */
 const QString QgsApplication::helpAppPath()
 {
-  QString helpAppPath;
-#ifdef Q_OS_MACX
-  helpAppPath = applicationDirPath() + "/bin/qgis_help.app/Contents/MacOS";
-#else
-  helpAppPath = libexecPath();
-#endif
-  helpAppPath += "/qgis_help";
-#ifdef Q_OS_WIN
-  helpAppPath += ".exe";
-#endif
-  return helpAppPath;
+  return QString();
 }
 /*!
   Returns the path to the translation directory.

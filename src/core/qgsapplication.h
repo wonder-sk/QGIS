@@ -107,6 +107,7 @@ class CORE_EXPORT QgsApplication : public QApplication
     static const QString licenceFilePath();
 
     //! Returns the path to the help application.
+    //! @deprecated since 2.8 - returns empty string (help application has been removed)
     static const QString helpAppPath();
 
     //! Returns the path to the translation directory.

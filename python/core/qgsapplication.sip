@@ -133,7 +133,8 @@ static void qtgui_UpdatePyArgv(PyObject *argvlist, int argc, char **argv)
     static const QString licenceFilePath();
 
     //! Returns the path to the help application.
-    static const QString helpAppPath();
+    //! @deprecated since 2.8 - returns empty string (help application has been removed)
+    static const QString helpAppPath() /Deprecated/;
 
     //! Returns the path to the translation directory.
     static const QString i18nPath();
