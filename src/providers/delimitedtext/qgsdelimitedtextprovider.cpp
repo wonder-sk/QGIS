@@ -40,7 +40,7 @@
 #include "qgsspatialindex.h"
 #include "qgis.h"
 
-#include "qgsdelimitedtextsourceselect.h"
+//#include "qgsdelimitedtextsourceselect.h"
 #include "qgsdelimitedtextfeatureiterator.h"
 #include "qgsdelimitedtextfile.h"
 
@@ -1196,7 +1196,9 @@ QGISEXTERN bool isProvider()
   return true;
 }
 
+#if 0
 QGISEXTERN QgsDelimitedTextSourceSelect *selectWidget( QWidget *parent, Qt::WindowFlags fl )
 {
   return new QgsDelimitedTextSourceSelect( parent, fl );
 }
+#endif

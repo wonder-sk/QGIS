@@ -6,13 +6,13 @@ SET (DTEXT_SRCS
   qgsdelimitedtextfeatureiterator.cpp
   qgsdelimitedtextprovider.cpp
   qgsdelimitedtextfile.cpp
-  qgsdelimitedtextsourceselect.cpp
+#  qgsdelimitedtextsourceselect.cpp
 )
 
 SET (DTEXT_MOC_HDRS
   qgsdelimitedtextfile.h
   qgsdelimitedtextprovider.h
-  qgsdelimitedtextsourceselect.h
+#  qgsdelimitedtextsourceselect.h
 )
 
 ########################################################
