@@ -25,7 +25,7 @@ ADD_LIBRARY (gdalprovider MODULE ${GDAL_SRCS} ${GDAL_MOC_SRCS})
 
 TARGET_LINK_LIBRARIES (gdalprovider
   qgis_core
-  qgis_gui
+#  qgis_gui
 )
 
 INSTALL(TARGETS gdalprovider

@@ -16,7 +16,7 @@
 
 #include "qgsspatialiteprovider.h"
 #include "qgsspatialiteconnection.h"
-#include "qgsspatialitesourceselect.h"
+//#include "qgsspatialitesourceselect.h"
 
 #include "qgslogger.h"
 #include "qgsmimedatautils.h"
@@ -294,9 +294,12 @@ QList<QAction*> QgsSLRootItem::actions()
 
 QWidget * QgsSLRootItem::paramWidget()
 {
+#if 0
   QgsSpatiaLiteSourceSelect *select = new QgsSpatiaLiteSourceSelect( 0, 0, true );
   connect( select, SIGNAL( connectionsChanged() ), this, SLOT( connectionsChanged() ) );
   return select;
+#endif
+  return 0;
 }
 
 void QgsSLRootItem::connectionsChanged()
@@ -306,16 +309,19 @@ void QgsSLRootItem::connectionsChanged()
 
 void QgsSLRootItem::newConnection()
 {
+#if 0
   if ( QgsSpatiaLiteSourceSelect::newConnection( NULL ) )
   {
     refresh();
   }
+#endif
 }
 
 QGISEXTERN bool createDb( const QString& dbPath, QString& errCause );
 
 void QgsSLRootItem::createDatabase()
 {
+#if 0
   QSettings settings;
   QString lastUsedDir = settings.value( "/UI/lastSpatiaLiteDir", "." ).toString();
 
@@ -339,14 +345,19 @@ void QgsSLRootItem::createDatabase()
   {
     QMessageBox::critical( 0, tr( "Create SpatiaLite database" ), tr( "Failed to create the database:\n" ) + errCause );
   }
+#endif
 }
 
 // ---------------------------------------------------------------------------
 
+class QgsSpatiaLiteSourceSelect;
 QGISEXTERN QgsSpatiaLiteSourceSelect * selectWidget( QWidget * parent, Qt::WindowFlags fl )
 {
+#if 0
   // TODO: this should be somewhere else
   return new QgsSpatiaLiteSourceSelect( parent, fl, false );
+#endif
+  return 0;
 }
 
 QGISEXTERN int dataCapabilities()

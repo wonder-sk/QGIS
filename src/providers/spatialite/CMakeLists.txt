@@ -12,16 +12,16 @@ SET(SPATIALITE_SRCS
   qgsspatialiteconnpool.cpp
   qgsspatialiteexpressioncompiler.cpp
   qgsspatialitefeatureiterator.cpp
-  qgsspatialitesourceselect.cpp
-  qgsspatialitetablemodel.cpp
+  #qgsspatialitesourceselect.cpp
+  #qgsspatialitetablemodel.cpp
 )
 
 SET(SPATIALITE_MOC_HDRS
   qgsspatialiteprovider.h
   qgsspatialiteconnpool.h
   qgsspatialitedataitems.h
-  qgsspatialitesourceselect.h
-  qgsspatialitetablemodel.h
+  #qgsspatialitesourceselect.h
+  #qgsspatialitetablemodel.h
   qgsspatialiteconnection.h
 )
 
@@ -32,13 +32,13 @@ SET(SPATIALITE_MOC_HDRS
 QT4_WRAP_CPP(SPATIALITE_MOC_SRCS ${SPATIALITE_MOC_HDRS})
 
 INCLUDE_DIRECTORIES(SYSTEM
-  ${QSCINTILLA_INCLUDE_DIR}
+  #${QSCINTILLA_INCLUDE_DIR}
 )
 INCLUDE_DIRECTORIES(
   ../../core
   ../../core/geometry
-  ../../gui
-  ${CMAKE_CURRENT_BINARY_DIR}/../../ui
+  #../../gui
+  #${CMAKE_CURRENT_BINARY_DIR}/../../ui
 )
 INCLUDE_DIRECTORIES(SYSTEM
   ${SPATIALITE_INCLUDE_DIR}
@@ -49,7 +49,7 @@ ADD_LIBRARY (spatialiteprovider MODULE ${SPATIALITE_SRCS} ${SPATIALITE_MOC_SRCS}
 
 TARGET_LINK_LIBRARIES(spatialiteprovider
   qgis_core
-  qgis_gui
+  #qgis_gui
   ${SPATIALITE_LIBRARY}
 )
 

@@ -19,9 +19,9 @@
 #include "qgsdatasourceuri.h"
 #include "qgswmscapabilities.h"
 #include "qgswmsconnection.h"
-#include "qgswmssourceselect.h"
-#include "qgsnewhttpconnection.h"
-#include "qgstilescalewidget.h"
+//#include "qgswmssourceselect.h"
+//#include "qgsnewhttpconnection.h"
+//#include "qgstilescalewidget.h"
 
 // ---------------------------------------------------------------------------
 QgsWMSConnectionItem::QgsWMSConnectionItem( QgsDataItem* parent, QString name, QString path, QString uri )
@@ -182,7 +182,7 @@ bool QgsWMSConnectionItem::equal( const QgsDataItem *other )
 QList<QAction*> QgsWMSConnectionItem::actions()
 {
   QList<QAction*> lst;
-
+#if 0
   QAction* actionEdit = new QAction( tr( "Edit..." ), this );
   connect( actionEdit, SIGNAL( triggered() ), this, SLOT( editConnection() ) );
   lst.append( actionEdit );
@@ -190,12 +190,13 @@ QList<QAction*> QgsWMSConnectionItem::actions()
   QAction* actionDelete = new QAction( tr( "Delete" ), this );
   connect( actionDelete, SIGNAL( triggered() ), this, SLOT( deleteConnection() ) );
   lst.append( actionDelete );
-
+#endif
   return lst;
 }
 
 void QgsWMSConnectionItem::editConnection()
 {
+#if 0
   QgsNewHttpConnection nc( 0, "/Qgis/connections-wms/", mName );
 
   if ( nc.exec() )
@@ -203,6 +204,7 @@ void QgsWMSConnectionItem::editConnection()
     // the parent should be updated
     mParent->refresh();
   }
+#endif
 }
 
 void QgsWMSConnectionItem::deleteConnection()
@@ -364,20 +366,23 @@ QVector<QgsDataItem*> QgsWMSRootItem::createChildren()
 QList<QAction*> QgsWMSRootItem::actions()
 {
   QList<QAction*> lst;
-
+#if 0
   QAction* actionNew = new QAction( tr( "New Connection..." ), this );
   connect( actionNew, SIGNAL( triggered() ), this, SLOT( newConnection() ) );
   lst.append( actionNew );
-
+#endif
   return lst;
 }
 
 
 QWidget * QgsWMSRootItem::paramWidget()
 {
+#if 0
   QgsWMSSourceSelect *select = new QgsWMSSourceSelect( 0, 0, true, true );
   connect( select, SIGNAL( connectionsChanged() ), this, SLOT( connectionsChanged() ) );
   return select;
+#endif
+  return 0;
 }
 
 void QgsWMSRootItem::connectionsChanged()
@@ -387,17 +392,20 @@ void QgsWMSRootItem::connectionsChanged()
 
 void QgsWMSRootItem::newConnection()
 {
+#if 0
   QgsNewHttpConnection nc( 0 );
 
   if ( nc.exec() )
   {
     refresh();
   }
+#endif
 }
 
 
 // ---------------------------------------------------------------------------
 
+#if 0
 QGISEXTERN void registerGui( QMainWindow *mainWindow )
 {
   QgsTileScaleWidget::showTileScale( mainWindow );
@@ -407,6 +415,7 @@ QGISEXTERN QgsWMSSourceSelect * selectWidget( QWidget * parent, Qt::WindowFlags 
 {
   return new QgsWMSSourceSelect( parent, fl );
 }
+#endif
 
 QGISEXTERN int dataCapabilities()
 {
