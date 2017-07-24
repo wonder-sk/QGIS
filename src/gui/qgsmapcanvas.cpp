@@ -629,7 +629,7 @@ void QgsMapCanvas::rendererJobFinished()
     p.end();
 
     mMap->setContent( img, imageRect( img, mSettings ) );
-    startPreviewJobs();
+    //startPreviewJobs();
   }
 
   // now we are in a slot called from mJob - do not delete it immediately
