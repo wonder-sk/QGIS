@@ -364,6 +364,9 @@ IF (WITH_3D)
     3d/qgs3dmapcanvas.cpp
     3d/qgs3dmapcanvasdockwidget.cpp
     3d/qgs3dmapconfigwidget.cpp
+    3d/qgspolygon3dsymbolwidget.cpp
+    3d/qgsphongmaterialwidget.cpp
+    3d/qgsvectorlayer3drendererwidget.cpp
   )
 
   SET (QGIS_APP_MOC_HDRS
@@ -371,6 +374,9 @@ IF (WITH_3D)
     3d/qgs3dmapcanvas.h
     3d/qgs3dmapcanvasdockwidget.h
     3d/qgs3dmapconfigwidget.h
+    3d/qgspolygon3dsymbolwidget.h
+    3d/qgsphongmaterialwidget.h
+    3d/qgsvectorlayer3drendererwidget.h
   )
 ENDIF (WITH_3D)
 
@@ -544,6 +550,7 @@ INCLUDE_DIRECTORIES(
 IF (WITH_3D)
   INCLUDE_DIRECTORIES(
     ${CMAKE_SOURCE_DIR}/src/app/3d
+    ${CMAKE_SOURCE_DIR}/src/core/3d
     ${CMAKE_SOURCE_DIR}/src/3d
     ${CMAKE_SOURCE_DIR}/src/3d/terrain
     ${CMAKE_SOURCE_DIR}/src/3d/chunks

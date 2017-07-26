@@ -758,6 +758,8 @@ Return pointer to layer's undo stack
  :rtype: QgsMapLayerStyleManager
 %End
 
+
+
     bool isInScaleRange( double scale ) const;
 %Docstring
  Tests whether the layer should be visible at the specified ``scale``.
@@ -1018,6 +1020,12 @@ Signal emitted when the blend mode is changed, through QgsMapLayer.setBlendMode(
 %Docstring
  Signal emitted when legend of the layer has changed
 .. versionadded:: 2.6
+%End
+
+    void renderer3DChanged();
+%Docstring
+ Signal emitted when 3D renderer associated with the layer has changed.
+.. versionadded:: 3.0
 %End
 
     void configChanged();

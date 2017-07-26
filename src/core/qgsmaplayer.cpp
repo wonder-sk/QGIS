@@ -28,6 +28,7 @@
 
 #include <sqlite3.h>
 
+#include "qgsabstract3drenderer.h"
 #include "qgsapplication.h"
 #include "qgscoordinatereferencesystem.h"
 #include "qgsdatasourceuri.h"
@@ -89,6 +90,7 @@ QgsMapLayer::QgsMapLayer( QgsMapLayer::LayerType type,
 
 QgsMapLayer::~QgsMapLayer()
 {
+  delete m3DRenderer;
   delete mLegend;
   delete mStyleManager;
 }
@@ -1673,6 +1675,21 @@ QgsMapLayerLegend *QgsMapLayer::legend() const
 QgsMapLayerStyleManager *QgsMapLayer::styleManager() const
 {
   return mStyleManager;
+}
+
+void QgsMapLayer::setRenderer3D( QgsAbstract3DRenderer *renderer )
+{
+  if ( renderer == m3DRenderer )
+    return;
+
+  delete m3DRenderer;
+  m3DRenderer = renderer;
+  emit renderer3DChanged();
+}
+
+QgsAbstract3DRenderer *QgsMapLayer::renderer3D() const
+{
+  return m3DRenderer;
 }
 
 void QgsMapLayer::triggerRepaint( bool deferredUpdate )
