@@ -78,6 +78,15 @@
 #include <qgslayerstylingwidget.h>
 #include "qgstaskmanager.h"
 
+#ifdef HAVE_3D
+#include "qgsabstract3drenderer.h"
+#include "qgs3dmapcanvasdockwidget.h"
+#include "qgs3drendererregistry.h"
+#include "map3d.h"
+#include "flatterraingenerator.h"
+#include "vectorlayer3drenderer.h"
+#endif
+
 #include <QNetworkReply>
 #include <QNetworkProxy>
 #include <QAuthenticator>
@@ -816,6 +825,7 @@ QgisApp::QgisApp( QSplashScreen *splash, bool restorePlugins, bool skipVersionCh
   functionProfile( &QgisApp::updateRecentProjectPaths, this, QStringLiteral( "Update recent project paths" ) );
   functionProfile( &QgisApp::updateProjectFromTemplates, this, QStringLiteral( "Update project from templates" ) );
   functionProfile( &QgisApp::legendLayerSelectionChanged, this, QStringLiteral( "Legend layer selection changed" ) );
+  functionProfile( &QgisApp::init3D, this, QStringLiteral( "Initialize 3D support" ) );
 
   QgsApplication::annotationRegistry()->addAnnotationType( QgsAnnotationMetadata( QStringLiteral( "FormAnnotationItem" ), &QgsFormAnnotation::create ) );
   connect( QgsProject::instance()->annotationManager(), &QgsAnnotationManager::annotationAdded, this, &QgisApp::annotationCreated );
@@ -9877,13 +9887,19 @@ void QgisApp::newMapCanvas()
   }
 }
 
-#include "qgsabstract3drenderer.h"
-#include "qgs3dmapcanvasdockwidget.h"
-#include "map3d.h"
-#include "flatterraingenerator.h"
+void QgisApp::init3D()
+{
+#ifdef HAVE_3D
+  // register 3D renderers
+  QgsApplication::instance()->renderer3DRegistry()->addRenderer( new VectorLayer3DRendererMetadata );
+#else
+  mActionNew3DMapCanvas->setVisible( false );
+#endif
+}
 
 void QgisApp::new3DMapCanvas()
 {
+#ifdef HAVE_3D
   // initialize from project
   QgsProject *prj = QgsProject::instance();
   QgsRectangle fullExtent = mMapCanvas->fullExtent();
@@ -9908,6 +9924,7 @@ void QgisApp::new3DMapCanvas()
   map3DWidget->setMap( map );
   map3DWidget->setMainCanvas( mMapCanvas );
   addDockWidget( Qt::BottomDockWidgetArea, map3DWidget );
+#endif
 }
 
 void QgisApp::setExtent( const QgsRectangle &rect )

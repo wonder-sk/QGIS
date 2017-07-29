@@ -1671,6 +1671,7 @@ class APP_EXPORT QgisApp : public QMainWindow, private Ui::MainWindow
     void createCanvasTools();
     void createMapTips();
     void createDecorations();
+    void init3D();
 
     //! Do histogram stretch for singleband gray / multiband color rasters
     void histogramStretch( bool visibleAreaOnly = false, QgsRasterMinMaxOrigin::Limits limits = QgsRasterMinMaxOrigin::MinMax );
