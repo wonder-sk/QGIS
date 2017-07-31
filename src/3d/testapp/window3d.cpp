@@ -15,7 +15,12 @@ Window3D::Window3D( SidePanel *p, Map3D &map )
   , scene( nullptr )
 {
   QRect viewportRect( QPoint( 0, 0 ), size() );
+
+#if QT_VERSION >= 0x050900
   scene = new Scene( map, defaultFrameGraph(), renderSettings(), camera(), viewportRect );
+#else
+  scene = new Scene( map, defaultFrameGraph(), camera(), viewportRect );
+#endif
 
   mFrameAction = new Qt3DLogic::QFrameAction();
   connect( mFrameAction, &Qt3DLogic::QFrameAction::triggered,

@@ -56,11 +56,12 @@ void TerrainChunkLoader::createTextureComponent( TerrainChunkEntity *entity )
   texture->addTextureImage( entity->mTextureImage );
   texture->setMinificationFilter( Qt3DRender::QTexture2D::Linear );
   texture->setMagnificationFilter( Qt3DRender::QTexture2D::Linear );
-  Qt3DExtras::QTextureMaterial *material;
 #if QT_VERSION >= 0x050900
+  Qt3DExtras::QTextureMaterial *material;
   material = new Qt3DExtras::QTextureMaterial;
   material->setTexture( texture );
 #else
+  Qt3DExtras::QDiffuseMapMaterial *material;
   material = new Qt3DExtras::QDiffuseMapMaterial;
   material->setDiffuse( texture );
   material->setShininess( 1 );

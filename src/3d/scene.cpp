@@ -23,6 +23,10 @@
 #include <Qt3DRender/QSceneLoader>
 #include <Qt3DExtras/QPhongMaterial>
 
+Scene::Scene( const Map3D &map, Qt3DExtras::QForwardRenderer *defaultFrameGraph, Qt3DRender::QCamera *camera, const QRect &viewportRect, Qt3DCore::QNode *parent )
+  : Scene( map, defaultFrameGraph, nullptr, camera, viewportRect, parent )
+{
+}
 
 Scene::Scene( const Map3D &map, Qt3DExtras::QForwardRenderer *defaultFrameGraph, Qt3DRender::QRenderSettings *renderSettings, Qt3DRender::QCamera *camera, const QRect &viewportRect, Qt3DCore::QNode *parent )
   : Qt3DCore::QEntity( parent )
@@ -37,7 +41,8 @@ Scene::Scene( const Map3D &map, Qt3DExtras::QForwardRenderer *defaultFrameGraph,
 
 #if QT_VERSION >= 0x050900
   // we want precise picking of terrain (also bounding volume picking does not seem to work - not sure why)
-  renderSettings->pickingSettings()->setPickMethod( Qt3DRender::QPickingSettings::TrianglePicking );
+  if ( renderSettings )
+    renderSettings->pickingSettings()->setPickMethod( Qt3DRender::QPickingSettings::TrianglePicking );
 #endif
 
   // Camera
@@ -132,10 +137,12 @@ Scene::Scene( const Map3D &map, Qt3DExtras::QForwardRenderer *defaultFrameGraph,
     skybox->setExtension( map.skyboxFileExtension );
     skybox->setParent( this );
 
+#if QT_VERSION >= 0x050900
     // docs say frustum culling must be disabled for skybox.
     // it _somehow_ works even when frustum culling is enabled with some camera positions,
     // but then when zoomed in more it would disappear - so let's keep frustum culling disabled
     defaultFrameGraph->setFrustumCullingEnabled( false );
+#endif
   }
 
   // force initial update of chunked entities

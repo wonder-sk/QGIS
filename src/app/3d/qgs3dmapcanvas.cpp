@@ -43,7 +43,11 @@ void Qgs3DMapCanvas::setMap( Map3D *map )
   Q_ASSERT( !mScene );
 
   QRect viewportRect( QPoint( 0, 0 ), size() );
+#if QT_VERSION >= 0x050900
   Scene *newScene = new Scene( *map, mWindow3D->defaultFrameGraph(), mWindow3D->renderSettings(), mWindow3D->camera(), viewportRect );
+#else
+  Scene *newScene = new Scene( *map, mWindow3D->defaultFrameGraph(), mWindow3D->camera(), viewportRect );
+#endif
 
   mWindow3D->setRootEntity( newScene );
 

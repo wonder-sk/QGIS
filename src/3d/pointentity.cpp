@@ -79,13 +79,17 @@ PointEntity::PointEntity( const Map3D &map, QgsVectorLayer *layer, const Point3D
   Qt3DRender::QBuffer *instanceBuffer = new Qt3DRender::QBuffer( Qt3DRender::QBuffer::VertexBuffer );
   instanceBuffer->setData( ba );
 
+#if QT_VERSION >= 0x050900
   Qt3DRender::QAttribute *instanceDataAttribute = new Qt3DRender::QAttribute;
-  instanceDataAttribute->setName( "pos" );
-  instanceDataAttribute->setAttributeType( Qt3DRender::QAttribute::VertexAttribute );
   instanceDataAttribute->setVertexBaseType( Qt3DRender::QAttribute::Float );
   instanceDataAttribute->setVertexSize( 3 );
-  instanceDataAttribute->setDivisor( 1 );
   instanceDataAttribute->setBuffer( instanceBuffer );
+#else
+  Qt3DRender::QAttribute *instanceDataAttribute = new Qt3DRender::QAttribute( instanceBuffer, Qt3DRender::QAttribute::Float, 3, 0);
+#endif
+  instanceDataAttribute->setName( "pos" );
+  instanceDataAttribute->setAttributeType( Qt3DRender::QAttribute::VertexAttribute );
+  instanceDataAttribute->setDivisor( 1 );
 
   Qt3DRender::QGeometry *geometry = nullptr;
   QString shape = symbol.shapeProperties["shape"].toString();

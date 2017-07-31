@@ -36,6 +36,8 @@ class _3D_EXPORT Scene : public Qt3DCore::QEntity
   public:
     Scene( const Map3D &map, Qt3DExtras::QForwardRenderer *defaultFrameGraph, Qt3DRender::QRenderSettings *renderSettings, Qt3DRender::QCamera *camera, const QRect &viewportRect, Qt3DCore::QNode *parent = nullptr );
 
+    Scene( const Map3D &map, Qt3DExtras::QForwardRenderer *defaultFrameGraph, Qt3DRender::QCamera *camera, const QRect &viewportRect, Qt3DCore::QNode *parent = nullptr );
+
     CameraController *cameraController() { return mCameraController; }
     Terrain *terrain() { return mTerrain; }
 
