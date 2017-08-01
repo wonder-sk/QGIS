@@ -197,6 +197,10 @@ QgsMapCanvas::QgsMapCanvas( QWidget *parent )
 
   setInteractive( false );
 
+  // make sure we have the same default in QgsMapSettings and the scene's background brush
+  // (by default map settings has white bg color, scene background brush is black)
+  setCanvasColor( mSettings.backgroundColor() );
+
   refresh();
 
 } // QgsMapCanvas ctor
@@ -1559,6 +1563,9 @@ void QgsMapCanvas::unsetMapTool( QgsMapTool *tool )
 
 void QgsMapCanvas::setCanvasColor( const QColor &color )
 {
+  if ( canvasColor() == color )
+    return;
+
   // background of map's pixmap
   mSettings.setBackgroundColor( color );
 
@@ -1573,6 +1580,8 @@ void QgsMapCanvas::setCanvasColor( const QColor &color )
 
   // background of QGraphicsScene
   mScene->setBackgroundBrush( bgBrush );
+
+  emit canvasColorChanged();
 }
 
 QColor QgsMapCanvas::canvasColor() const
