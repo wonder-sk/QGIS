@@ -12,6 +12,7 @@
 #include "aabb.h"
 #include "qgsabstract3drenderer.h"
 #include "cameracontroller.h"
+#include "qgsvectorlayer.h"
 #include "map3d.h"
 #include "terrain.h"
 #include "terraingenerator.h"
@@ -71,8 +72,8 @@ Scene::Scene( const Map3D &map, Qt3DExtras::QForwardRenderer *defaultFrameGraph,
 
   Q_FOREACH ( const QgsAbstract3DRenderer *renderer, map.renderers )
   {
-    Qt3DCore::QEntity *p = renderer->createEntity( map );
-    p->setParent( this );
+    Qt3DCore::QEntity *newEntity = renderer->createEntity( map );
+    newEntity->setParent( this );
   }
 
   // listen to changes of layers in order to add/remove 3D renderer entities
@@ -192,7 +193,7 @@ void Scene::createTerrain()
 
   if ( !mTerrainUpdateScheduled )
   {
-    // defer re-creation of terrain: there may be multiple invokations of this slot, so create the new entity just once
+    // defer re-creation of terrain: there may be multiple invocations of this slot, so create the new entity just once
     QTimer::singleShot( 0, this, &Scene::createTerrainDeferred );
     mTerrainUpdateScheduled = true;
   }
@@ -285,6 +286,12 @@ void Scene::addLayerEntity( QgsMapLayer *layer )
   }
 
   connect( layer, &QgsMapLayer::renderer3DChanged, this, &Scene::onLayerRenderer3DChanged );
+
+  if ( layer->type() == QgsMapLayer::VectorLayer )
+  {
+    QgsVectorLayer *vlayer = qobject_cast<QgsVectorLayer *>( layer );
+    connect( vlayer, &QgsVectorLayer::selectionChanged, this, &Scene::onLayerRenderer3DChanged );
+  }
 }
 
 void Scene::removeLayerEntity( QgsMapLayer *layer )
@@ -294,4 +301,10 @@ void Scene::removeLayerEntity( QgsMapLayer *layer )
     entity->deleteLater();
 
   disconnect( layer, &QgsMapLayer::renderer3DChanged, this, &Scene::onLayerRenderer3DChanged );
+
+  if ( layer->type() == QgsMapLayer::VectorLayer )
+  {
+    QgsVectorLayer *vlayer = qobject_cast<QgsVectorLayer *>( layer );
+    disconnect( vlayer, &QgsVectorLayer::selectionChanged, this, &Scene::onLayerRenderer3DChanged );
+  }
 }

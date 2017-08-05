@@ -9900,6 +9900,7 @@ void QgisApp::init3D()
 void QgisApp::new3DMapCanvas()
 {
 #ifdef HAVE_3D
+
   // initialize from project
   QgsProject *prj = QgsProject::instance();
   QgsRectangle fullExtent = mMapCanvas->fullExtent();
@@ -9908,6 +9909,7 @@ void QgisApp::new3DMapCanvas()
   map->crs = prj->crs();
   map->originX = fullExtent.center().x();
   map->originY = fullExtent.center().y();
+  map->setSelectionColor( mMapCanvas->selectionColor() );
   map->setBackgroundColor( mMapCanvas->canvasColor() );
   map->setLayers( mMapCanvas->layers() );
 
