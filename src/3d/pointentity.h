@@ -22,7 +22,13 @@ class PointEntity : public Qt3DCore::QEntity
   private:
     Qt3DRender::QGeometryRenderer * shapeGeometryRenderer(const QString& shape);
     void applyInstanceRendering(Qt3DRender::QGeometryRenderer * renderer);
-    Qt3DRender::QMaterial * getMaterial();
+    Qt3DRender::QMaterial * getMaterial(Qt3DRender::QMaterial* refMaterial = nullptr);
+
+    void applyColorsToEffect(Qt3DRender::QEffect *effect,  const QColor& diffuse,  const QColor& ambient,  const QColor& specular, float shininess);
+    void applyColorsToEffect(Qt3DRender::QEffect *effect,  Qt3DRender::QMaterial* refMaterial);
+    void applyColorsToEffect(Qt3DRender::QEffect *effect); //from symbol
+
+    void applyColorsFromModelMaterial(Qt3DRender::QEffect *effect, Qt3DRender::QMaterial* refMaterial);
 
     const Map3D &map;
     QgsVectorLayer *layer;

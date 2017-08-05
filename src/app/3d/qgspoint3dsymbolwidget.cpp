@@ -29,6 +29,7 @@ QgsPoint3DSymbolWidget::QgsPoint3DSymbolWidget( QWidget *parent )
     connect( spinBox, static_cast<void ( QDoubleSpinBox::* )( double )>( &QDoubleSpinBox::valueChanged ), this, &QgsPoint3DSymbolWidget::changed );
   connect( lineEditModel, static_cast<void ( QLineEdit::* )( const QString& )>( &QLineEdit::textChanged ), this, &QgsPoint3DSymbolWidget::changed );
   connect( btnModel, static_cast<void ( QToolButton::* )( bool )>( &QToolButton::clicked ), this, &QgsPoint3DSymbolWidget::onChooseModelClicked );
+  connect( cbOverwriteMaterial, static_cast<void ( QCheckBox::* )( int )>( &QCheckBox::stateChanged ), this, &QgsPoint3DSymbolWidget::onOverwriteMaterialChecked );
   connect( widgetMaterial, &QgsPhongMaterialWidget::changed, this, &QgsPoint3DSymbolWidget::changed );
 }
 
@@ -52,6 +53,15 @@ void QgsPoint3DSymbolWidget::onChooseModelClicked(bool) {
 
     s.setValue( QStringLiteral( "/UI/lastModel3dDir" ), fileInfo.absolutePath() );
     lineEditModel->setText(filePath);
+}
+
+void QgsPoint3DSymbolWidget::onOverwriteMaterialChecked(int state) {
+    if (state == Qt::Checked) {
+        widgetMaterial->setEnabled(true);
+    } else {
+        widgetMaterial->setEnabled(false);
+    }
+    emit changed();
 }
 
 void QgsPoint3DSymbolWidget::setSymbol( const Point3DSymbol &symbol )
@@ -86,6 +96,9 @@ void QgsPoint3DSymbolWidget::setSymbol( const Point3DSymbol &symbol )
       break;
     case 6:  // 3d model
       lineEditModel->setText( vm["model"].toString() );
+      bool overwriteMaterial = vm["overwriteMaterial"].toBool();
+      widgetMaterial->setEnabled(overwriteMaterial);
+      cbOverwriteMaterial->setChecked(overwriteMaterial);
       break;
   }
 
@@ -150,6 +163,7 @@ Point3DSymbol QgsPoint3DSymbolWidget::symbol() const
       break;
     case 6:  // model
       vm["model"] = lineEditModel->text();
+      vm["overwriteMaterial"] = cbOverwriteMaterial->isChecked();
       break;
   }
 
@@ -178,7 +192,7 @@ void QgsPoint3DSymbolWidget::onShapeChanged()
              << labelTopRadius << spinTopRadius
              << labelBottomRadius << spinBottomRadius
              << labelLength << spinLength
-             << labelModel << lineEditModel << btnModel;
+             << labelModel << lineEditModel << btnModel << cbOverwriteMaterial;
 
   QList<QWidget *> activeWidgets;
   switch ( cboShape->currentIndex() )
@@ -202,7 +216,7 @@ void QgsPoint3DSymbolWidget::onShapeChanged()
       activeWidgets << labelRadius << spinRadius << labelMinorRadius << spinMinorRadius;
       break;
     case 6:  // 3d model
-      activeWidgets << labelModel << lineEditModel << btnModel;
+      activeWidgets << labelModel << lineEditModel << btnModel << cbOverwriteMaterial;
       break;
   }
 

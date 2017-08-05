@@ -123,6 +123,13 @@
        </property>
       </widget>
      </item>
+     <item>
+      <widget class="QCheckBox" name="cbOverwriteMaterial">
+       <property name="text">
+        <string/>
+       </property>
+      </widget>
+     </item>
     </layout>
    </item>
    <item row="8" column="0" colspan="2">
