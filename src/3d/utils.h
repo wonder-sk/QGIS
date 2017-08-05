@@ -45,6 +45,11 @@ class _3D_EXPORT Utils
 
     static QString matrix4x4toString( const QMatrix4x4 &m );
     static QMatrix4x4 stringToMatrix4x4( const QString &str );
+
+    /**
+     * Calculates (x,y,z) position of point in the Point vector layers
+     */
+    static QList<QVector3D> positions(const Map3D &map, QgsVectorLayer *layer);
 };
 
 #endif // UTILS_H

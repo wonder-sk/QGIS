@@ -4,6 +4,7 @@
 #include "lineentity.h"
 #include "pointentity.h"
 #include "polygonentity.h"
+#include "modelentity.h"
 
 #include "qgsvectorlayer.h"
 #include "qgsxmlutils.h"
@@ -72,7 +73,19 @@ QVector<Qt3DCore::QEntity *> VectorLayer3DRenderer::createEntities( const Map3D 
       if ( mSymbol->type() == "polygon" )
         entities.push_back(new PolygonEntity( map, vl, *static_cast<Polygon3DSymbol *>( mSymbol.get() ) ));
       else if ( mSymbol->type() == "point" )
-        entities.push_back(new PointEntity( map, vl, *static_cast<Point3DSymbol *>( mSymbol.get() ) ));
+      {
+        Point3DSymbol* pointSymbol = static_cast<Point3DSymbol *>( mSymbol.get() );
+        QString shape = pointSymbol->shapeProperties["shape"].toString();
+        if ( shape == "model" ) {
+            QList<QVector3D> positions = Utils::positions(map, vl);
+            Q_FOREACH(const QVector3D& position, positions) {
+                entities.push_back(new ModelEntity(position, *pointSymbol ));
+            }
+        }
+        else {
+            entities.push_back(new PointEntity( map, vl, *pointSymbol  ));
+        }
+      }
       else if ( mSymbol->type() == "line" )
         entities.push_back(new LineEntity( map, vl, *static_cast<Line3DSymbol *>( mSymbol.get() ) ));
   }

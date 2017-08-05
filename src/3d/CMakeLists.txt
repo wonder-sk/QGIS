@@ -8,6 +8,7 @@ SET(QGIS_3D_SRCS
   map3d.cpp
   phongmaterialsettings.cpp
   pointentity.cpp
+  modelentity.cpp
   polygonentity.cpp
   polygongeometry.cpp
   scene.cpp
@@ -70,6 +71,7 @@ SET(QGIS_3D_HDRS
   map3d.h
   phongmaterialsettings.h
   pointentity.h
+  modelentity.h
   polygonentity.h
   polygongeometry.h
   scene.h

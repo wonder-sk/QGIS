@@ -20,23 +20,13 @@ class PointEntity : public Qt3DCore::QEntity
     PointEntity( const Map3D &map, QgsVectorLayer *layer, const Point3DSymbol &symbol, Qt3DCore::QNode *parent = nullptr );
 
   private:
-    Qt3DRender::QGeometryRenderer * shapeGeometryRenderer(const QString& shape);
-    void applyInstanceRendering(Qt3DRender::QGeometryRenderer * renderer);
-    Qt3DRender::QMaterial * getMaterial(Qt3DRender::QMaterial* refMaterial = nullptr);
-
-    void applyColorsToEffect(Qt3DRender::QEffect *effect,  const QColor& diffuse,  const QColor& ambient,  const QColor& specular, float shininess);
-    void applyColorsToEffect(Qt3DRender::QEffect *effect,  Qt3DRender::QMaterial* refMaterial);
-    void applyColorsToEffect(Qt3DRender::QEffect *effect); //from symbol
-
-    void applyColorsFromModelMaterial(Qt3DRender::QEffect *effect, Qt3DRender::QMaterial* refMaterial);
+    Qt3DRender::QGeometry* shapeGeometry(const QString& shape);
+    Qt3DRender::QGeometryRenderer * instancedGeometryRenderer(Qt3DRender::QGeometry* geometry);
+    Qt3DRender::QMaterial * instancedRenderingMaterial();
 
     const Map3D &map;
     QgsVectorLayer *layer;
     const Point3DSymbol &symbol;
-    Qt3DRender::QSceneLoader * modelLoader;
-
-  private slots:
-    void applyInstanceRenderingOn3dModel(Qt3DRender::QSceneLoader::Status status);
 };
 
 #endif // POINTENTITY_H

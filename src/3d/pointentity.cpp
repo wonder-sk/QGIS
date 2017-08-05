@@ -8,24 +8,18 @@
 #include <Qt3DRender/QMaterial>
 #include <Qt3DRender/QParameter>
 #include <Qt3DRender/QTechnique>
-#include <Qt3DRender/QSceneLoader>
 #include <Qt3DRender/QParameter>
 
-#include <Qt3DExtras/QCylinderGeometry>
+#include <Qt3DExtras/QSphereGeometry>
 #include <Qt3DExtras/QConeGeometry>
 #include <Qt3DExtras/QCuboidGeometry>
-#include <Qt3DExtras/QPlaneGeometry>
-#include <Qt3DExtras/QSphereGeometry>
 #include <Qt3DExtras/QTorusGeometry>
-#include <Qt3DExtras/QPhongMaterial>
-#include <Qt3DExtras/QDiffuseMapMaterial>
+#include <Qt3DExtras/QPlaneGeometry>
+#include <Qt3DExtras/QCylinderGeometry>
 
 #if QT_VERSION >= 0x050900
 #include <Qt3DExtras/QExtrudedTextGeometry>
 #endif
-
-#include <QUrl>
-#include <QVector3D>
 
 #include "abstract3dsymbol.h"
 #include "map3d.h"
@@ -33,63 +27,24 @@
 
 #include "qgsvectorlayer.h"
 #include "qgspoint.h"
-
+#include "utils.h"
 
 
 PointEntity::PointEntity( const Map3D &map, QgsVectorLayer *layer, const Point3DSymbol &symbol, Qt3DCore::QNode *parent )
   : Qt3DCore::QEntity( parent ), map(map), layer(layer), symbol(symbol)
 {
   QString shape = symbol.shapeProperties["shape"].toString();
+  Q_ASSERT(shape != "model"); // handled in ModelEntity
 
-  if ( shape == "model" ) {
-      modelLoader = new Qt3DRender::QSceneLoader;
-      QString src = symbol.shapeProperties["model"].toString();
-      modelLoader->setSource(QUrl::fromLocalFile(src));
-      //Qt3DCore::QTransform* tr = new Qt3DCore::QTransform;
-      //tr->setMatrix(symbol.transform);
-      //addComponent( tr );
-      addComponent( modelLoader );
-      modelLoader->connect(modelLoader, &Qt3DRender::QSceneLoader::statusChanged, this, &PointEntity::applyInstanceRenderingOn3dModel);
-  } else {
-      Qt3DRender::QGeometryRenderer *renderer = shapeGeometryRenderer(shape);
-      applyInstanceRendering(renderer);
-      addComponent(renderer);
+  Qt3DRender::QGeometry* geometry = shapeGeometry(shape);
+  Qt3DRender::QGeometryRenderer *renderer = instancedGeometryRenderer(geometry);
+  addComponent(renderer);
 
-      Qt3DRender::QMaterial* material = getMaterial();
-      addComponent( material );
-  }
+  Qt3DRender::QMaterial* material = instancedRenderingMaterial();
+  addComponent( material );
 }
 
-void PointEntity::applyInstanceRenderingOn3dModel(Qt3DRender::QSceneLoader::Status status) {
-    qDebug() << status;
-    if (status == Qt3DRender::QSceneLoader::Ready) {
-        Q_FOREACH (const QString& entityName, modelLoader->entityNames()) {
-            Qt3DCore::QComponent * comp;
-
-            comp = modelLoader->component(entityName, Qt3DRender::QSceneLoader::GeometryRendererComponent);
-            if (comp) {
-                Qt3DRender::QGeometryRenderer * renderer = dynamic_cast<Qt3DRender::QGeometryRenderer*>(comp);
-                applyInstanceRendering(renderer);
-            }
-
-            comp = modelLoader->component(entityName, Qt3DRender::QSceneLoader::MaterialComponent);
-            if (comp) {
-                Qt3DCore::QEntity * ent = modelLoader->entity(entityName);
-
-                Qt3DRender::QMaterial* refMaterial = dynamic_cast<Qt3DRender::QMaterial*>(comp);
-                Qt3DRender::QMaterial* material = getMaterial(refMaterial);
-
-                ent->removeComponent(refMaterial);
-                ent->addComponent(material);
-                //addComponent(material);
-            }
-        }
-    } else if (status == Qt3DRender::QSceneLoader::Error) {
-        qDebug() << "Error while loading " << symbol.shapeProperties["model"].toString();
-    }
-}
-
-Qt3DRender::QGeometryRenderer * PointEntity::shapeGeometryRenderer(const QString& shape) {
+Qt3DRender::QGeometry * PointEntity::shapeGeometry(const QString& shape) {
     Qt3DRender::QGeometry *geometry = nullptr;
     if ( shape == "sphere" )
     {
@@ -148,7 +103,7 @@ Qt3DRender::QGeometryRenderer * PointEntity::shapeGeometryRenderer(const QString
       geometry = g;
     }
   #endif
-    else if ( shape == "cylinder")
+    else // shape == "cylinder"
     {
       float radius = symbol.shapeProperties["radius"].toFloat();
       float length = symbol.shapeProperties["length"].toFloat();
@@ -159,43 +114,14 @@ Qt3DRender::QGeometryRenderer * PointEntity::shapeGeometryRenderer(const QString
       g->setLength( length ? length : 10 );
       geometry = g;
     }
-    else {
-        // should never happen, 3d model renderer is created on the other place
-        Q_ASSERT(false);
-    }
-
-    Qt3DRender::QGeometryRenderer *renderer = new Qt3DRender::QGeometryRenderer;
-    renderer->setGeometry( geometry );
-    return renderer;
+    return geometry;
 }
 
-void PointEntity::applyInstanceRendering(Qt3DRender::QGeometryRenderer * renderer) {
+Qt3DRender::QGeometryRenderer* PointEntity::instancedGeometryRenderer(Qt3DRender::QGeometry* geometry) {
     //
     // load features
     //
-    QList<QVector3D> positions;
-    QgsFeature f;
-    QgsFeatureRequest request;
-    request.setDestinationCrs( map.crs );
-    QgsFeatureIterator fi = layer->getFeatures( request );
-    while ( fi.nextFeature( f ) )
-    {
-      if ( f.geometry().isNull() )
-        continue;
-
-      QgsAbstractGeometry *g = f.geometry().geometry();
-      if ( QgsWkbTypes::flatType( g->wkbType() ) == QgsWkbTypes::Point )
-      {
-        QgsPoint *pt = static_cast<QgsPoint *>( g );
-        // TODO: use Z coordinates if the point is 3D
-        float h = map.terrainGenerator()->heightAt( pt->x(), pt->y(), map ) * map.terrainVerticalScale();
-        positions.append( QVector3D( pt->x() - map.originX, h, -( pt->y() - map.originY ) ) );
-        //qDebug() << positions.last();
-      }
-      else
-        qDebug() << "not a point";
-    }
-
+    QList<QVector3D> positions = Utils::positions(map, layer);
     int count = positions.count();
 
     QByteArray ba;
@@ -224,17 +150,18 @@ void PointEntity::applyInstanceRendering(Qt3DRender::QGeometryRenderer * rendere
     instanceDataAttribute->setCount(count);
     instanceDataAttribute->setByteStride(3 * sizeof(float));
 
-    renderer->geometry()->addAttribute( instanceDataAttribute );
-    renderer->geometry()->setBoundingVolumePositionAttribute(instanceDataAttribute);
+    geometry->addAttribute( instanceDataAttribute );
+    geometry->setBoundingVolumePositionAttribute(instanceDataAttribute);
+
+    Qt3DRender::QGeometryRenderer *renderer = new Qt3DRender::QGeometryRenderer;
+    renderer->setGeometry( geometry );
     renderer->setInstanceCount( count );
+
+    return renderer;
 }
 
-Qt3DRender::QMaterial * PointEntity::getMaterial(Qt3DRender::QMaterial* refMaterial)
+Qt3DRender::QMaterial * PointEntity::instancedRenderingMaterial()
 {
-    //
-    // material
-    //
-
     Qt3DRender::QFilterKey *filterKey = new Qt3DRender::QFilterKey;
     filterKey->setName( "renderingStyle" );
     filterKey->setValue( "forward" );
@@ -260,6 +187,16 @@ Qt3DRender::QMaterial * PointEntity::getMaterial(Qt3DRender::QMaterial* refMater
     QMatrix4x4 transformMatrix = symbol.transform;
     QMatrix3x3 normalMatrix = transformMatrix.normalMatrix();  // transponed inverse of 3x3 sub-matrix
 
+    Qt3DRender::QParameter *ambientParameter = new Qt3DRender::QParameter( QStringLiteral( "ka" ), QColor::fromRgbF( 0.05f, 0.05f, 0.05f, 1.0f ) );
+    Qt3DRender::QParameter *diffuseParameter = new Qt3DRender::QParameter( QStringLiteral( "kd" ), QColor::fromRgbF( 0.7f, 0.7f, 0.7f, 1.0f ) );
+    Qt3DRender::QParameter *specularParameter = new Qt3DRender::QParameter( QStringLiteral( "ks" ), QColor::fromRgbF( 0.01f, 0.01f, 0.01f, 1.0f ) );
+    Qt3DRender::QParameter *shininessParameter = new Qt3DRender::QParameter( QStringLiteral( "shininess" ), 150.0f );
+
+    diffuseParameter->setValue( symbol.material.diffuse() );
+    ambientParameter->setValue( symbol.material.ambient() );
+    specularParameter->setValue( symbol.material.specular() );
+    shininessParameter->setValue( symbol.material.shininess() );
+
     // QMatrix3x3 is not supported for passing to shaders, so we pass QMatrix4x4
     float *n = normalMatrix.data();
     QMatrix4x4 normalMatrix4(
@@ -280,64 +217,13 @@ Qt3DRender::QMaterial * PointEntity::getMaterial(Qt3DRender::QMaterial* refMater
     effect->addTechnique( technique );
     effect->addParameter( paramInst );
     effect->addParameter( paramInstNormal );
-    applyColorsToEffect(effect, refMaterial);
-
-    Qt3DRender::QMaterial *material = new Qt3DRender::QMaterial;
-    material->setEffect( effect );
-    return material;
-}
-
-void PointEntity::applyColorsToEffect(Qt3DRender::QEffect *effect,  const QColor& diffuse,  const QColor& ambient,  const QColor& specular, float shininess) {
-    Qt3DRender::QParameter *ambientParameter = new Qt3DRender::QParameter( QStringLiteral( "ka" ), QColor::fromRgbF( 0.05f, 0.05f, 0.05f, 1.0f ) );
-    Qt3DRender::QParameter *diffuseParameter = new Qt3DRender::QParameter( QStringLiteral( "kd" ), QColor::fromRgbF( 0.7f, 0.7f, 0.7f, 1.0f ) );
-    Qt3DRender::QParameter *specularParameter = new Qt3DRender::QParameter( QStringLiteral( "ks" ), QColor::fromRgbF( 0.01f, 0.01f, 0.01f, 1.0f ) );
-    Qt3DRender::QParameter *shininessParameter = new Qt3DRender::QParameter( QStringLiteral( "shininess" ), 150.0f );
-
-    diffuseParameter->setValue( diffuse );
-    ambientParameter->setValue( ambient );
-    specularParameter->setValue( specular );
-    shininessParameter->setValue( shininess );
 
     effect->addParameter( ambientParameter );
     effect->addParameter( diffuseParameter );
     effect->addParameter( specularParameter );
     effect->addParameter( shininessParameter );
-}
 
-void PointEntity::applyColorsToEffect(Qt3DRender::QEffect *effect) {
-    applyColorsToEffect(effect,
-                        symbol.material.diffuse(),
-                        symbol.material.ambient(),
-                        symbol.material.specular(),
-                        symbol.material.shininess());
-}
-
-void PointEntity::applyColorsToEffect(Qt3DRender::QEffect *effect, Qt3DRender::QMaterial* refMaterial) {
-    if (refMaterial && (!symbol.shapeProperties["overwriteMaterial"].toBool())) {
-        Qt3DExtras::QPhongMaterial* phong = qobject_cast<Qt3DExtras::QPhongMaterial*>(refMaterial);
-        if (phong) {
-            applyColorsToEffect(effect,
-                                phong->diffuse(),
-                                phong->ambient(),
-                                phong->specular(),
-                                phong->shininess());
-        } else {
-            qDebug() << "QDiffuseMapMaterial: " << refMaterial->inherits("QDiffuseMapMaterial");
-            qDebug() << "QDiffuseSpecularMapMaterial: " << refMaterial->inherits("QDiffuseSpecularMapMaterial");
-            qDebug() << "QGoochMaterial: " << refMaterial->inherits("QGoochMaterial");
-            qDebug() << "QMetalRoughMaterial: " << refMaterial->inherits("QMetalRoughMaterial");
-            qDebug() << "QMorphPhongMaterial: " << refMaterial->inherits("QMorphPhongMaterial");
-            qDebug() << "QNormalDiffuseMapAlphaMaterial: " << refMaterial->inherits("QNormalDiffuseMapAlphaMaterial");
-            qDebug() << "QNormalDiffuseMapMaterial: " << refMaterial->inherits("QNormalDiffuseMapMaterial");
-            qDebug() << "QNormalDiffuseSpecularMapMaterial: " << refMaterial->inherits("QNormalDiffuseSpecularMapMaterial");
-            qDebug() << "QPerVertexColorMaterial: " << refMaterial->inherits("QPerVertexColorMaterial");
-            qDebug() << "QPhongAlphaMaterial: " << refMaterial->inherits("QPhongAlphaMaterial");
-            qDebug() << "QTexturedMetalRoughMaterial: " << refMaterial->inherits("QTexturedMetalRoughMaterial");
-            qDebug() << "QTextureMaterial: " << refMaterial->inherits("QTextureMaterial");
-
-            applyColorsToEffect(effect); //use the basic one from symbol
-        }
-    } else {
-        applyColorsToEffect(effect);
-    }
+    Qt3DRender::QMaterial *material = new Qt3DRender::QMaterial;
+    material->setEffect( effect );
+    return material;
 }
