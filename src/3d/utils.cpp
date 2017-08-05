@@ -2,6 +2,11 @@
 
 #include "qgslinestring.h"
 #include "qgspolygon.h"
+#include "qgsfeaturerequest.h"
+#include "qgsfeatureiterator.h"
+#include "qgsfeature.h"
+#include "qgsabstractgeometry.h"
+#include "qgsvectorlayer.h"
 
 #include "terraingenerator.h"
 
@@ -139,4 +144,30 @@ QMatrix4x4 Utils::stringToMatrix4x4( const QString &str )
   for ( int i = 0; i < 16; ++i )
     d[i] = elems[i].toFloat();
   return m;
+}
+
+
+QList<QVector3D> Utils::positions(const Map3D &map, QgsVectorLayer *layer, const QgsFeatureRequest &request) {
+    QList<QVector3D> positions;
+    QgsFeature f;
+    QgsFeatureIterator fi = layer->getFeatures( request );
+    while ( fi.nextFeature( f ) )
+    {
+      if ( f.geometry().isNull() )
+        continue;
+
+      QgsAbstractGeometry *g = f.geometry().geometry();
+      if ( QgsWkbTypes::flatType( g->wkbType() ) == QgsWkbTypes::Point )
+      {
+        QgsPoint *pt = static_cast<QgsPoint *>( g );
+        // TODO: use Z coordinates if the point is 3D
+        float h = map.terrainGenerator()->heightAt( pt->x(), pt->y(), map ) * map.terrainVerticalScale();
+        positions.append( QVector3D( pt->x() - map.originX, h, -( pt->y() - map.originY ) ) );
+        //qDebug() << positions.last();
+      }
+      else
+        qDebug() << "not a point";
+    }
+
+    return positions;
 }
