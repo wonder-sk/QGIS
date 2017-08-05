@@ -61,21 +61,22 @@ const Abstract3DSymbol *VectorLayer3DRenderer::symbol() const
   return mSymbol.get();
 }
 
-Qt3DCore::QEntity *VectorLayer3DRenderer::createEntity( const Map3D &map ) const
+QVector<Qt3DCore::QEntity *> VectorLayer3DRenderer::createEntities( const Map3D &map ) const
 {
+  QVector<Qt3DCore::QEntity *> entities;
+
   QgsVectorLayer *vl = layer();
 
-  if ( !mSymbol || !vl )
-    return nullptr;
-
-  if ( mSymbol->type() == "polygon" )
-    return new PolygonEntity( map, vl, *static_cast<Polygon3DSymbol *>( mSymbol.get() ) );
-  else if ( mSymbol->type() == "point" )
-    return new PointEntity( map, vl, *static_cast<Point3DSymbol *>( mSymbol.get() ) );
-  else if ( mSymbol->type() == "line" )
-    return new LineEntity( map, vl, *static_cast<Line3DSymbol *>( mSymbol.get() ) );
-  else
-    return nullptr;
+  if ( mSymbol && vl )
+  {
+      if ( mSymbol->type() == "polygon" )
+        entities.push_back(new PolygonEntity( map, vl, *static_cast<Polygon3DSymbol *>( mSymbol.get() ) ));
+      else if ( mSymbol->type() == "point" )
+        entities.push_back(new PointEntity( map, vl, *static_cast<Point3DSymbol *>( mSymbol.get() ) ));
+      else if ( mSymbol->type() == "line" )
+        entities.push_back(new LineEntity( map, vl, *static_cast<Line3DSymbol *>( mSymbol.get() ) ));
+  }
+  return entities;
 }
 
 void VectorLayer3DRenderer::writeXml( QDomElement &elem, const QgsReadWriteContext &context ) const
