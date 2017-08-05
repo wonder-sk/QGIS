@@ -8,6 +8,7 @@
 #include <Qt3DRender/QMaterial>
 #include <Qt3DRender/QParameter>
 #include <Qt3DRender/QTechnique>
+#include <Qt3DRender/QSceneLoader>
 
 #include <Qt3DExtras/QCylinderGeometry>
 #include <Qt3DExtras/QConeGeometry>
@@ -34,17 +35,56 @@
 PointEntity::PointEntity( const Map3D &map, QgsVectorLayer *layer, const Point3DSymbol &symbol, Qt3DCore::QNode *parent )
   : Qt3DCore::QEntity( parent ), map(map), layer(layer), symbol(symbol)
 {
-  Qt3DRender::QGeometryRenderer *renderer = shapeGeometryRenderer();
-  applyInstanceRendering(renderer);
-  addComponent(renderer);
+  QString shape = symbol.shapeProperties["shape"].toString();
 
-  Qt3DRender::QMaterial* material = getMaterial();
-  addComponent( material );
+  if ( shape == "model" ) {
+      modelLoader = new Qt3DRender::QSceneLoader;
+      QString src = symbol.shapeProperties["model"].toString();
+      modelLoader->setSource(QUrl::fromLocalFile(src));
+      addComponent( modelLoader );
+      modelLoader->connect(modelLoader, &Qt3DRender::QSceneLoader::statusChanged, this, &PointEntity::applyInstanceRenderingOn3dModel);
+  } else {
+      Qt3DRender::QGeometryRenderer *renderer = shapeGeometryRenderer(shape);
+      applyInstanceRendering(renderer);
+      addComponent(renderer);
+
+      Qt3DRender::QMaterial* material = getMaterial();
+      addComponent( material );
+  }
 }
 
-Qt3DRender::QGeometryRenderer * PointEntity::shapeGeometryRenderer() {
+void PointEntity::applyInstanceRenderingOn3dModel(Qt3DRender::QSceneLoader::Status status) {
+    qDebug() << status;
+    if (status == Qt3DRender::QSceneLoader::Ready) {
+        Q_FOREACH (const QString& entityName, modelLoader->entityNames()) {
+            Qt3DCore::QComponent * comp;
+
+            comp = modelLoader->component(entityName, Qt3DRender::QSceneLoader::GeometryRendererComponent);
+            if (comp) {
+                Qt3DRender::QGeometryRenderer * renderer = dynamic_cast<Qt3DRender::QGeometryRenderer*>(comp);
+                applyInstanceRendering(renderer);
+            }
+
+            comp = modelLoader->component(entityName, Qt3DRender::QSceneLoader::MaterialComponent);
+            if (comp) {
+                Qt3DRender::QMaterial * material;
+                Qt3DCore::QEntity * ent = modelLoader->entity(entityName);
+
+                material = dynamic_cast<Qt3DRender::QMaterial*>(comp);
+                ent->removeComponent(material);
+
+                material = getMaterial();
+                addComponent( material );
+                ent->addComponent(material);
+            }
+        }
+    } else if (status == Qt3DRender::QSceneLoader::Error) {
+        qDebug() << "Error while loading " << symbol.shapeProperties["model"].toString();
+    }
+}
+
+Qt3DRender::QGeometryRenderer * PointEntity::shapeGeometryRenderer(const QString& shape) {
     Qt3DRender::QGeometry *geometry = nullptr;
-    QString shape = symbol.shapeProperties["shape"].toString();
     if ( shape == "sphere" )
     {
       float radius = symbol.shapeProperties["radius"].toFloat();

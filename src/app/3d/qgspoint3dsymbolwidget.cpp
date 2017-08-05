@@ -1,4 +1,7 @@
 #include "qgspoint3dsymbolwidget.h"
+#include <QFileDialog>
+#include <QMessageBox>
+#include "qgssettings.h"
 
 #include "abstract3dsymbol.h"
 
@@ -13,6 +16,7 @@ QgsPoint3DSymbolWidget::QgsPoint3DSymbolWidget( QWidget *parent )
   cboShape->addItem( tr( "Cone" ), "cone" );
   cboShape->addItem( tr( "Plane" ), "plane" );
   cboShape->addItem( tr( "Torus" ), "torus" );
+  cboShape->addItem( tr( "3D Model" ), "model" );
 
   setSymbol( Point3DSymbol() );
   onShapeChanged();
@@ -23,7 +27,31 @@ QgsPoint3DSymbolWidget::QgsPoint3DSymbolWidget( QWidget *parent )
   spinWidgets << spinTX << spinTY << spinTZ << spinSX << spinSY << spinSZ << spinRX << spinRY << spinRZ;
   Q_FOREACH ( QDoubleSpinBox *spinBox, spinWidgets )
     connect( spinBox, static_cast<void ( QDoubleSpinBox::* )( double )>( &QDoubleSpinBox::valueChanged ), this, &QgsPoint3DSymbolWidget::changed );
+  connect( lineEditModel, static_cast<void ( QLineEdit::* )( const QString& )>( &QLineEdit::textChanged ), this, &QgsPoint3DSymbolWidget::changed );
+  connect( btnModel, static_cast<void ( QToolButton::* )( bool )>( &QToolButton::clicked ), this, &QgsPoint3DSymbolWidget::onChooseModelClicked );
   connect( widgetMaterial, &QgsPhongMaterialWidget::changed, this, &QgsPoint3DSymbolWidget::changed );
+}
+
+void QgsPoint3DSymbolWidget::onChooseModelClicked(bool) {
+    QgsSettings s;
+    QString lastDir = s.value( QStringLiteral( "/UI/lastModel3dDir" ), QDir::homePath() ).toString();
+
+    QString filePath = QFileDialog::getOpenFileName( this, tr("Open 3d Model File") , lastDir, QStringLiteral( "3D models (*.*)" ) );
+    if ( filePath.isEmpty() )
+    {
+      return;
+    }
+
+    //check if file exists
+    QFileInfo fileInfo( filePath );
+    if ( !fileInfo.exists() || !fileInfo.isReadable() )
+    {
+      QMessageBox::critical( nullptr, tr( "Invalid file" ), tr( "Error, file does not exist or is not readable" ) );
+      return;
+    }
+
+    s.setValue( QStringLiteral( "/UI/lastModel3dDir" ), fileInfo.absolutePath() );
+    lineEditModel->setText(filePath);
 }
 
 void QgsPoint3DSymbolWidget::setSymbol( const Point3DSymbol &symbol )
@@ -55,6 +83,9 @@ void QgsPoint3DSymbolWidget::setSymbol( const Point3DSymbol &symbol )
     case 5:  // torus
       spinRadius->setValue( vm["radius"].toDouble() );
       spinMinorRadius->setValue( vm["minorRadius"].toDouble() );
+      break;
+    case 6:  // 3d model
+      lineEditModel->setText( vm["model"].toString() );
       break;
   }
 
@@ -117,6 +148,9 @@ Point3DSymbol QgsPoint3DSymbolWidget::symbol() const
       vm["radius"] = spinRadius->value();
       vm["minorRadius"] = spinMinorRadius->value();
       break;
+    case 6:  // model
+      vm["model"] = lineEditModel->text();
+      break;
   }
 
   QQuaternion rot( QQuaternion::fromEulerAngles( spinRX->value(), spinRY->value(), spinRZ->value() ) );
@@ -143,7 +177,8 @@ void QgsPoint3DSymbolWidget::onShapeChanged()
              << labelMinorRadius << spinMinorRadius
              << labelTopRadius << spinTopRadius
              << labelBottomRadius << spinBottomRadius
-             << labelLength << spinLength;
+             << labelLength << spinLength
+             << labelModel << lineEditModel << btnModel;
 
   QList<QWidget *> activeWidgets;
   switch ( cboShape->currentIndex() )
@@ -165,6 +200,9 @@ void QgsPoint3DSymbolWidget::onShapeChanged()
       break;
     case 5:  // torus
       activeWidgets << labelRadius << spinRadius << labelMinorRadius << spinMinorRadius;
+      break;
+    case 6:  // 3d model
+      activeWidgets << labelModel << lineEditModel << btnModel;
       break;
   }
 
