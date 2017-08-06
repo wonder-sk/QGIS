@@ -47,10 +47,16 @@ class _3D_EXPORT Utils
     static QMatrix4x4 stringToMatrix4x4( const QString &str );
 
     /**
+     * Calculates (x,y,z) position of point in the Point vector layers
+     */
+    static QList<QVector3D> positions(const Map3D &map, QgsVectorLayer *layer, const QgsFeatureRequest &req);
+
+    /**
         Returns true if bbox is completely outside the current viewing volume.
         This is used to perform object culling checks.
     */
     static bool isCullable(const AABB &bbox, const QMatrix4x4 &viewProjectionMatrix );
+
 };
 
 #endif // UTILS_H
