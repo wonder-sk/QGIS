@@ -286,4 +286,30 @@ class QUICK_EXPORT QgsQuickUtils: public QObject
     qreal mScreenDensity;
 };
 
+// -------
+
+#include "qgsvaluerelationfieldformatter.h"
+
+/**
+ * \ingroup quick
+ * List model for combo box in Value Relation widget
+ */
+class QUICK_EXPORT QgsQuickValueRelationListModel : public QAbstractListModel
+{
+    Q_OBJECT
+  public:
+    QgsQuickValueRelationListModel( QObject *parent = nullptr );
+
+    Q_INVOKABLE void populate( const QVariantMap &config, const QgsFeature &formFeature = QgsFeature() );
+
+    Q_INVOKABLE QVariant keyForRow( int row ) const;
+    Q_INVOKABLE int rowForKey( const QVariant &key ) const;
+
+    int rowCount( const QModelIndex & ) const override;
+    QVariant data( const QModelIndex &index, int role = Qt::DisplayRole ) const override;
+
+  private:
+    QgsValueRelationFieldFormatter::ValueRelationCache mCache;
+};
+
 #endif // QGSQUICKUTILS_H
