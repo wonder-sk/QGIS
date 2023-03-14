@@ -2019,12 +2019,19 @@ bool QgsVectorLayer::setDataProvider( QString const &provider, const QgsDataProv
   if ( QgsApplication::profiler()->groupIsActive( QStringLiteral( "projectload" ) ) )
     profile = std::make_unique< QgsScopedRuntimeProfile >( tr( "Create %1 provider" ).arg( provider ), QStringLiteral( "projectload" ) );
 
-  mDataProvider = qobject_cast<QgsVectorDataProvider *>( QgsProviderRegistry::instance()->createProvider( provider, mDataSource, options, flags ) );
-  if ( !mDataProvider )
+  if ( mPreloadedProvider )  // TODO: use read flag
   {
-    setValid( false );
-    QgsDebugMsgLevel( QStringLiteral( "Unable to get data provider" ), 2 );
-    return false;
+    mDataProvider = qobject_cast<QgsVectorDataProvider *>( mPreloadedProvider.release() );
+  }
+  else
+  {
+    mDataProvider = qobject_cast<QgsVectorDataProvider *>( QgsProviderRegistry::instance()->createProvider( provider, mDataSource, options, flags ) );
+    if ( !mDataProvider )
+    {
+      setValid( false );
+      QgsDebugMsgLevel( QStringLiteral( "Unable to get data provider" ), 2 );
+      return false;
+    }
   }
 
   mDataProvider->setParent( this );

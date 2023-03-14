@@ -87,6 +87,7 @@ class QgsPropertyCollection;
 class QgsMapViewsManager;
 class QgsProjectElevationProperties;
 class QgsProjectGpsSettings;
+class QgsScopedRuntimeProfile;
 
 /**
  * \ingroup core
@@ -2187,7 +2188,7 @@ class CORE_EXPORT QgsProject : public QObject, public QgsExpressionContextGenera
      * \param flags optional project reading flags
      * \returns TRUE if function worked; else is FALSE
     */
-    bool _getMapLayers( const QDomDocument &doc, QList<QDomNode> &brokenNodes, Qgis::ProjectReadFlags flags = Qgis::ProjectReadFlags() );
+    bool _getMapLayers( const QDomDocument &doc, QList<QDomNode> &brokenNodes, QgsScopedRuntimeProfile &profile, Qgis::ProjectReadFlags flags = Qgis::ProjectReadFlags() );
 
     /**
      * Set error message from read/write operation
@@ -2208,7 +2209,7 @@ class CORE_EXPORT QgsProject : public QObject, public QgsExpressionContextGenera
      *
      * \note not available in Python bindings
      */
-    bool addLayer( const QDomElement &layerElem, QList<QDomNode> &brokenNodes, QgsReadWriteContext &context, Qgis::ProjectReadFlags flags = Qgis::ProjectReadFlags() ) SIP_SKIP;
+    bool addLayer( const QDomElement &layerElem, QgsDataProvider *loadedProvider, QList<QDomNode> &brokenNodes, QgsReadWriteContext &context, Qgis::ProjectReadFlags flags = Qgis::ProjectReadFlags() ) SIP_SKIP;
 
     /**
      * Remove auxiliary layer of the corresponding layer.

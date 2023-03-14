@@ -634,6 +634,7 @@ class CORE_EXPORT QgsMapLayer : public QObject
       FlagTrustLayerMetadata = 1 << 1, //!< Trust layer metadata. Improves layer load time by skipping expensive checks like primary key unicity, geometry type and srid and by using estimated metadata on layer load. Since QGIS 3.16
       FlagReadExtentFromXml = 1 << 2, //!< Read extent from xml and skip get extent from provider.
       FlagForceReadOnly = 1 << 3, //!< Force open as read only.
+      FlagUseLoadedProvider = 1 << 4,  //!< Layer's data provider has been created already, just use it instead of creating it
     };
     Q_DECLARE_FLAGS( ReadFlags, ReadFlag )
 
@@ -654,7 +655,7 @@ class CORE_EXPORT QgsMapLayer : public QObject
      *
      * \returns TRUE if successful
      */
-    bool readLayerXml( const QDomElement &layerElement, QgsReadWriteContext &context, QgsMapLayer::ReadFlags flags = QgsMapLayer::ReadFlags() );
+    bool readLayerXml( const QDomElement &layerElement, QgsReadWriteContext &context, QgsMapLayer::ReadFlags flags = QgsMapLayer::ReadFlags(), QgsDataProvider *loadedProvider = nullptr );
 
     /**
      * Stores state in DOM node
@@ -2042,6 +2043,14 @@ class CORE_EXPORT QgsMapLayer : public QObject
 
     //! Read flags. It's up to the subclass to respect these when restoring state from XML
     QgsMapLayer::ReadFlags mReadFlags = QgsMapLayer::ReadFlags();
+
+    //TODO QGIS 4 - move to readXml as a new argument (breaks API)
+
+    /**
+     * Data provider from project loading, to be used instead of creating a new data provider
+     * instance.
+     */
+    std::unique_ptr<QgsDataProvider> mPreloadedProvider;
 
     /**
      * TRUE if the layer's CRS should be validated and invalid CRSes are not permitted.

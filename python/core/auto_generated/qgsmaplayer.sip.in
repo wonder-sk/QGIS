@@ -629,11 +629,12 @@ or layer with temporary data (as temporary mesh layer dataset)
       FlagTrustLayerMetadata,
       FlagReadExtentFromXml,
       FlagForceReadOnly,
+      FlagUseLoadedProvider,
     };
     typedef QFlags<QgsMapLayer::ReadFlag> ReadFlags;
 
 
-    bool readLayerXml( const QDomElement &layerElement, QgsReadWriteContext &context, QgsMapLayer::ReadFlags flags = QgsMapLayer::ReadFlags() );
+    bool readLayerXml( const QDomElement &layerElement, QgsReadWriteContext &context, QgsMapLayer::ReadFlags flags = QgsMapLayer::ReadFlags(), QgsDataProvider *loadedProvider = 0 );
 %Docstring
 Sets state from DOM document
 
@@ -2056,6 +2057,8 @@ this method is now deprecated and always return ``False``, because circular depe
 
 .. deprecated:: QGIS 3.10
 %End
+
+
 
 
 

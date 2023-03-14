@@ -727,14 +727,21 @@ void QgsRasterLayer::setDataProvider( QString const &provider, const QgsDataProv
   if ( QgsApplication::profiler()->groupIsActive( QStringLiteral( "projectload" ) ) )
     profile = std::make_unique< QgsScopedRuntimeProfile >( tr( "Create %1 provider" ).arg( provider ), QStringLiteral( "projectload" ) );
 
-  mDataProvider = qobject_cast< QgsRasterDataProvider * >( QgsProviderRegistry::instance()->createProvider( mProviderKey, mDataSource, options, flags ) );
-  if ( !mDataProvider )
+  if ( mPreloadedProvider )  // TODO: use read flag
   {
-    //QgsMessageLog::logMessage( tr( "Cannot instantiate the data provider" ), tr( "Raster" ) );
-    appendError( ERR( tr( "Cannot instantiate the '%1' data provider" ).arg( mProviderKey ) ) );
-    return;
+    mDataProvider = qobject_cast<QgsRasterDataProvider *>( mPreloadedProvider.release() );
   }
-  QgsDebugMsgLevel( QStringLiteral( "Data provider created" ), 4 );
+  else
+  {
+    mDataProvider = qobject_cast< QgsRasterDataProvider * >( QgsProviderRegistry::instance()->createProvider( mProviderKey, mDataSource, options, flags ) );
+    if ( !mDataProvider )
+    {
+      //QgsMessageLog::logMessage( tr( "Cannot instantiate the data provider" ), tr( "Raster" ) );
+      appendError( ERR( tr( "Cannot instantiate the '%1' data provider" ).arg( mProviderKey ) ) );
+      return;
+    }
+    QgsDebugMsgLevel( QStringLiteral( "Data provider created" ), 4 );
+  }
   mDataProvider->setParent( this );
 
   // Set data provider into pipe even if not valid so that it is deleted with pipe (with layer)
