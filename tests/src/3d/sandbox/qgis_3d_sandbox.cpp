@@ -30,6 +30,8 @@
 #include "qgs3dmapcanvas.h"
 #include "qgsprojectviewsettings.h"
 #include "qgspointlightsettings.h"
+#include "qgstiledmeshlayer.h"
+#include "qgstiledmeshlayer3drenderer.h"
 
 #include <QScreen>
 
@@ -47,6 +49,12 @@ void initCanvas3D( Qgs3DMapCanvas *canvas )
   map->setCrs( QgsProject::instance()->crs() );
   map->setOrigin( QgsVector3D( fullExtent.center().x(), fullExtent.center().y(), 0 ) );
   map->setLayers( visibleLayers );
+
+  map->setExtent( fullExtent );
+
+  Qgs3DAxisSettings axis;
+  axis.setMode( Qgs3DAxisSettings::Mode::Off );
+  map->set3DAxisSettings( axis );
 
   map->setTransformContext( QgsProject::instance()->transformContext() );
   map->setPathResolver( QgsProject::instance()->pathResolver() );
@@ -120,6 +128,14 @@ int main( int argc, char *argv[] )
       r->setLayer( pcLayer );
       r->resolveReferences( *QgsProject::instance() );
       pcLayer->setRenderer3D( r );
+    }
+
+    if ( QgsTiledMeshLayer *tmLayer = qobject_cast<QgsTiledMeshLayer *>( layer ) )
+    {
+      QgsTiledMeshLayer3DRenderer *r = new QgsTiledMeshLayer3DRenderer( tmLayer->source() );
+      //r->setLayer( tmLayer );
+      r->resolveReferences( *QgsProject::instance() );
+      tmLayer->setRenderer3D( r );
     }
   }
 

@@ -100,6 +100,12 @@ set(QGIS_3D_SRCS
   mesh/qgsmesh3dentity_p.cpp
   mesh/qgsmesh3dmaterial_p.cpp
   mesh/qgsmeshterraingenerator.cpp
+
+  3dtiles/3dtiles.cpp
+  3dtiles/gltf_to_qt3d.cpp
+  3dtiles/qgstiledmeshchunkloader.cpp
+  3dtiles/qgstiledmeshlayer3drenderer.cpp
+  3dtiles/utils.cpp
 )
 
 set(QGIS_3D_HDRS
@@ -235,6 +241,7 @@ target_include_directories(qgis_3d PUBLIC
 
   ${CMAKE_BINARY_DIR}/src/3d
   ${CMAKE_SOURCE_DIR}/external/delaunator-cpp
+  ${CMAKE_SOURCE_DIR}/external/tinygltf
 )
 
 if (BUILD_WITH_QT6)
@@ -242,6 +249,8 @@ if (BUILD_WITH_QT6)
 else()
   target_link_libraries(qgis_3d Qt5::3DCore Qt5::3DRender Qt5::3DInput Qt5::3DLogic Qt5::3DExtras)
 endif()
+
+target_link_libraries(qgis_3d draco proj)  # TODO: fix
 
 GENERATE_EXPORT_HEADER(
    qgis_3d
