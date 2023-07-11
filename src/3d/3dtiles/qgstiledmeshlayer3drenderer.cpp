@@ -19,7 +19,7 @@ Qt3DCore::QEntity *QgsTiledMeshLayer3DRenderer::createEntity( const Qgs3DMapSett
   mCtx.tilesetJsonPath = mUri;
   mCtx.relativePathBase = QFileInfo( mUri ).path() + "/";
   mCtx.tilesetLevel = -1;  // 1-4  (or negative for chunk loader)
-  mCtx.sceneOriginTargetCrs = VEC3D( map.origin().x(), map.origin().y(), -40 );
+  mCtx.sceneOriginTargetCrs = QgsVector3D( map.origin().x(), map.origin().y(), -40 );
   mCtx.targetCrs = map.crs().authid();
 
   init3DTilesScene( mCtx );

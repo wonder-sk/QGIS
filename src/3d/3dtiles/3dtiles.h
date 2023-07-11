@@ -7,45 +7,32 @@
 
 #include <Qt3DCore>
 
+#include "qgsvector3d.h"
 #include "qgscoordinatetransform.h"
 
 #include "nlohmann/json.hpp"
 using json = nlohmann::json;
 
 
-//! QVector3D but using doubles
-struct VEC3D
-{
-  VEC3D( double _x = 0, double _y = 0, double _z = 0 ): x( _x ), y( _y ), z( _z ) {}
-  VEC3D( const QVector3D &v ): x( v.x() ), y( v.y() ), z( v.z() ) {}
-  VEC3D operator+( const VEC3D &other ) const { return VEC3D( x + other.x, y + other.y, z + other.z ); }
-  VEC3D operator-( const VEC3D &other ) const { return VEC3D( x - other.x, y - other.y, z - other.z ); }
-  bool isNull() const { return x == 0 && y == 0 && z == 0; }
-  double x, y, z;
-};
-
-QDebug operator<<( QDebug debug, const VEC3D &v );
-
-VEC3D reproject( QgsCoordinateTransform &ct, VEC3D v, bool inv = false );
+QgsVector3D reproject( QgsCoordinateTransform &ct, QgsVector3D v, bool inv = false );
 
 struct SceneContext;
 
 
 struct AABB
 {
-  VEC3D v0, v1;
+  QgsVector3D v0, v1;
 };
 
 struct OBB
 {
-  VEC3D center;
-  //VEC3D x, y, z;
+  QgsVector3D center;
   QMatrix4x4 rot;  // ideally should be double matrix
 
   static OBB fromJson( json &box )
   {
     OBB obb;
-    obb.center = VEC3D( box[0].get<double>(), box[1].get<double>(), box[2].get<double>() );
+    obb.center = QgsVector3D( box[0].get<double>(), box[1].get<double>(), box[2].get<double>() );
     obb.rot = QMatrix4x4(
                 box[3].get<double>(), box[6].get<double>(), box[9].get<double>(), 0,
                 box[4].get<double>(), box[7].get<double>(), box[10].get<double>(), 0,
@@ -58,7 +45,7 @@ struct OBB
   void dump()
   {
     qDebug() << "OBB";
-    qDebug() << center.x << center.y << center.z;
+    qDebug() << center.x() << center.y() << center.z();
     //qDebug() << rot;
   }
 
@@ -77,7 +64,7 @@ struct OBB
     return size.x() > 1e5 || size.y() > 1e5 || size.z() > 1e5;
   }
 
-  QVector<VEC3D> corners()
+  QVector<QgsVector3D> corners()
   {
     const QVector<QVector3D> unit =
     {
@@ -90,7 +77,7 @@ struct OBB
       QVector3D( -1, +1, +1 ),
       QVector3D( +1, +1, +1 ),
     };
-    QVector<VEC3D> cor( unit.count() );
+    QVector<QgsVector3D> cor( unit.count() );
     for ( int i = 0; i < unit.count(); ++i )
     {
       cor[i] = center + rot.mapVector( unit[i] );
@@ -100,7 +87,7 @@ struct OBB
   }
 
   // returns coords in map coordinates minus origin
-  QVector<VEC3D> cornersSceneCoords( SceneContext &ctx );
+  QVector<QgsVector3D> cornersSceneCoords( SceneContext &ctx );
 
   // in map coordinates minus origin
   AABB aabb( SceneContext &ctx );
@@ -119,10 +106,10 @@ struct Tile
 struct SceneContext
 {
   // tile-specific
-  VEC3D tileTranslationEcef;
+  QgsVector3D tileTranslationEcef;
 
   // scene-wide stuff
-  VEC3D sceneOriginTargetCrs;  // can be specified optionally (or uses first tile's center)
+  QgsVector3D sceneOriginTargetCrs;  // can be specified optionally (or uses first tile's center)
   std::unique_ptr<QgsCoordinateTransform> ecefToTargetCrs;
 
   QString targetCrs;  // EPSG code - or if empty will use ECEF

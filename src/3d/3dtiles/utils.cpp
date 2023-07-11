@@ -41,7 +41,7 @@ Qt3DCore::QEntity *lineEntity( const QByteArray &vertexBufferData, int vertexCou
 
 Qt3DCore::QEntity *entityForOBB( OBB &obb, SceneContext &ctx )
 {
-  QVector<VEC3D> corners = obb.cornersSceneCoords( ctx );
+  QVector<QgsVector3D> corners = obb.cornersSceneCoords( ctx );
 
   int indexes[] =
   {
@@ -58,10 +58,10 @@ Qt3DCore::QEntity *entityForOBB( OBB &obb, SceneContext &ctx )
 
   for ( int i = 0; i < vertexCount; ++i )
   {
-    VEC3D &v = corners[indexes[i]];
-    rawVertexArray[idx++] = v.x;
-    rawVertexArray[idx++] = v.z;
-    rawVertexArray[idx++] = -v.y;
+    QgsVector3D &v = corners[indexes[i]];
+    rawVertexArray[idx++] = v.x();
+    rawVertexArray[idx++] = v.z();
+    rawVertexArray[idx++] = -v.y();
   }
 
   return lineEntity( vertexBufferData, vertexCount, Qt::red );
@@ -70,16 +70,16 @@ Qt3DCore::QEntity *entityForOBB( OBB &obb, SceneContext &ctx )
 Qt3DCore::QEntity *entityForAABB( OBB &obb, SceneContext &ctx )
 {
   AABB aabb = obb.aabb( ctx );
-  QVector<VEC3D> corners
+  QVector<QgsVector3D> corners
   {
-    VEC3D( aabb.v0.x, aabb.v0.y, aabb.v0.z ),
-    VEC3D( aabb.v1.x, aabb.v0.y, aabb.v0.z ),
-    VEC3D( aabb.v0.x, aabb.v1.y, aabb.v0.z ),
-    VEC3D( aabb.v1.x, aabb.v1.y, aabb.v0.z ),
-    VEC3D( aabb.v0.x, aabb.v0.y, aabb.v1.z ),
-    VEC3D( aabb.v1.x, aabb.v0.y, aabb.v1.z ),
-    VEC3D( aabb.v0.x, aabb.v1.y, aabb.v1.z ),
-    VEC3D( aabb.v1.x, aabb.v1.y, aabb.v1.z ),
+    QgsVector3D( aabb.v0.x(), aabb.v0.y(), aabb.v0.z() ),
+    QgsVector3D( aabb.v1.x(), aabb.v0.y(), aabb.v0.z() ),
+    QgsVector3D( aabb.v0.x(), aabb.v1.y(), aabb.v0.z() ),
+    QgsVector3D( aabb.v1.x(), aabb.v1.y(), aabb.v0.z() ),
+    QgsVector3D( aabb.v0.x(), aabb.v0.y(), aabb.v1.z() ),
+    QgsVector3D( aabb.v1.x(), aabb.v0.y(), aabb.v1.z() ),
+    QgsVector3D( aabb.v0.x(), aabb.v1.y(), aabb.v1.z() ),
+    QgsVector3D( aabb.v1.x(), aabb.v1.y(), aabb.v1.z() ),
   };
 
   int indexes[] =
@@ -97,19 +97,18 @@ Qt3DCore::QEntity *entityForAABB( OBB &obb, SceneContext &ctx )
 
   for ( int i = 0; i < vertexCount; ++i )
   {
-    VEC3D &v = corners[indexes[i]];
-    rawVertexArray[idx++] = v.x;
-    rawVertexArray[idx++] = v.z;
-    rawVertexArray[idx++] = -v.y;
+    QgsVector3D &v = corners[indexes[i]];
+    rawVertexArray[idx++] = v.x();
+    rawVertexArray[idx++] = v.z();
+    rawVertexArray[idx++] = -v.y();
   }
 
   return lineEntity( vertexBufferData, vertexCount, Qt::blue );
 }
 
 
-VEC3D reproject( QgsCoordinateTransform &ct, VEC3D v, bool inv )
+QgsVector3D reproject( QgsCoordinateTransform &ct, QgsVector3D v, bool inv )
 {
-  QgsVector3D t = ct.transform( QgsVector3D( v.x, v.y, v.z ), inv ? Qgis::TransformDirection::Reverse : Qgis::TransformDirection::Forward );
-  return VEC3D( t.x(), t.y(), t.z() );
+  QgsVector3D t = ct.transform( v, inv ? Qgis::TransformDirection::Reverse : Qgis::TransformDirection::Forward );
+  return t;
 }
-

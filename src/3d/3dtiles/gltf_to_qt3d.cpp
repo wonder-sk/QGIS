@@ -186,7 +186,7 @@ Qt3DRender::QAttribute *reprojectPositions( tinygltf::Model &model, int accessor
   tinygltf::BufferView &bv = model.bufferViews[accessor.bufferView];
   tinygltf::Buffer &b = model.buffers[bv.buffer];
 
-  VEC3D offsetEcef = ctx.tileTranslationEcef;
+  QgsVector3D offsetEcef = ctx.tileTranslationEcef;
 
   // TODO: only ever create one QBuffer for a buffer even if it is used multiple times
 
@@ -200,9 +200,9 @@ Qt3DRender::QAttribute *reprojectPositions( tinygltf::Model &model, int accessor
   for ( int i = 0; i < accessor.count; ++i )
   {
     // flip coordinates from GLTF y-up to ECEF z-up
-    vx[i] = offsetEcef.x + fptr[i * 3 + 0];
-    vy[i] = offsetEcef.y - fptr[i * 3 + 2];
-    vz[i] = offsetEcef.z + fptr[i * 3 + 1];
+    vx[i] = offsetEcef.x() + fptr[i * 3 + 0];
+    vy[i] = offsetEcef.y() - fptr[i * 3 + 2];
+    vz[i] = offsetEcef.z() + fptr[i * 3 + 1];
   }
 
   // TODO: handle exceptions
@@ -212,12 +212,12 @@ Qt3DRender::QAttribute *reprojectPositions( tinygltf::Model &model, int accessor
   byteArray.resize( accessor.count * 4 * 3 );
   float *out = ( float * )byteArray.data();
 
-  VEC3D sceneOrigin = ctx.sceneOriginTargetCrs;
+  QgsVector3D sceneOrigin = ctx.sceneOriginTargetCrs;
   for ( int i = 0; i < accessor.count; ++i )
   {
-    double x = vx[i] - sceneOrigin.x;
-    double y = vy[i] - sceneOrigin.y;
-    double z = vz[i] - sceneOrigin.z;
+    double x = vx[i] - sceneOrigin.x();
+    double y = vy[i] - sceneOrigin.y();
+    double z = vz[i] - sceneOrigin.z();
 
     // QGIS 3D uses base plane (X,-Z) with Y up - so flip the coordinates
     out[i * 3 + 0] = x;
@@ -380,7 +380,7 @@ Qt3DCore::QEntity *entityForNode( tinygltf::Model &model, int nodeIndex, SceneCo
 
   if ( node.translation.size() )
   {
-    ctx.tileTranslationEcef = VEC3D( node.translation[0], -node.translation[2], node.translation[1] );
+    ctx.tileTranslationEcef = QgsVector3D( node.translation[0], -node.translation[2], node.translation[1] );
 
     if ( ctx.sceneOriginTargetCrs.isNull() )
     {
@@ -555,8 +555,8 @@ Qt3DCore::QEntity *gltfToEntity( QString path, SceneContext &ctx )
       0.0, 1.0,  0.0, 0.0,
       0.0, 0.0,  0.0, 1.0
     );
-    VEC3D b = ctx.sceneOriginTargetCrs, a = ctx.tileTranslationEcef;
-    rotateYUPtoZUP.setColumn( 3, QVector4D( a.x - b.x, a.y - b.y, a.z - b.z, 1 ) );
+    QgsVector3D b = ctx.sceneOriginTargetCrs, a = ctx.tileTranslationEcef;
+    rotateYUPtoZUP.setColumn( 3, QVector4D( a.x() - b.x(), a.y() - b.y(), a.z() - b.z(), 1 ) );
 
     Qt3DCore::QTransform *tileTransform = new Qt3DCore::QTransform;
     tileTransform->setMatrix( rotateYUPtoZUP );

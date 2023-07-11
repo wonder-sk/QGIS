@@ -4,14 +4,6 @@
 #include <fstream>
 
 
-QDebug operator<<( QDebug debug, const VEC3D &v )
-{
-  QDebugStateSaver saver( debug );
-  debug.nospace() << '(' << v.x << ", " << v.y << ", " << v.z << ')';
-  return debug;
-}
-
-
 Tile parseTile( json &tileJson, QString relativePathBase )
 {
   json box = tileJson["boundingVolume"]["box"];
@@ -145,9 +137,9 @@ Qt3DCore::QEntity *loadAllSceneTiles( SceneContext &ctx )
   return tilesEntity;
 }
 
-QVector<VEC3D> OBB::cornersSceneCoords( SceneContext &ctx )
+QVector<QgsVector3D> OBB::cornersSceneCoords( SceneContext &ctx )
 {
-  QVector<VEC3D> c = corners();
+  QVector<QgsVector3D> c = corners();
   for ( int i = 0; i < c.count(); ++i )
   {
     c[i] = reproject( *ctx.ecefToTargetCrs, c[i] ) - ctx.sceneOriginTargetCrs;
@@ -157,17 +149,17 @@ QVector<VEC3D> OBB::cornersSceneCoords( SceneContext &ctx )
 
 AABB OBB::aabb( SceneContext &ctx )
 {
-  const QVector<VEC3D> c = cornersSceneCoords( ctx );
+  const QVector<QgsVector3D> c = cornersSceneCoords( ctx );
   AABB box;
   box.v0 = box.v1 = c[0];
-  for ( const VEC3D &v : c )
+  for ( const QgsVector3D &v : c )
   {
-    if ( v.x < box.v0.x ) box.v0.x = v.x;
-    if ( v.y < box.v0.y ) box.v0.y = v.y;
-    if ( v.z < box.v0.z ) box.v0.z = v.z;
-    if ( v.x > box.v1.x ) box.v1.x = v.x;
-    if ( v.y > box.v1.y ) box.v1.y = v.y;
-    if ( v.z > box.v1.z ) box.v1.z = v.z;
+    if ( v.x() < box.v0.x() ) box.v0.setX( v.x() );
+    if ( v.y() < box.v0.y() ) box.v0.setY( v.y() );
+    if ( v.z() < box.v0.z() ) box.v0.setZ( v.z() );
+    if ( v.x() > box.v1.x() ) box.v1.setX( v.x() );
+    if ( v.y() > box.v1.y() ) box.v1.setY( v.y() );
+    if ( v.z() > box.v1.z() ) box.v1.setZ( v.z() );
   }
   return box;
 }
