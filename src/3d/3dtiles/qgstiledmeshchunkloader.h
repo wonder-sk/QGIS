@@ -8,15 +8,25 @@
 class Qgs3DMapSettings;
 
 
+struct TiledMeshData
+{
+  Tile rootTile;
+
+  CoordsContext coords;
+
+  QString relativePathBase;  // how to resolve URIs starting with "./"
+};
+
+
 class QgsTiledMeshChunkLoader : public QgsChunkLoader
 {
     //    Q_OBJECT
   public:
-    QgsTiledMeshChunkLoader( QgsChunkNode *node, SceneContext &ctx, Tile &t );
+    QgsTiledMeshChunkLoader( QgsChunkNode *node, TiledMeshData &ctx, Tile &t );
 
     virtual Qt3DCore::QEntity *createEntity( Qt3DCore::QEntity *parent );
 
-    SceneContext &mCtx;
+    TiledMeshData &mData;
     Tile &mT;
 };
 
@@ -24,14 +34,14 @@ class QgsTiledMeshChunkLoader : public QgsChunkLoader
 class QgsTiledMeshChunkLoaderFactory : public QgsChunkLoaderFactory
 {
   public:
-    QgsTiledMeshChunkLoaderFactory( const Qgs3DMapSettings &map, SceneContext &ctx );
+    QgsTiledMeshChunkLoaderFactory( const Qgs3DMapSettings &map, TiledMeshData &data );
 
     virtual QgsChunkLoader *createChunkLoader( QgsChunkNode *node ) const override;
     virtual QgsChunkNode *createRootNode() const override;
     virtual QVector<QgsChunkNode *> createChildren( QgsChunkNode *node ) const override;
 
     const Qgs3DMapSettings &mMap;
-    SceneContext &mCtx;
+    TiledMeshData &mData;
     mutable QHash<QgsChunkNodeId, Tile *> mNodeIdToTile;
 };
 

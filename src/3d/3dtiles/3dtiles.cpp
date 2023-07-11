@@ -87,33 +87,33 @@ QStringList collectTilesAtLevel( const Tile &tile, int level, QString relativePa
 }
 
 
-Qt3DCore::QEntity *loadAllSceneTiles( SceneContext &ctx )
+Qt3DCore::QEntity *loadAllSceneTiles( const Tile &rootTile, int tilesetLevel, QString relativePathBase, CoordsContext &coordsCtx )
 {
   Qt3DCore::QEntity *tilesEntity = new Qt3DCore::QEntity;
 
-  const QStringList files = collectTilesAtLevel( ctx.rootTile, ctx.tilesetLevel, ctx.relativePathBase );
+  const QStringList files = collectTilesAtLevel( rootTile, tilesetLevel, relativePathBase );
   for ( const QString &file : files )
   {
-    Qt3DCore::QEntity *gltfEntity = gltfToEntity( file, ctx );
+    Qt3DCore::QEntity *gltfEntity = gltfToEntity( file, coordsCtx );
     gltfEntity->setParent( tilesEntity );
   }
 
   return tilesEntity;
 }
 
-QVector<QgsVector3D> OBB::cornersSceneCoords( SceneContext &ctx )
+QVector<QgsVector3D> OBB::cornersSceneCoords( CoordsContext &coordsCtx )
 {
   QVector<QgsVector3D> c = corners();
   for ( int i = 0; i < c.count(); ++i )
   {
-    c[i] = reproject( *ctx.ecefToTargetCrs, c[i] ) - ctx.sceneOriginTargetCrs;
+    c[i] = reproject( *coordsCtx.ecefToTargetCrs, c[i] ) - coordsCtx.sceneOriginTargetCrs;
   }
   return c;
 }
 
-QgsBox3d OBB::aabb( SceneContext &ctx )
+QgsBox3d OBB::aabb( CoordsContext &coordsCtx )
 {
-  const QVector<QgsVector3D> c = cornersSceneCoords( ctx );
+  const QVector<QgsVector3D> c = cornersSceneCoords( coordsCtx );
   QgsVector3D v0 = c[0], v1 = c[0];
   for ( const QgsVector3D &v : c )
   {

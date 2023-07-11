@@ -17,7 +17,12 @@ using json = nlohmann::json;
 
 QgsVector3D reproject( QgsCoordinateTransform &ct, QgsVector3D v, bool inv = false );
 
-struct SceneContext;
+
+struct CoordsContext
+{
+  QgsVector3D sceneOriginTargetCrs;
+  std::unique_ptr<QgsCoordinateTransform> ecefToTargetCrs;
+};
 
 
 struct OBB
@@ -83,10 +88,10 @@ struct OBB
   }
 
   // returns coords in map coordinates minus origin
-  QVector<QgsVector3D> cornersSceneCoords( SceneContext &ctx );
+  QVector<QgsVector3D> cornersSceneCoords( CoordsContext &ctx );
 
   // in map coordinates minus origin
-  QgsBox3d aabb( SceneContext &ctx );
+  QgsBox3d aabb( CoordsContext &ctx );
 
 };
 
@@ -99,32 +104,11 @@ struct Tile
 };
 
 
-struct SceneContext
-{
-  // tile-specific
-  QgsVector3D tileTranslationEcef;
-
-  // scene-wide stuff
-  QgsVector3D sceneOriginTargetCrs;  // can be specified optionally (or uses first tile's center)
-  std::unique_ptr<QgsCoordinateTransform> ecefToTargetCrs;
-
-  QString targetCrs;  // EPSG code - or if empty will use ECEF
-
-  QString tilesetJsonPath;
-  int tilesetLevel;   // which level of content to use to show in the scene
-
-  QString relativePathBase;  // how to resolve URIs starting with "./"
-
-  // internal
-  Tile rootTile;
-};
-
-
 
 Tile loadTilesetJson( QString tilesetPath, QString relativePathBase );
 
-Qt3DCore::QEntity *gltfToEntity( QString path, SceneContext &ctx );
+Qt3DCore::QEntity *gltfToEntity( QString path, CoordsContext &coordsCtx );
 
-Qt3DCore::QEntity *loadAllSceneTiles( SceneContext &ctx );
+Qt3DCore::QEntity *loadAllSceneTiles( const Tile &rootTile, int tilesetLevel, QString relativePathBase, CoordsContext &coordsCtx );
 
 #endif // _3DTILES_H

@@ -39,9 +39,9 @@ Qt3DCore::QEntity *lineEntity( const QByteArray &vertexBufferData, int vertexCou
   return e;
 }
 
-Qt3DCore::QEntity *entityForOBB( OBB &obb, SceneContext &ctx )
+Qt3DCore::QEntity *entityForOBB( OBB &obb, CoordsContext &coordsCtx )
 {
-  QVector<QgsVector3D> corners = obb.cornersSceneCoords( ctx );
+  QVector<QgsVector3D> corners = obb.cornersSceneCoords( coordsCtx );
 
   int indexes[] =
   {
@@ -67,9 +67,9 @@ Qt3DCore::QEntity *entityForOBB( OBB &obb, SceneContext &ctx )
   return lineEntity( vertexBufferData, vertexCount, Qt::red );
 }
 
-Qt3DCore::QEntity *entityForAABB( OBB &obb, SceneContext &ctx )
+Qt3DCore::QEntity *entityForAABB( OBB &obb, CoordsContext &coordsCtx )
 {
-  QgsBox3d aabb = obb.aabb( ctx );
+  QgsBox3d aabb = obb.aabb( coordsCtx );
   QVector<QgsVector3D> corners
   {
     QgsVector3D( aabb.xMinimum(), aabb.yMinimum(), aabb.zMinimum() ),

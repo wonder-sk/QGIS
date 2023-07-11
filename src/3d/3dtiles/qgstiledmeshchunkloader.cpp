@@ -23,8 +23,8 @@ QgsAABB aabbConvert( const QgsBox3d &b )
 }
 
 
-QgsTiledMeshChunkLoader::QgsTiledMeshChunkLoader( QgsChunkNode *node, SceneContext &ctx, Tile &t )
-  : QgsChunkLoader( node ), mCtx( ctx ), mT( t )
+QgsTiledMeshChunkLoader::QgsTiledMeshChunkLoader( QgsChunkNode *node, TiledMeshData &data, Tile &t )
+  : QgsChunkLoader( node ), mData( data ), mT( t )
 {
   qDebug() << "chunk loader " << node->tileId().text();
   // start async (actually just do deferred finish()!)
@@ -56,20 +56,20 @@ Qt3DCore::QEntity *QgsTiledMeshChunkLoader::createEntity( Qt3DCore::QEntity *par
   // home-made relative path support
   if ( uri.startsWith( "./" ) )
   {
-    uri.replace( "./", mCtx.relativePathBase );
+    uri.replace( "./", mData.relativePathBase );
   }
 
   qDebug() << "loading: " << uri;
 
-  Qt3DCore::QEntity *gltfEntity = gltfToEntity( uri, mCtx );
+  Qt3DCore::QEntity *gltfEntity = gltfToEntity( uri, mData.coords );
   gltfEntity->setParent( parent );
   return gltfEntity;
 }
 
 ///
 
-QgsTiledMeshChunkLoaderFactory::QgsTiledMeshChunkLoaderFactory( const Qgs3DMapSettings &map, SceneContext &ctx )
-  : mMap( map ), mCtx( ctx )
+QgsTiledMeshChunkLoaderFactory::QgsTiledMeshChunkLoaderFactory( const Qgs3DMapSettings &map, TiledMeshData &data )
+  : mMap( map ), mData( data )
 {
 }
 
@@ -77,28 +77,28 @@ QgsChunkLoader *QgsTiledMeshChunkLoaderFactory::createChunkLoader( QgsChunkNode 
 {
   Q_ASSERT( mNodeIdToTile.contains( node->tileId() ) );
   Tile *t = mNodeIdToTile[node->tileId()];
-  return new QgsTiledMeshChunkLoader( node, mCtx, *t );
+  return new QgsTiledMeshChunkLoader( node, mData, *t );
 }
 
 QgsChunkNode *QgsTiledMeshChunkLoaderFactory::createRootNode() const
 {
   QgsChunkNodeId nodeId( 0, 0, 0, 0 );
-  mNodeIdToTile[nodeId] = &mCtx.rootTile;
-  if ( mCtx.rootTile.geomError > 1e6 || mCtx.rootTile.obb.isTooBig() )
+  mNodeIdToTile[nodeId] = &mData.rootTile;
+  if ( mData.rootTile.geomError > 1e6 || mData.rootTile.obb.isTooBig() )
   {
     // use the full extent of the scene
     QgsVector3D v0 = mMap.mapToWorldCoordinates( QgsVector3D( mMap.extent().xMinimum(), mMap.extent().yMinimum(), -100 ) );
     QgsVector3D v1 = mMap.mapToWorldCoordinates( QgsVector3D( mMap.extent().xMaximum(), mMap.extent().yMaximum(), +100 ) );
     QgsAABB aabb( v0.x(), v0.y(), v0.z(), v1.x(), v1.y(), v1.z() );
-    float err = std::min( 1e6, mCtx.rootTile.geomError );
+    float err = std::min( 1e6, mData.rootTile.geomError );
     qDebug() << "root" << nodeId.text() << aabb.toString() << err;
     return new QgsChunkNode( nodeId, aabb, err );
   }
   else
   {
-    QgsAABB aabb = aabbConvert( mCtx.rootTile.obb.aabb( mCtx ) );
-    qDebug() << "root" << nodeId.text() << aabb.toString() << mCtx.rootTile.geomError;
-    return new QgsChunkNode( nodeId, aabb, mCtx.rootTile.geomError );
+    QgsAABB aabb = aabbConvert( mData.rootTile.obb.aabb( mData.coords ) );
+    qDebug() << "root" << nodeId.text() << aabb.toString() << mData.rootTile.geomError;
+    return new QgsChunkNode( nodeId, aabb, mData.rootTile.geomError );
   }
 }
 
@@ -119,7 +119,7 @@ QVector<QgsChunkNode *> QgsTiledMeshChunkLoaderFactory::createChildren( QgsChunk
       // (if not, let' skip this child altogether!)
       // TODO: make OBB of our scene in ECEF rather than just using center of the scene?
       QgsPointXY c = mMap.extent().center();
-      QgsVector3D cEcef = reproject( *mCtx.ecefToTargetCrs, QgsVector3D( c.x(), c.y(), 0 ), true );
+      QgsVector3D cEcef = reproject( *mData.coords.ecefToTargetCrs, QgsVector3D( c.x(), c.y(), 0 ), true );
       QgsVector3D ecef2 = cEcef - ch.obb.center;
       QVector3D aaa = ch.obb.rot.inverted().map( ecef2.toVector3D() );
       if ( aaa.x() > 1 || aaa.y() > 1 || aaa.z() > 1 ||
@@ -144,7 +144,7 @@ QVector<QgsChunkNode *> QgsTiledMeshChunkLoaderFactory::createChildren( QgsChunk
     }
     else
     {
-      QgsAABB aabb( aabbConvert( ch.obb.aabb( mCtx ) ) );
+      QgsAABB aabb( aabbConvert( ch.obb.aabb( mData.coords ) ) );
       qDebug() << "child" << chId.text() << aabb.toString() << ch.geomError;
       nChild = new QgsChunkNode( chId, aabb, ch.geomError );
     }

@@ -5,7 +5,8 @@
 #include "qgis_3d.h"
 
 #include "qgsabstract3drenderer.h"
-#include "3dtiles.h"
+
+#include "qgstiledmeshchunkloader.h"
 
 
 class _3D_EXPORT QgsTiledMeshLayer3DRenderer : public QgsAbstract3DRenderer
@@ -20,7 +21,7 @@ class _3D_EXPORT QgsTiledMeshLayer3DRenderer : public QgsAbstract3DRenderer
     virtual void readXml( const QDomElement &, const QgsReadWriteContext & ) override {}
 
     QString mUri;
-    mutable SceneContext mCtx;
+    mutable TiledMeshData mData;
 };
 
 #endif

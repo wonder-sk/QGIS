@@ -16,27 +16,27 @@ QgsTiledMeshLayer3DRenderer::QgsTiledMeshLayer3DRenderer( QString uri )
 
 Qt3DCore::QEntity *QgsTiledMeshLayer3DRenderer::createEntity( const Qgs3DMapSettings &map ) const
 {
-  mCtx.tilesetJsonPath = mUri;
-  mCtx.relativePathBase = QFileInfo( mUri ).path() + "/";
-  mCtx.tilesetLevel = -1;  // 1-4  (or negative for chunk loader)
-  mCtx.sceneOriginTargetCrs = QgsVector3D( map.origin().x(), map.origin().y(), -40 );
-  mCtx.targetCrs = map.crs().authid();
+  int tilesetLevel = -1;  // 1-4  (or negative for chunk loader)
 
-  if ( !mCtx.targetCrs.isEmpty() )
+  mData.relativePathBase = QFileInfo( mUri ).path() + "/";
+  mData.coords.sceneOriginTargetCrs = QgsVector3D( map.origin().x(), map.origin().y(), -40 );
+  QString targetCrs = map.crs().authid();
+
+  if ( !targetCrs.isEmpty() )
   {
-    mCtx.ecefToTargetCrs.reset( new QgsCoordinateTransform(
-                                  QgsCoordinateReferenceSystem( "EPSG:4978" ), QgsCoordinateReferenceSystem( mCtx.targetCrs ), map.transformContext() ) );
-    if ( !mCtx.ecefToTargetCrs->isValid() )
+    mData.coords.ecefToTargetCrs.reset( new QgsCoordinateTransform(
+                                          QgsCoordinateReferenceSystem( "EPSG:4978" ), QgsCoordinateReferenceSystem( targetCrs ), map.transformContext() ) );
+    if ( !mData.coords.ecefToTargetCrs->isValid() )
     {
       qDebug() << "Failed to create transformation object";
     }
   }
 
-  mCtx.rootTile = loadTilesetJson( mCtx.tilesetJsonPath, mCtx.relativePathBase );
+  mData.rootTile = loadTilesetJson( mUri, mData.relativePathBase );
 
-  if ( mCtx.tilesetLevel < 0 )
+  if ( tilesetLevel < 0 )
   {
-    QgsTiledMeshChunkLoaderFactory *factory = new QgsTiledMeshChunkLoaderFactory( map, mCtx );
+    QgsTiledMeshChunkLoaderFactory *factory = new QgsTiledMeshChunkLoaderFactory( map, mData );
     QgsChunkedEntity *e = new QgsChunkedEntity( 50.0, factory, true );  // TODO: why so high?
     e->setShowBoundingBoxes( true );
     return e;
@@ -44,7 +44,7 @@ Qt3DCore::QEntity *QgsTiledMeshLayer3DRenderer::createEntity( const Qgs3DMapSett
   else
   {
     // add 3D Tiles stuff directly as a QEntity! (at one zoom level)
-    Qt3DCore::QEntity *e = loadAllSceneTiles( mCtx );
+    Qt3DCore::QEntity *e = loadAllSceneTiles( mData.rootTile, tilesetLevel, mData.relativePathBase, mData.coords );
     return e;
   }
 }
