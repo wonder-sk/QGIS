@@ -87,50 +87,14 @@ QStringList collectTilesAtLevel( const Tile &tile, int level, QString relativePa
 }
 
 
-bool init3DTilesScene( SceneContext &ctx )
-{
-  if ( !ctx.targetCrs.isEmpty() )
-  {
-    // TODO: trasnform context
-    ctx.ecefToTargetCrs.reset( new QgsCoordinateTransform( QgsCoordinateReferenceSystem( "EPSG:4978" ), QgsCoordinateReferenceSystem( ctx.targetCrs ), QgsCoordinateTransformContext() ) );
-    if ( !ctx.ecefToTargetCrs->isValid() )
-    {
-      qDebug() << "Failed to create transformation object";
-      return false;
-    }
-  }
-  else
-  {
-    ctx.ecefToTargetCrs = nullptr;
-  }
-
-  if ( !ctx.tilesetJsonPath.isEmpty() )
-  {
-    ctx.rootTile = loadTilesetJson( ctx.tilesetJsonPath, ctx.relativePathBase );
-    ctx.files << collectTilesAtLevel( ctx.rootTile, ctx.tilesetLevel, ctx.relativePathBase );
-
-    //        QVector<VEC3D> vv = root.children[0].obb.cornersSceneCoords(ctx);
-    //        qDebug() << "OBB" << vv;
-    //        AABB aabb = root.children[0].obb.aabb(ctx);
-    //        qDebug() << "AABB" << aabb.v0 << aabb.v1;
-    //        for (int i = 0; i < 1; ++i)
-    //        {
-    //            Qt3DCore::QEntity *eBox = entityForOBB(root.children[i].obb, ctx);
-    //            eBox->setParent(rootEntity);
-    //            Qt3DCore::QEntity *aBox = entityForAABB(root.children[i].obb, ctx);
-    //            aBox->setParent(rootEntity);
-    //        }
-  }
-  return true;
-}
-
-
 Qt3DCore::QEntity *loadAllSceneTiles( SceneContext &ctx )
 {
   Qt3DCore::QEntity *tilesEntity = new Qt3DCore::QEntity;
-  for ( int i = 0; i < ctx.files.size(); ++i )
+
+  const QStringList files = collectTilesAtLevel( ctx.rootTile, ctx.tilesetLevel, ctx.relativePathBase );
+  for ( const QString &file : files )
   {
-    Qt3DCore::QEntity *gltfEntity = gltfToEntity( ctx.files[i], ctx );
+    Qt3DCore::QEntity *gltfEntity = gltfToEntity( file, ctx );
     gltfEntity->setParent( tilesEntity );
   }
 

@@ -22,7 +22,17 @@ Qt3DCore::QEntity *QgsTiledMeshLayer3DRenderer::createEntity( const Qgs3DMapSett
   mCtx.sceneOriginTargetCrs = QgsVector3D( map.origin().x(), map.origin().y(), -40 );
   mCtx.targetCrs = map.crs().authid();
 
-  init3DTilesScene( mCtx );
+  if ( !mCtx.targetCrs.isEmpty() )
+  {
+    mCtx.ecefToTargetCrs.reset( new QgsCoordinateTransform(
+                                  QgsCoordinateReferenceSystem( "EPSG:4978" ), QgsCoordinateReferenceSystem( mCtx.targetCrs ), map.transformContext() ) );
+    if ( !mCtx.ecefToTargetCrs->isValid() )
+    {
+      qDebug() << "Failed to create transformation object";
+    }
+  }
+
+  mCtx.rootTile = loadTilesetJson( mCtx.tilesetJsonPath, mCtx.relativePathBase );
 
   if ( mCtx.tilesetLevel < 0 )
   {

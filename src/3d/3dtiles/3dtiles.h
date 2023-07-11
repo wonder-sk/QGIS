@@ -109,7 +109,6 @@ struct SceneContext
   std::unique_ptr<QgsCoordinateTransform> ecefToTargetCrs;
 
   QString targetCrs;  // EPSG code - or if empty will use ECEF
-  QStringList files;   // what files to load
 
   QString tilesetJsonPath;
   int tilesetLevel;   // which level of content to use to show in the scene
@@ -122,15 +121,10 @@ struct SceneContext
 
 
 
-
 Tile loadTilesetJson( QString tilesetPath, QString relativePathBase );
 
 Qt3DCore::QEntity *gltfToEntity( QString path, SceneContext &ctx );
 
-QStringList collectTilesAtLevel( const Tile &tile, int level, QString relativePathBase );
-
-//Qt3DCore::QEntity *init3DTilesScene(SceneContext &ctx);
-bool init3DTilesScene( SceneContext &ctx );
 Qt3DCore::QEntity *loadAllSceneTiles( SceneContext &ctx );
 
 #endif // _3DTILES_H
