@@ -4,7 +4,6 @@
 
 
 // TODO:
-// - caching script: start from root
 // - lazy load hierarchy
 // - loading gltf in bg thread
 // - saner tile IDs  (why do we need the IDs?)
@@ -21,6 +20,27 @@ QgsAABB aabbConvert( const QgsBox3d &b )
 {
   return QgsAABB( b.xMinimum(), b.zMinimum(), -b.yMaximum(), b.xMaximum(), b.zMaximum(), -b.yMinimum() );
 }
+
+// B3DM is section 10.1  (pages 66 - 73)
+// 10.1.3  (page 68)
+struct b3dmHeader
+{
+  unsigned char magic[4];
+  quint32 version;
+  quint32 byteLength;
+  quint32 featureTableJsonByteLength;
+  quint32 featureTableBinaryByteLength;
+  quint32 batchTableJsonByteLength;
+  quint32 batchTableBinaryByteLength;
+
+  void dump()
+  {
+    qDebug() << "b3dm version " << version;
+    qDebug() << "len " << byteLength;
+    qDebug() << "feat table  " << featureTableJsonByteLength << featureTableBinaryByteLength;
+    qDebug() << "batch table " << batchTableJsonByteLength << batchTableBinaryByteLength;
+  }
+};
 
 
 QgsTiledMeshChunkLoader::QgsTiledMeshChunkLoader( QgsChunkNode *node, TiledMeshData &data, Tile &t )
@@ -48,7 +68,7 @@ Qt3DCore::QEntity *QgsTiledMeshChunkLoader::createEntity( Qt3DCore::QEntity *par
   // we do not load tiles that are too big - at least for the time being
   // the problem is that their 3D bounding boxes with ECEF coordinates are huge
   // and we are unable to turn them into planar bounding boxes
-  if ( mT.obb.isTooBig() )
+  if ( mT.largeBounds )
   {
     return new Qt3DCore::QEntity( parent );
   }
@@ -58,12 +78,52 @@ Qt3DCore::QEntity *QgsTiledMeshChunkLoader::createEntity( Qt3DCore::QEntity *par
   {
     uri.replace( "./", mData.relativePathBase );
   }
+  else if ( QFileInfo( uri ).isRelative() )
+  {
+    uri = mData.relativePathBase + uri;
+  }
 
   qDebug() << "loading: " << uri;
 
-  Qt3DCore::QEntity *gltfEntity = gltfToEntity( uri, mData.coords );
-  gltfEntity->setParent( parent );
-  return gltfEntity;
+  // TODO: according to the spec we should actually find out from the content what is the file type
+  if ( uri.endsWith( ".b3dm" ) )
+  {
+    QFile file( uri );
+    if ( !file.open( QIODevice::ReadOnly ) )
+      return new Qt3DCore::QEntity( parent );
+
+    b3dmHeader hdr;
+    file.read( ( char * )&hdr, sizeof( b3dmHeader ) );
+
+    Q_ASSERT( hdr.featureTableBinaryByteLength == 0 ); // unsupported for now
+    if ( hdr.featureTableJsonByteLength )
+    {
+      QByteArray ba = file.read( hdr.featureTableJsonByteLength );
+//        qDebug() << "feature table:";
+//        qDebug() << ba;
+    }
+
+    Q_ASSERT( hdr.batchTableBinaryByteLength == 0 ); // unsupported for now
+    if ( hdr.batchTableJsonByteLength )
+    {
+      QByteArray ba = file.read( hdr.batchTableJsonByteLength );
+//        qDebug() << "batch table:";
+//        qDebug() << ba;
+    }
+
+    QByteArray baGLTF = file.readAll();
+    Qt3DCore::QEntity *gltfEntity = gltfMemoryToEntity( baGLTF, mData.coords );
+    gltfEntity->setParent( parent );
+    return gltfEntity;
+  }
+  else
+  {
+    // we assume it is a GLTF content
+
+    Qt3DCore::QEntity *gltfEntity = gltfToEntity( uri, mData.coords );
+    gltfEntity->setParent( parent );
+    return gltfEntity;
+  }
 }
 
 ///
@@ -84,7 +144,7 @@ QgsChunkNode *QgsTiledMeshChunkLoaderFactory::createRootNode() const
 {
   QgsChunkNodeId nodeId( 0, 0, 0, 0 );
   mNodeIdToTile[nodeId] = &mData.rootTile;
-  if ( mData.rootTile.geomError > 1e6 || mData.rootTile.obb.isTooBig() )
+  if ( mData.rootTile.largeBounds )
   {
     // use the full extent of the scene
     QgsVector3D v0 = mMap.mapToWorldCoordinates( QgsVector3D( mMap.extent().xMinimum(), mMap.extent().yMinimum(), -100 ) );
@@ -96,7 +156,7 @@ QgsChunkNode *QgsTiledMeshChunkLoaderFactory::createRootNode() const
   }
   else
   {
-    QgsAABB aabb = aabbConvert( mData.rootTile.obb.aabb( mData.coords ) );
+    QgsAABB aabb = aabbConvert( mData.rootTile.region );
     qDebug() << "root" << nodeId.text() << aabb.toString() << mData.rootTile.geomError;
     return new QgsChunkNode( nodeId, aabb, mData.rootTile.geomError );
   }
@@ -113,26 +173,29 @@ QVector<QgsChunkNode *> QgsTiledMeshChunkLoaderFactory::createChildren( QgsChunk
     QgsChunkNodeId chId( node->tileId().d + 1, rand(), 0, 0 ); // TODO: some more reasonable IDs?
 
     // first check if this node should be even considered
-    if ( ch.obb.isTooBig() )
+    if ( ch.largeBounds )
     {
       // if the tile is huge, let's try to see if our scene is actually inside
       // (if not, let' skip this child altogether!)
       // TODO: make OBB of our scene in ECEF rather than just using center of the scene?
-      QgsPointXY c = mMap.extent().center();
-      QgsVector3D cEcef = reproject( *mData.coords.ecefToTargetCrs, QgsVector3D( c.x(), c.y(), 0 ), true );
-      QgsVector3D ecef2 = cEcef - ch.obb.center;
-      QVector3D aaa = ch.obb.rot.inverted().map( ecef2.toVector3D() );
-      if ( aaa.x() > 1 || aaa.y() > 1 || aaa.z() > 1 ||
-           aaa.x() < -1 || aaa.y() < -1 || aaa.z() < -1 )
+      if ( ch.boundsType == Tile::BoundsOBB )
       {
-        qDebug() << "skipping child" << chId.text();
-        continue;
+        QgsPointXY c = mMap.extent().center();
+        QgsVector3D cEcef = reproject( *mData.coords.ecefToTargetCrs, QgsVector3D( c.x(), c.y(), 0 ), true );
+        QgsVector3D ecef2 = cEcef - ch.obb.center;
+        QVector3D aaa = ch.obb.rot.inverted().map( ecef2.toVector3D() );
+        if ( aaa.x() > 1 || aaa.y() > 1 || aaa.z() > 1 ||
+             aaa.x() < -1 || aaa.y() < -1 || aaa.z() < -1 )
+        {
+          qDebug() << "skipping child" << chId.text();
+          continue;
+        }
       }
     }
 
     mNodeIdToTile[chId] = &ch;
     QgsChunkNode *nChild;
-    if ( ch.geomError > 1e6 || ch.obb.isTooBig() )
+    if ( ch.largeBounds )
     {
       // use the full extent of the scene
       QgsVector3D v0 = mMap.mapToWorldCoordinates( QgsVector3D( mMap.extent().xMinimum(), mMap.extent().yMinimum(), -100 ) );
@@ -144,11 +207,11 @@ QVector<QgsChunkNode *> QgsTiledMeshChunkLoaderFactory::createChildren( QgsChunk
     }
     else
     {
-      QgsAABB aabb( aabbConvert( ch.obb.aabb( mData.coords ) ) );
+      QgsAABB aabb( aabbConvert( ch.region ) );
       qDebug() << "child" << chId.text() << aabb.toString() << ch.geomError;
       nChild = new QgsChunkNode( chId, aabb, ch.geomError );
     }
-    qDebug() << "is too big? " << ch.obb.isTooBig();
+    qDebug() << "is too big? " << ch.largeBounds;
     children.append( nChild );
   }
   return children;

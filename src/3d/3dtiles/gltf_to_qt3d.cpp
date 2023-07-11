@@ -383,6 +383,17 @@ Qt3DCore::QEntity *entityForNode( tinygltf::Model &model, int nodeIndex, CoordsC
     //rootTranslation = QVector3D(node.translation[0], node.translation[1], node.translation[2]);
     //qDebug()<< "TR" << rootTranslation;
   }
+
+  if ( model.extensions.find( "CESIUM_RTC" ) != model.extensions.end() )
+  {
+    tinygltf::Value v = model.extensions["CESIUM_RTC"];
+    Q_ASSERT( v.IsObject() && v.Has( "center" ) );
+    tinygltf::Value center = v.Get( "center" );
+    Q_ASSERT( center.IsArray() && center.Size() == 3 );
+    tileTranslationEcef = QgsVector3D( center.Get( 0 ).GetNumberAsDouble(), center.Get( 1 ).GetNumberAsDouble(), center.Get( 2 ).GetNumberAsDouble() );
+    //qDebug()<< "TR" << rootTranslation;
+  }
+
   //        Qt3DCore::QTransform *tr = new Qt3DCore::QTransform;
   //        tr->setTranslation(QVector3D(node.translation[0], node.translation[1], node.translation[2]));
   //        e->addComponent(tr);
@@ -456,7 +467,10 @@ Qt3DCore::QEntity *entityForNode( tinygltf::Model &model, int nodeIndex, CoordsC
   }
 
   // TODO: recursively add children
-  Q_ASSERT( node.children.size() == 0 );
+  if ( node.children.size() != 0 )
+  {
+    qDebug() << "unsupported: root node has children: " << node.children.size();
+  }
 
   return e;
 }
@@ -491,34 +505,10 @@ QMatrix4x4 tileToSceneTransform( QVector3D sceneOriginECEF, QVector3D tileRootTr
   return combinedFull;
 }
 
-Qt3DCore::QEntity *gltfToEntity( QString path, CoordsContext &coordsCtx )
+
+static Qt3DCore::QEntity *gltfModelToEntity( tinygltf::Model &model, CoordsContext &coordsCtx )
 {
   using namespace tinygltf;
-
-  Model model;
-  TinyGLTF loader;
-  std::string err;
-  std::string warn;
-
-  QByteArray pathBA = path.toUtf8();
-  const char *filename = pathBA.constData();
-
-  bool res;
-  if ( QString( filename ).endsWith( ".glb" ) )
-  {
-    //qDebug() << "GLB" << filename;
-    res = loader.LoadBinaryFromFile( &model, &err, &warn, filename );
-  }
-  else
-  {
-    //qDebug() << "GLTF (ascii)" << filename;
-    res = loader.LoadASCIIFromFile( &model, &err, &warn, filename );
-  }
-  if ( !res )
-  {
-    qDebug() << "errors: " << err.data();
-    return new Qt3DCore::QEntity;  // TODO
-  }
 
   // model - has possibly multiple scenes (one scene is the default)
   // scene has multiple root nodes
@@ -551,4 +541,58 @@ Qt3DCore::QEntity *gltfToEntity( QString path, CoordsContext &coordsCtx )
   }
 
   return gltfEntity;
+}
+
+
+Qt3DCore::QEntity *gltfMemoryToEntity( const QByteArray &data, CoordsContext &coordsCtx )
+{
+  using namespace tinygltf;
+
+  Model model;
+  TinyGLTF loader;
+  std::string err;
+  std::string warn;
+
+  bool res = loader.LoadBinaryFromMemory( &model, &err, &warn,
+                                          ( const unsigned char * )data.constData(), data.size(), "", REQUIRE_VERSION );
+  if ( !res )
+  {
+    qDebug() << "errors: " << err.data();
+    return new Qt3DCore::QEntity;  // TODO
+  }
+
+  return gltfModelToEntity( model, coordsCtx );
+}
+
+
+Qt3DCore::QEntity *gltfToEntity( QString path, CoordsContext &coordsCtx )
+{
+  using namespace tinygltf;
+
+  Model model;
+  TinyGLTF loader;
+  std::string err;
+  std::string warn;
+
+  QByteArray pathBA = path.toUtf8();
+  const char *filename = pathBA.constData();
+
+  bool res;
+  if ( QString( filename ).endsWith( ".glb" ) )
+  {
+    //qDebug() << "GLB" << filename;
+    res = loader.LoadBinaryFromFile( &model, &err, &warn, filename );
+  }
+  else
+  {
+    //qDebug() << "GLTF (ascii)" << filename;
+    res = loader.LoadASCIIFromFile( &model, &err, &warn, filename );
+  }
+  if ( !res )
+  {
+    qDebug() << "errors: " << err.data();
+    return new Qt3DCore::QEntity;  // TODO
+  }
+
+  return gltfModelToEntity( model, coordsCtx );
 }

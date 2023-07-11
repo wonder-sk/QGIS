@@ -30,14 +30,23 @@ Qt3DCore::QEntity *QgsTiledMeshLayer3DRenderer::createEntity( const Qgs3DMapSett
     {
       qDebug() << "Failed to create transformation object";
     }
+
+    mData.coords.regionToTargetCrs.reset( new QgsCoordinateTransform(
+                                            QgsCoordinateReferenceSystem( "EPSG:4979" ), QgsCoordinateReferenceSystem( targetCrs ), map.transformContext() ) );
+    if ( !mData.coords.regionToTargetCrs->isValid() )
+    {
+      qDebug() << "Failed to create transformation object (2)";
+    }
   }
 
-  mData.rootTile = loadTilesetJson( mUri, mData.relativePathBase );
+  mData.rootTile = loadTilesetJson( mUri, mData.relativePathBase, mData.coords );
 
   if ( tilesetLevel < 0 )
   {
     QgsTiledMeshChunkLoaderFactory *factory = new QgsTiledMeshChunkLoaderFactory( map, mData );
     QgsChunkedEntity *e = new QgsChunkedEntity( 50.0, factory, true );  // TODO: why so high?
+    if ( mData.rootTile.additiveStrategy )
+      e->setUsingAdditiveStrategy( true );
     e->setShowBoundingBoxes( true );
     return e;
   }

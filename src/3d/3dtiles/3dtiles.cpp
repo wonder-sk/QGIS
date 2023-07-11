@@ -4,16 +4,58 @@
 #include <fstream>
 
 
-Tile parseTile( json &tileJson, QString relativePathBase )
+Tile parseTile( json &tileJson, QString relativePathBase, CoordsContext &coordsCtx )
 {
-  json box = tileJson["boundingVolume"]["box"];
+  json bounds = tileJson["boundingVolume"];
 
   Tile t;
-  t.obb = OBB::fromJson( box );
+
+  if ( bounds.contains( "box" ) )
+  {
+    t.boundsType = Tile::BoundsOBB;
+    OBB obb = OBB::fromJson( bounds["box"] );
+    t.obb = obb;
+    t.largeBounds = t.geomError > 1e6 || obb.isTooBig();
+    if ( !t.largeBounds )
+    {
+      // convert to axis aligned bbox
+      t.region = obb.aabb( coordsCtx );
+    }
+  }
+  else if ( bounds.contains( "region" ) )
+  {
+    t.boundsType = Tile::BoundsRegion;
+    json region = bounds["region"];
+    double west = region[0].get<double>() * 180 / M_PI;
+    double south = region[1].get<double>() * 180 / M_PI;
+    double east = region[2].get<double>() * 180 / M_PI;
+    double north = region[3].get<double>() * 180 / M_PI;
+    double minHeight = region[4].get<double>();
+    double maxHeight = region[5].get<double>();
+    coordsCtx.regionToTargetCrs->transformInPlace( west, south, minHeight );
+    coordsCtx.regionToTargetCrs->transformInPlace( east, north, maxHeight );
+    west -= coordsCtx.sceneOriginTargetCrs.x();
+    east -= coordsCtx.sceneOriginTargetCrs.x();
+    north -= coordsCtx.sceneOriginTargetCrs.y();
+    south -= coordsCtx.sceneOriginTargetCrs.y();
+    //qDebug() << "region" << west << east << "|" << south << north << "|" << minHeight << maxHeight;
+    t.region = QgsBox3d( west, south, minHeight, east, north, maxHeight );
+  }
+
+  // TODO: 3d tiles support any combination of replacement/additive strategies
+  // but chunked entity only allows one or the other for the whole entity
+  if ( tileJson.contains( "refine" ) && tileJson["refine"] == "ADD" )
+  {
+    t.additiveStrategy = true;
+  }
+
   t.geomError = tileJson["geometricError"];
   if ( tileJson.contains( "content" ) )
   {
-    t.contentUri = QString::fromStdString( tileJson["content"]["uri"] );
+    // spec says "uri" but e.g. new york uses "url"
+    bool isUri = tileJson["content"].contains( "uri" );
+
+    t.contentUri = QString::fromStdString( isUri ? tileJson["content"]["uri"] : tileJson["content"]["url"] );
 
     // instead of graphical content, this could lead to another tileset JSON
     // TODO: does not need to be JSON extension - we should check file content
@@ -28,7 +70,7 @@ Tile parseTile( json &tileJson, QString relativePathBase )
       if ( QFile::exists( t.contentUri ) )
       {
         qDebug() << "loading extra tileset:" << t.contentUri;
-        t = loadTilesetJson( t.contentUri, relativePathBase );
+        t = loadTilesetJson( t.contentUri, relativePathBase, coordsCtx );
       }
       else
       {
@@ -40,7 +82,7 @@ Tile parseTile( json &tileJson, QString relativePathBase )
   {
     for ( json &childTileJson : tileJson["children"] )
     {
-      t.children.append( parseTile( childTileJson, relativePathBase ) );
+      t.children.append( parseTile( childTileJson, relativePathBase, coordsCtx ) );
     }
   }
   //t.obb.dump();
@@ -51,12 +93,12 @@ Tile parseTile( json &tileJson, QString relativePathBase )
 }
 
 
-Tile loadTilesetJson( QString tilesetPath, QString relativePathBase )
+Tile loadTilesetJson( QString tilesetPath, QString relativePathBase, CoordsContext &coordsCtx )
 {
   std::ifstream f( tilesetPath.toStdString() );
   json data = json::parse( f );
 
-  Tile rootTile = parseTile( data["root"], relativePathBase );
+  Tile rootTile = parseTile( data["root"], relativePathBase, coordsCtx );
 
   return rootTile;
 }

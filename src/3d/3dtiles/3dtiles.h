@@ -21,7 +21,8 @@ QgsVector3D reproject( QgsCoordinateTransform &ct, QgsVector3D v, bool inv = fal
 struct CoordsContext
 {
   QgsVector3D sceneOriginTargetCrs;
-  std::unique_ptr<QgsCoordinateTransform> ecefToTargetCrs;
+  std::unique_ptr<QgsCoordinateTransform> ecefToTargetCrs;    // ecef in EPSG:4978
+  std::unique_ptr<QgsCoordinateTransform> regionToTargetCrs;  // region bounding volumes are in EPSG:4979
 };
 
 
@@ -95,9 +96,19 @@ struct OBB
 
 };
 
+
 struct Tile
 {
-  OBB obb;
+  enum BoundsType { BoundsOBB, BoundsRegion } boundsType;
+  OBB obb;  // only valid if "box" was used as the boundingVolume
+
+  bool largeBounds = false;   // indicates that the bounds are huge and should be considered as coverting the whole scene
+
+  // TODO: this should not be minus scene origin to avoid confusion
+  QgsBox3d region;  // actual axis-aligned bounding box in our target CRS minus scene origin
+
+  bool additiveStrategy = false;
+
   double geomError;
   QVector<Tile> children;
   QString contentUri;
@@ -105,9 +116,10 @@ struct Tile
 
 
 
-Tile loadTilesetJson( QString tilesetPath, QString relativePathBase );
+Tile loadTilesetJson( QString tilesetPath, QString relativePathBase, CoordsContext &coordsCtx );
 
 Qt3DCore::QEntity *gltfToEntity( QString path, CoordsContext &coordsCtx );
+Qt3DCore::QEntity *gltfMemoryToEntity( const QByteArray &data, CoordsContext &coordsCtx );
 
 Qt3DCore::QEntity *loadAllSceneTiles( const Tile &rootTile, int tilesetLevel, QString relativePathBase, CoordsContext &coordsCtx );
 
