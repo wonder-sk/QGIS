@@ -7,8 +7,9 @@
 
 #include <Qt3DCore>
 
-#include "qgsvector3d.h"
+#include "qgsbox3d.h"
 #include "qgscoordinatetransform.h"
+#include "qgsvector3d.h"
 
 #include "nlohmann/json.hpp"
 using json = nlohmann::json;
@@ -18,11 +19,6 @@ QgsVector3D reproject( QgsCoordinateTransform &ct, QgsVector3D v, bool inv = fal
 
 struct SceneContext;
 
-
-struct AABB
-{
-  QgsVector3D v0, v1;
-};
 
 struct OBB
 {
@@ -90,7 +86,7 @@ struct OBB
   QVector<QgsVector3D> cornersSceneCoords( SceneContext &ctx );
 
   // in map coordinates minus origin
-  AABB aabb( SceneContext &ctx );
+  QgsBox3d aabb( SceneContext &ctx );
 
 };
 

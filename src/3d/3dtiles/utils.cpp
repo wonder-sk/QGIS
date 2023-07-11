@@ -69,17 +69,17 @@ Qt3DCore::QEntity *entityForOBB( OBB &obb, SceneContext &ctx )
 
 Qt3DCore::QEntity *entityForAABB( OBB &obb, SceneContext &ctx )
 {
-  AABB aabb = obb.aabb( ctx );
+  QgsBox3d aabb = obb.aabb( ctx );
   QVector<QgsVector3D> corners
   {
-    QgsVector3D( aabb.v0.x(), aabb.v0.y(), aabb.v0.z() ),
-    QgsVector3D( aabb.v1.x(), aabb.v0.y(), aabb.v0.z() ),
-    QgsVector3D( aabb.v0.x(), aabb.v1.y(), aabb.v0.z() ),
-    QgsVector3D( aabb.v1.x(), aabb.v1.y(), aabb.v0.z() ),
-    QgsVector3D( aabb.v0.x(), aabb.v0.y(), aabb.v1.z() ),
-    QgsVector3D( aabb.v1.x(), aabb.v0.y(), aabb.v1.z() ),
-    QgsVector3D( aabb.v0.x(), aabb.v1.y(), aabb.v1.z() ),
-    QgsVector3D( aabb.v1.x(), aabb.v1.y(), aabb.v1.z() ),
+    QgsVector3D( aabb.xMinimum(), aabb.yMinimum(), aabb.zMinimum() ),
+    QgsVector3D( aabb.xMaximum(), aabb.yMinimum(), aabb.zMinimum() ),
+    QgsVector3D( aabb.xMinimum(), aabb.yMaximum(), aabb.zMinimum() ),
+    QgsVector3D( aabb.xMaximum(), aabb.yMaximum(), aabb.zMinimum() ),
+    QgsVector3D( aabb.xMinimum(), aabb.yMinimum(), aabb.zMaximum() ),
+    QgsVector3D( aabb.xMaximum(), aabb.yMinimum(), aabb.zMaximum() ),
+    QgsVector3D( aabb.xMinimum(), aabb.yMaximum(), aabb.zMaximum() ),
+    QgsVector3D( aabb.xMaximum(), aabb.yMaximum(), aabb.zMaximum() ),
   };
 
   int indexes[] =

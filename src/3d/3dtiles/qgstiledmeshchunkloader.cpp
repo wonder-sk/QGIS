@@ -17,9 +17,9 @@ size_t qHash( const QgsChunkNodeId &n )
 }
 
 // also flips to world coords
-QgsAABB aabbConvert( AABB b )
+QgsAABB aabbConvert( const QgsBox3d &b )
 {
-  return QgsAABB( b.v0.x(), b.v0.z(), -b.v1.y(), b.v1.x(), b.v1.z(), -b.v0.y() );
+  return QgsAABB( b.xMinimum(), b.zMinimum(), -b.yMaximum(), b.xMaximum(), b.zMaximum(), -b.yMinimum() );
 }
 
 

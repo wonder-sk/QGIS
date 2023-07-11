@@ -147,19 +147,18 @@ QVector<QgsVector3D> OBB::cornersSceneCoords( SceneContext &ctx )
   return c;
 }
 
-AABB OBB::aabb( SceneContext &ctx )
+QgsBox3d OBB::aabb( SceneContext &ctx )
 {
   const QVector<QgsVector3D> c = cornersSceneCoords( ctx );
-  AABB box;
-  box.v0 = box.v1 = c[0];
+  QgsVector3D v0 = c[0], v1 = c[0];
   for ( const QgsVector3D &v : c )
   {
-    if ( v.x() < box.v0.x() ) box.v0.setX( v.x() );
-    if ( v.y() < box.v0.y() ) box.v0.setY( v.y() );
-    if ( v.z() < box.v0.z() ) box.v0.setZ( v.z() );
-    if ( v.x() > box.v1.x() ) box.v1.setX( v.x() );
-    if ( v.y() > box.v1.y() ) box.v1.setY( v.y() );
-    if ( v.z() > box.v1.z() ) box.v1.setZ( v.z() );
+    if ( v.x() < v0.x() ) v0.setX( v.x() );
+    if ( v.y() < v0.y() ) v0.setY( v.y() );
+    if ( v.z() < v0.z() ) v0.setZ( v.z() );
+    if ( v.x() > v1.x() ) v1.setX( v.x() );
+    if ( v.y() > v1.y() ) v1.setY( v.y() );
+    if ( v.z() > v1.z() ) v1.setZ( v.z() );
   }
-  return box;
+  return QgsBox3d( v0.x(), v0.y(), v0.z(), v1.x(), v1.y(), v1.z() );
 }
