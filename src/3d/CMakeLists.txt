@@ -250,7 +250,7 @@ else()
   target_link_libraries(qgis_3d Qt5::3DCore Qt5::3DRender Qt5::3DInput Qt5::3DLogic Qt5::3DExtras)
 endif()
 
-target_link_libraries(qgis_3d draco proj)  # TODO: fix
+target_link_libraries(qgis_3d draco)  # TODO: fix
 
 GENERATE_EXPORT_HEADER(
    qgis_3d

@@ -4,6 +4,8 @@
 #include <Qt3DRender>
 #include <Qt3DExtras>
 
+#include "qgsvector3d.h"
+
 
 Qt3DCore::QEntity *lineEntity( const QByteArray &vertexBufferData, int vertexCount, QColor color )
 {
@@ -105,9 +107,9 @@ Qt3DCore::QEntity *entityForAABB( OBB &obb, SceneContext &ctx )
 }
 
 
-VEC3D reproject( PJ *transform, VEC3D v, bool inv )
+VEC3D reproject( QgsCoordinateTransform &ct, VEC3D v, bool inv )
 {
-  PJ_COORD a = proj_coord( v.x, v.y, v.z, 0 );
-  PJ_COORD b = proj_trans( transform, inv ? PJ_INV : PJ_FWD, a );
-  return VEC3D( b.v[0], b.v[1], b.v[2] );
+  QgsVector3D t = ct.transform( QgsVector3D( v.x, v.y, v.z ), inv ? Qgis::TransformDirection::Reverse : Qgis::TransformDirection::Forward );
+  return VEC3D( t.x(), t.y(), t.z() );
 }
+

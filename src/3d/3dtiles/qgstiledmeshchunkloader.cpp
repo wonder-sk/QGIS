@@ -119,7 +119,7 @@ QVector<QgsChunkNode *> QgsTiledMeshChunkLoaderFactory::createChildren( QgsChunk
       // (if not, let' skip this child altogether!)
       // TODO: make OBB of our scene in ECEF rather than just using center of the scene?
       QgsPointXY c = mMap.extent().center();
-      VEC3D cEcef = reproject( mCtx.ecefToTargetCrs, VEC3D( c.x(), c.y(), 0 ), true );
+      VEC3D cEcef = reproject( *mCtx.ecefToTargetCrs, VEC3D( c.x(), c.y(), 0 ), true );
       VEC3D ecef2 = cEcef - ch.obb.center;
       QVector3D aaa = ch.obb.rot.inverted().map( QVector3D( ecef2.x, ecef2.y, ecef2.z ) );
       if ( aaa.x() > 1 || aaa.y() > 1 || aaa.z() > 1 ||

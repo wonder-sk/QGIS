@@ -97,12 +97,11 @@ QStringList collectTilesAtLevel( const Tile &tile, int level, QString relativePa
 
 bool init3DTilesScene( SceneContext &ctx )
 {
-  ctx.projContext = proj_context_create();
-
   if ( !ctx.targetCrs.isEmpty() )
   {
-    ctx.ecefToTargetCrs = proj_create_crs_to_crs( ctx.projContext, "EPSG:4978", ctx.targetCrs.toUtf8().constData(), NULL );
-    if ( !ctx.ecefToTargetCrs )
+    // TODO: trasnform context
+    ctx.ecefToTargetCrs.reset( new QgsCoordinateTransform( QgsCoordinateReferenceSystem( "EPSG:4978" ), QgsCoordinateReferenceSystem( ctx.targetCrs ), QgsCoordinateTransformContext() ) );
+    if ( !ctx.ecefToTargetCrs->isValid() )
     {
       qDebug() << "Failed to create transformation object";
       return false;
@@ -151,7 +150,7 @@ QVector<VEC3D> OBB::cornersSceneCoords( SceneContext &ctx )
   QVector<VEC3D> c = corners();
   for ( int i = 0; i < c.count(); ++i )
   {
-    c[i] = reproject( ctx.ecefToTargetCrs, c[i] ) - ctx.sceneOriginTargetCrs;
+    c[i] = reproject( *ctx.ecefToTargetCrs, c[i] ) - ctx.sceneOriginTargetCrs;
   }
   return c;
 }

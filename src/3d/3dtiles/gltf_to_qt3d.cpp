@@ -14,6 +14,7 @@
 
 #include "tiny_gltf.h"
 
+#include "qgscoordinatetransform.h"
 
 
 #if 0
@@ -195,20 +196,17 @@ Qt3DRender::QAttribute *reprojectPositions( tinygltf::Model &model, int accessor
   void *ptr = b.data.data() + bv.byteOffset + accessor.byteOffset;
   float *fptr = ( float * )ptr;
 
-  QVector<PJ_COORD> coords( accessor.count );
+  QVector<double> vx( accessor.count ), vy( accessor.count ), vz( accessor.count );
   for ( int i = 0; i < accessor.count; ++i )
   {
-    PJ_COORD &coord = coords[i];
-
     // flip coordinates from GLTF y-up to ECEF z-up
-    coord.v[0] = offsetEcef.x + fptr[i * 3 + 0];
-    coord.v[1] = offsetEcef.y - fptr[i * 3 + 2];
-    coord.v[2] = offsetEcef.z + fptr[i * 3 + 1];
-    coord.v[3] = 0;
+    vx[i] = offsetEcef.x + fptr[i * 3 + 0];
+    vy[i] = offsetEcef.y - fptr[i * 3 + 2];
+    vz[i] = offsetEcef.z + fptr[i * 3 + 1];
   }
 
-  int proj_res = proj_trans_array( ctx.ecefToTargetCrs, PJ_FWD, accessor.count, coords.data() );
-  Q_ASSERT( proj_res == 0 ); // TODO: proper error handling
+  // TODO: handle exceptions
+  ctx.ecefToTargetCrs->transformCoords( accessor.count, vx.data(), vy.data(), vz.data() );
 
   QByteArray byteArray;
   byteArray.resize( accessor.count * 4 * 3 );
@@ -217,15 +215,14 @@ Qt3DRender::QAttribute *reprojectPositions( tinygltf::Model &model, int accessor
   VEC3D sceneOrigin = ctx.sceneOriginTargetCrs;
   for ( int i = 0; i < accessor.count; ++i )
   {
-    PJ_COORD &coord = coords[i];
-    coord.v[0] -= sceneOrigin.x;
-    coord.v[1] -= sceneOrigin.y;
-    coord.v[2] -= sceneOrigin.z;
+    double x = vx[i] - sceneOrigin.x;
+    double y = vy[i] - sceneOrigin.y;
+    double z = vz[i] - sceneOrigin.z;
 
     // QGIS 3D uses base plane (X,-Z) with Y up - so flip the coordinates
-    out[i * 3 + 0] = coord.v[0];
-    out[i * 3 + 1] = coord.v[2];
-    out[i * 3 + 2] = -coord.v[1];
+    out[i * 3 + 0] = x;
+    out[i * 3 + 1] = z;
+    out[i * 3 + 2] = -y;
   }
 
   Qt3DRender::QBuffer *buffer = new Qt3DRender::QBuffer();
@@ -389,7 +386,7 @@ Qt3DCore::QEntity *entityForNode( tinygltf::Model &model, int nodeIndex, SceneCo
     {
       if ( ctx.ecefToTargetCrs )
       {
-        ctx.sceneOriginTargetCrs = reproject( ctx.ecefToTargetCrs, ctx.tileTranslationEcef );
+        ctx.sceneOriginTargetCrs = reproject( *ctx.ecefToTargetCrs, ctx.tileTranslationEcef );
       }
       else
       {

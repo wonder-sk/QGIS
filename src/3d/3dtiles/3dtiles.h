@@ -5,9 +5,9 @@
 #include <QMatrix4x4>
 #include <QDebug>
 
-#include <proj.h>
-
 #include <Qt3DCore>
+
+#include "qgscoordinatetransform.h"
 
 #include "nlohmann/json.hpp"
 using json = nlohmann::json;
@@ -26,7 +26,7 @@ struct VEC3D
 
 QDebug operator<<( QDebug debug, const VEC3D &v );
 
-VEC3D reproject( PJ *transform, VEC3D v, bool inv = false );
+VEC3D reproject( QgsCoordinateTransform &ct, VEC3D v, bool inv = false );
 
 struct SceneContext;
 
@@ -115,6 +115,7 @@ struct Tile
   QString contentUri;
 };
 
+
 struct SceneContext
 {
   // tile-specific
@@ -122,7 +123,7 @@ struct SceneContext
 
   // scene-wide stuff
   VEC3D sceneOriginTargetCrs;  // can be specified optionally (or uses first tile's center)
-  PJ *ecefToTargetCrs;
+  std::unique_ptr<QgsCoordinateTransform> ecefToTargetCrs;
 
   QString targetCrs;  // EPSG code - or if empty will use ECEF
   QStringList files;   // what files to load
@@ -133,7 +134,6 @@ struct SceneContext
   QString relativePathBase;  // how to resolve URIs starting with "./"
 
   // internal
-  PJ_CONTEXT *projContext = nullptr;
   Tile rootTile;
 };
 
