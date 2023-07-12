@@ -7,10 +7,8 @@
 
 #define TINYGLTF_IMPLEMENTATION       // should be just in one file
 #define TINYGLTF_ENABLE_DRACO         // needs libdraco-dev
+#define TINYGLTF_NO_STB_IMAGE         // we use QImage-based reading of images
 #define TINYGLTF_NO_STB_IMAGE_WRITE   // we don't need writing of images
-
-// stb_image - in ubuntu's libstb-dev
-#define STB_IMAGE_IMPLEMENTATION
 
 #include "tiny_gltf.h"
 
@@ -297,7 +295,7 @@ class TinyGltfTextureImage : public Qt3DRender::QAbstractTextureImage
       QByteArray imageBytes( ( const char * )image.image.data(), image.image.size() );
       imgDataPtr->setData( imageBytes, 4 );
       imgDataPtr->setFormat( QOpenGLTexture::RGBA8_UNorm );
-      imgDataPtr->setPixelFormat( QOpenGLTexture::RGBA );
+      imgDataPtr->setPixelFormat( QOpenGLTexture::BGRA ); // when using tinygltf with STB_image, pixel format is QOpenGLTexture::RGBA
       imgDataPtr->setPixelType( QOpenGLTexture::UInt8 );
       imgDataPtr->setTarget( QOpenGLTexture::Target2D );
     }
@@ -543,6 +541,45 @@ static Qt3DCore::QEntity *gltfModelToEntity( tinygltf::Model &model, CoordsConte
   return gltfEntity;
 }
 
+// tinygltf can use STB_image to read images (e.g. JPG), but let's rather use
+// QImage to avoid another dependency (although STB_image is just one big header file)
+static bool loadImageDataWithQImage(
+  tinygltf::Image *image, const int image_idx, std::string *err,
+  std::string *warn, int req_width, int req_height,
+  const unsigned char *bytes, int size, void *user_data )
+{
+  //qDebug() << "LoadImageData" << image << image_idx << req_width << req_height << bytes << size << user_data;
+
+  Q_ASSERT( req_width == 0 && req_height == 0 );  // unsure why we would request a particular width/height
+
+  ( void )warn;
+  ( void )user_data;
+
+  QImage img;
+  if ( !img.loadFromData( bytes, size ) )
+  {
+    if ( err )
+    {
+      ( *err ) +=
+        "Unknown image format. QImage cannot decode image data for image[" +
+        std::to_string( image_idx ) + "] name = \"" + image->name + "\".\n";
+    }
+    return false;
+  }
+
+  Q_ASSERT( img.format() == QImage::Format_RGB32 );
+
+  image->width = img.width();
+  image->height = img.height();
+  image->component = 4;
+  image->bits = 8;
+  image->pixel_type = TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE;
+
+  image->image.resize( static_cast<size_t>( image->width * image->height * image->component ) * size_t( image->bits / 8 ) );
+  std::copy( img.constBits(), img.constBits() + image->width * image->height * image->component * ( image->bits / 8 ), image->image.begin() );
+
+  return true;
+}
 
 Qt3DCore::QEntity *gltfMemoryToEntity( const QByteArray &data, CoordsContext &coordsCtx )
 {
@@ -552,6 +589,8 @@ Qt3DCore::QEntity *gltfMemoryToEntity( const QByteArray &data, CoordsContext &co
   TinyGLTF loader;
   std::string err;
   std::string warn;
+
+  loader.SetImageLoader( loadImageDataWithQImage, nullptr );
 
   bool res = loader.LoadBinaryFromMemory( &model, &err, &warn,
                                           ( const unsigned char * )data.constData(), data.size(), "", REQUIRE_VERSION );
@@ -573,6 +612,8 @@ Qt3DCore::QEntity *gltfToEntity( QString path, CoordsContext &coordsCtx )
   TinyGLTF loader;
   std::string err;
   std::string warn;
+
+  loader.SetImageLoader( loadImageDataWithQImage, nullptr );
 
   QByteArray pathBA = path.toUtf8();
   const char *filename = pathBA.constData();
