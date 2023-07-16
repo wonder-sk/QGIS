@@ -199,6 +199,10 @@ Qt3DRender::QAttribute *reprojectPositions( tinygltf::Model &model, int accessor
     vx[i] = tileTranslationEcef.x() + fptr[i * 3 + 0];
     vy[i] = tileTranslationEcef.y() - fptr[i * 3 + 2];
     vz[i] = tileTranslationEcef.z() + fptr[i * 3 + 1];
+
+    // apply also transform of the node
+    QgsVector3D v = coordsCtx.nodeTransform.map( QgsVector3D( vx[i], vy[i], vz[i] ) );
+    vx[i] = v.x(); vy[i] = v.y(); vz[i] = v.z();
   }
 
   // TODO: handle exceptions
@@ -567,7 +571,7 @@ static bool loadImageDataWithQImage(
     return false;
   }
 
-  Q_ASSERT( img.format() == QImage::Format_RGB32 );
+  Q_ASSERT( img.format() == QImage::Format_RGB32 || img.format() == QImage::Format_ARGB32 );
 
   image->width = img.width();
   image->height = img.height();

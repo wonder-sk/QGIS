@@ -83,6 +83,8 @@ Qt3DCore::QEntity *QgsTiledMeshChunkLoader::createEntity( Qt3DCore::QEntity *par
     uri = mData.relativePathBase + uri;
   }
 
+  mData.coords.nodeTransform = mT.transform;
+
   qDebug() << "loading: " << uri;
 
   // TODO: according to the spec we should actually find out from the content what is the file type
@@ -183,11 +185,19 @@ QVector<QgsChunkNode *> QgsTiledMeshChunkLoaderFactory::createChildren( QgsChunk
         QgsPointXY c = mMap.extent().center();
         QgsVector3D cEcef = reproject( *mData.coords.ecefToTargetCrs, QgsVector3D( c.x(), c.y(), 0 ), true );
         QgsVector3D ecef2 = cEcef - ch.obb.center;
-        QVector3D aaa = ch.obb.rot.inverted().map( ecef2.toVector3D() );
+
+        // this is an approximate check anyway, no need for double precision matrix/vector
+        QMatrix4x4 rot(
+          ch.obb.half[0], ch.obb.half[3], ch.obb.half[6], 0,
+          ch.obb.half[1], ch.obb.half[4], ch.obb.half[7], 0,
+          ch.obb.half[2], ch.obb.half[5], ch.obb.half[8], 0,
+          0, 0, 0, 1 );
+        QVector3D aaa = rot.inverted().map( ecef2.toVector3D() );
+
         if ( aaa.x() > 1 || aaa.y() > 1 || aaa.z() > 1 ||
              aaa.x() < -1 || aaa.y() < -1 || aaa.z() < -1 )
         {
-          qDebug() << "skipping child" << chId.text();
+          qDebug() << "skipping child because our scene is not in it" << chId.text();
           continue;
         }
       }

@@ -10,6 +10,7 @@
 #include "qgsbox3d.h"
 #include "qgscoordinatetransform.h"
 #include "qgsvector3d.h"
+#include "qgsmatrix4x4.h"
 
 #include "nlohmann/json.hpp"
 using json = nlohmann::json;
@@ -21,6 +22,7 @@ QgsVector3D reproject( QgsCoordinateTransform &ct, QgsVector3D v, bool inv = fal
 struct CoordsContext
 {
   QgsVector3D sceneOriginTargetCrs;
+  QgsMatrix4x4 nodeTransform;
   std::unique_ptr<QgsCoordinateTransform> ecefToTargetCrs;    // ecef in EPSG:4978
   std::unique_ptr<QgsCoordinateTransform> regionToTargetCrs;  // region bounding volumes are in EPSG:4979
 };
@@ -29,17 +31,14 @@ struct CoordsContext
 struct OBB
 {
   QgsVector3D center;
-  QMatrix4x4 rot;  // ideally should be double matrix
+  double half[9];
 
   static OBB fromJson( json &box )
   {
     OBB obb;
     obb.center = QgsVector3D( box[0].get<double>(), box[1].get<double>(), box[2].get<double>() );
-    obb.rot = QMatrix4x4(
-                box[3].get<double>(), box[6].get<double>(), box[9].get<double>(), 0,
-                box[4].get<double>(), box[7].get<double>(), box[10].get<double>(), 0,
-                box[5].get<double>(), box[8].get<double>(), box[11].get<double>(), 0,
-                0, 0, 0, 1 );
+    for ( int i = 0; i < 9; ++i )
+      obb.half[i] = box[i + 3].get<double>();
 
     return obb;
   }
@@ -48,41 +47,35 @@ struct OBB
   {
     qDebug() << "OBB";
     qDebug() << center.x() << center.y() << center.z();
-    //qDebug() << rot;
   }
 
-  QVector3D boxSize()
+  QgsVector3D boxSize()
   {
-    QVector3D axis1 = rot.mapVector( QVector3D( -1, -1, -1 ) ) - rot.mapVector( QVector3D( 1, -1, -1 ) );
-    QVector3D axis2 = rot.mapVector( QVector3D( -1, -1, -1 ) ) - rot.mapVector( QVector3D( -1, 1, -1 ) );
-    QVector3D axis3 = rot.mapVector( QVector3D( -1, -1, -1 ) ) - rot.mapVector( QVector3D( -1, 1, -1 ) );
-    qDebug() << "OBB size" << axis1.length() << axis2.length() << axis3.length();
-    return QVector3D( axis1.length(), axis2.length(), axis3.length() );
+    QgsVector3D axis1( half[0], half[1], half[2] );
+    QgsVector3D axis2( half[3], half[4], half[5] );
+    QgsVector3D axis3( half[6], half[7], half[8] );
+    return QgsVector3D( 2 * axis1.length(), 2 * axis2.length(), 2 * axis3.length() );
   }
 
   bool isTooBig()
   {
-    QVector3D size = boxSize();
+    QgsVector3D size = boxSize();
     return size.x() > 1e5 || size.y() > 1e5 || size.z() > 1e5;
   }
 
   QVector<QgsVector3D> corners()
   {
-    const QVector<QVector3D> unit =
+    QgsVector3D a1( half[0], half[1], half[2] ), a0( -half[0], -half[1], -half[2] );
+    QgsVector3D b1( half[3], half[4], half[5] ), b0( -half[3], -half[4], -half[5] );
+    QgsVector3D c1( half[6], half[7], half[8] ), c0( -half[6], -half[7], -half[8] );
+    QVector<QgsVector3D> cor( 8 );
+    for ( int i = 0; i < 8; ++i )
     {
-      QVector3D( -1, -1, -1 ),
-      QVector3D( +1, -1, -1 ),
-      QVector3D( -1, +1, -1 ),
-      QVector3D( +1, +1, -1 ),
-      QVector3D( -1, -1, +1 ),
-      QVector3D( +1, -1, +1 ),
-      QVector3D( -1, +1, +1 ),
-      QVector3D( +1, +1, +1 ),
-    };
-    QVector<QgsVector3D> cor( unit.count() );
-    for ( int i = 0; i < unit.count(); ++i )
-    {
-      cor[i] = center + rot.mapVector( unit[i] );
+      QgsVector3D aa = ( i % 2 == 0 ? a1 : a0 );
+      QgsVector3D bb = ( i % 4 == 0 ? b1 : b0 );
+      QgsVector3D cc = ( i / 4 == 0 ? c1 : c0 );
+      QgsVector3D q = aa + bb + cc;
+      cor[i] = center + q;
     }
 
     return cor;
@@ -93,6 +86,25 @@ struct OBB
 
   // in map coordinates minus origin
   QgsBox3d aabb( CoordsContext &ctx );
+
+  // transform this OBB using a 4x4 transformation matrix
+  void transform( const QgsMatrix4x4 &tr )
+  {
+    const double *ptr = tr.constData();
+    QgsMatrix4x4 mm( ptr[0], ptr[4], ptr[8], 0,
+                     ptr[1], ptr[5], ptr[9], 0,
+                     ptr[2], ptr[6], ptr[10], 0,
+                     0, 0, 0, 1 );
+
+    QgsVector3D col1 = mm.map( QgsVector3D( half[0], half[1], half[2] ) );
+    QgsVector3D col2 = mm.map( QgsVector3D( half[3], half[4], half[5] ) );
+    QgsVector3D col3 = mm.map( QgsVector3D( half[6], half[7], half[8] ) );
+    half[0] = col1.x(); half[1] = col1.y(); half[2] = col1.z();
+    half[3] = col2.x(); half[4] = col2.y(); half[5] = col2.z();
+    half[6] = col3.x(); half[7] = col3.y(); half[8] = col3.z();
+
+    center = tr.map( center );
+  }
 
 };
 
@@ -108,6 +120,10 @@ struct Tile
   QgsBox3d region;  // actual axis-aligned bounding box in our target CRS minus scene origin
 
   bool additiveStrategy = false;
+
+  // TODO: it would be best to have this as optional (only having instance when node
+  // actually contains transform) and node's total transform would be created as needed
+  QgsMatrix4x4 transform;  // transform from local coords to ECEF. Includes transform from parent nodes
 
   double geomError;
   QVector<Tile> children;

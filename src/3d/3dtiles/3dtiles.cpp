@@ -4,7 +4,7 @@
 #include <fstream>
 
 
-Tile parseTile( json &tileJson, QString relativePathBase, CoordsContext &coordsCtx )
+Tile parseTile( json &tileJson, QString relativePathBase, CoordsContext &coordsCtx, QgsMatrix4x4 trParent )
 {
   json bounds = tileJson["boundingVolume"];
 
@@ -49,6 +49,24 @@ Tile parseTile( json &tileJson, QString relativePathBase, CoordsContext &coordsC
     t.additiveStrategy = true;
   }
 
+  if ( tileJson.contains( "transform" ) )
+  {
+    json transform = tileJson["transform"];
+    double *ptr = t.transform.data();
+    for ( int i = 0; i < 16; ++i )
+      ptr[i] = transform[i].get<double>();
+  }
+
+  t.transform = trParent * t.transform;
+
+  // update bounds based on transform
+  // TODO: also apply to sphere bounds
+  if ( t.boundsType == Tile::BoundsOBB && !t.transform.isIdentity() )
+  {
+    t.obb.transform( t.transform );
+    t.region = t.obb.aabb( coordsCtx );
+  }
+
   t.geomError = tileJson["geometricError"];
   if ( tileJson.contains( "content" ) )
   {
@@ -82,7 +100,7 @@ Tile parseTile( json &tileJson, QString relativePathBase, CoordsContext &coordsC
   {
     for ( json &childTileJson : tileJson["children"] )
     {
-      t.children.append( parseTile( childTileJson, relativePathBase, coordsCtx ) );
+      t.children.append( parseTile( childTileJson, relativePathBase, coordsCtx, t.transform ) );
     }
   }
   //t.obb.dump();
@@ -98,7 +116,7 @@ Tile loadTilesetJson( QString tilesetPath, QString relativePathBase, CoordsConte
   std::ifstream f( tilesetPath.toStdString() );
   json data = json::parse( f );
 
-  Tile rootTile = parseTile( data["root"], relativePathBase, coordsCtx );
+  Tile rootTile = parseTile( data["root"], relativePathBase, coordsCtx, QgsMatrix4x4() );
 
   return rootTile;
 }
