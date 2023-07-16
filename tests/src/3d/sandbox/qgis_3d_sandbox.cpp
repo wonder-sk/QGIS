@@ -28,8 +28,10 @@
 #include "qgs3dmapscene.h"
 #include "qgs3dmapsettings.h"
 #include "qgs3dmapcanvas.h"
+#include "qgsprojectelevationproperties.h"
 #include "qgsprojectviewsettings.h"
 #include "qgspointlightsettings.h"
+#include "qgsterrainprovider.h"
 #include "qgstiledmeshlayer.h"
 #include "qgstiledmeshlayer3drenderer.h"
 
@@ -67,6 +69,7 @@ void initCanvas3D( Qgs3DMapCanvas *canvas )
   QgsFlatTerrainGenerator *flatTerrain = new QgsFlatTerrainGenerator;
   flatTerrain->setCrs( map->crs() );
   map->setTerrainGenerator( flatTerrain );
+  map->setTerrainElevationOffset( QgsProject::instance()->elevationProperties()->terrainProvider()->offset() );
 
   QgsPointLightSettings defaultPointLight;
   defaultPointLight.setPosition( QgsVector3D( 0, 1000, 0 ) );
