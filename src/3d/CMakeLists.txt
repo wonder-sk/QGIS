@@ -106,6 +106,7 @@ set(QGIS_3D_SRCS
   3dtiles/qgstiledmeshchunkloader.cpp
   3dtiles/qgstiledmeshlayer3drenderer.cpp
   3dtiles/utils.cpp
+  3dtiles/qgsmatrix4x4.cpp
 )
 
 set(QGIS_3D_HDRS
