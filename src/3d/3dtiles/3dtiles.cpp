@@ -3,6 +3,14 @@
 
 #include <fstream>
 
+#include "qgscesiumutils.h"
+
+static bool isOBBTooBig( const QgsOrientedBox3D &box )
+{
+  QgsVector3D size = boxSize( box );
+  return size.x() > 1e5 || size.y() > 1e5 || size.z() > 1e5;
+}
+
 
 Tile parseTile( json &tileJson, QString relativePathBase, CoordsContext &coordsCtx, QgsMatrix4x4 trParent )
 {
@@ -13,13 +21,12 @@ Tile parseTile( json &tileJson, QString relativePathBase, CoordsContext &coordsC
   if ( bounds.contains( "box" ) )
   {
     t.boundsType = Tile::BoundsOBB;
-    OBB obb = OBB::fromJson( bounds["box"] );
-    t.obb = obb;
-    t.largeBounds = t.geomError > 1e6 || obb.isTooBig();
+    t.obb = QgsCesiumUtils::parseBox( bounds["box"] );
+    t.largeBounds = t.geomError > 1e6 || isOBBTooBig( t.obb );
     if ( !t.largeBounds )
     {
       // convert to axis aligned bbox
-      t.region = obb.aabb( coordsCtx );
+      t.region = ecefOBBtoAABB( t.obb, coordsCtx );
     }
   }
   else if ( bounds.contains( "region" ) )
@@ -34,10 +41,6 @@ Tile parseTile( json &tileJson, QString relativePathBase, CoordsContext &coordsC
     double maxHeight = region[5].get<double>();
     coordsCtx.regionToTargetCrs->transformInPlace( west, south, minHeight );
     coordsCtx.regionToTargetCrs->transformInPlace( east, north, maxHeight );
-    west -= coordsCtx.sceneOriginTargetCrs.x();
-    east -= coordsCtx.sceneOriginTargetCrs.x();
-    north -= coordsCtx.sceneOriginTargetCrs.y();
-    south -= coordsCtx.sceneOriginTargetCrs.y();
     //qDebug() << "region" << west << east << "|" << south << north << "|" << minHeight << maxHeight;
     t.region = QgsBox3d( west, south, minHeight, east, north, maxHeight );
   }
@@ -63,8 +66,8 @@ Tile parseTile( json &tileJson, QString relativePathBase, CoordsContext &coordsC
   // TODO: also apply to sphere bounds
   if ( t.boundsType == Tile::BoundsOBB && !t.transform.isIdentity() )
   {
-    t.obb.transform( t.transform );
-    t.region = t.obb.aabb( coordsCtx );
+    t.obb = transformedOBB( t.obb, t.transform );
+    t.region = ecefOBBtoAABB( t.obb, coordsCtx );
   }
 
   t.geomError = tileJson["geometricError"];
@@ -103,7 +106,6 @@ Tile parseTile( json &tileJson, QString relativePathBase, CoordsContext &coordsC
       t.children.append( parseTile( childTileJson, relativePathBase, coordsCtx, t.transform ) );
     }
   }
-  //t.obb.dump();
   //qDebug() << "content:" << t.contentUri;
   //qDebug() << "children:" << t.children.count();
 
@@ -161,28 +163,3 @@ Qt3DCore::QEntity *loadAllSceneTiles( const Tile &rootTile, int tilesetLevel, QS
   return tilesEntity;
 }
 
-QVector<QgsVector3D> OBB::cornersSceneCoords( CoordsContext &coordsCtx )
-{
-  QVector<QgsVector3D> c = corners();
-  for ( int i = 0; i < c.count(); ++i )
-  {
-    c[i] = reproject( *coordsCtx.ecefToTargetCrs, c[i] ) - coordsCtx.sceneOriginTargetCrs;
-  }
-  return c;
-}
-
-QgsBox3d OBB::aabb( CoordsContext &coordsCtx )
-{
-  const QVector<QgsVector3D> c = cornersSceneCoords( coordsCtx );
-  QgsVector3D v0 = c[0], v1 = c[0];
-  for ( const QgsVector3D &v : c )
-  {
-    if ( v.x() < v0.x() ) v0.setX( v.x() );
-    if ( v.y() < v0.y() ) v0.setY( v.y() );
-    if ( v.z() < v0.z() ) v0.setZ( v.z() );
-    if ( v.x() > v1.x() ) v1.setX( v.x() );
-    if ( v.y() > v1.y() ) v1.setY( v.y() );
-    if ( v.z() > v1.z() ) v1.setZ( v.z() );
-  }
-  return QgsBox3d( v0.x(), v0.y(), v0.z(), v1.x(), v1.y(), v1.z() );
-}

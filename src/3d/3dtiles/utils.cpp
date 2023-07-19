@@ -7,8 +7,43 @@
 #include "qgsvector3d.h"
 
 
-Qt3DCore::QEntity *lineEntity( const QByteArray &vertexBufferData, int vertexCount, QColor color )
+// TODO: move to qgis_3d utils ?
+Qt3DCore::QEntity *entityForOBB( const QVector<QgsOrientedBox3D> &obbs, CoordsContext &coordsCtx )
 {
+  int vertexCount = 24 * obbs.count();
+
+  QByteArray vertexBufferData;
+  vertexBufferData.resize( vertexCount * 3 * sizeof( float ) );
+  float *rawVertexArray = reinterpret_cast<float *>( vertexBufferData.data() );
+
+  int indexes[] =
+  {
+    0, 1, 2, 3, 0, 2, 1, 3,   // bottom rect
+    4, 5, 6, 7, 4, 6, 5, 7,   // top rect
+    0, 4, 1, 5, 2, 6, 3, 7,   // sides
+  };
+  int idx = 0;
+
+  for ( int k = 0; k < obbs.count(); ++k )
+  {
+    const QgsOrientedBox3D &obb = obbs[k];
+
+    // reproject corners from ECEF to planar CRS
+    QVector<QgsVector3D> corners = obb.corners();
+    for ( int i = 0; i < corners.count(); ++i )
+    {
+      corners[i] = coordsCtx.ecefToTargetCrs->transform( corners[i] ) - coordsCtx.sceneOriginTargetCrs;
+    }
+
+    for ( int i = 0; i < 24; ++i )
+    {
+      QgsVector3D &v = corners[indexes[i]];
+      rawVertexArray[idx++] = v.x();
+      rawVertexArray[idx++] = v.z();
+      rawVertexArray[idx++] = -v.y();
+    }
+  }
+
   Qt3DRender::QBuffer *vertexBuffer = new Qt3DRender::QBuffer;
   vertexBuffer->setData( vertexBufferData );
 
@@ -31,84 +66,10 @@ Qt3DCore::QEntity *lineEntity( const QByteArray &vertexBufferData, int vertexCou
   r->setVertexCount( vertexCount );
 
   Qt3DExtras::QPhongMaterial *bboxesMaterial = new Qt3DExtras::QPhongMaterial;
-  bboxesMaterial->setAmbient( color );
+  bboxesMaterial->setAmbient( Qt::green );
 
   Qt3DCore::QEntity *e = new Qt3DCore::QEntity;
   e->addComponent( r );
   e->addComponent( bboxesMaterial );
   return e;
-}
-
-Qt3DCore::QEntity *entityForOBB( OBB &obb, CoordsContext &coordsCtx )
-{
-  QVector<QgsVector3D> corners = obb.cornersSceneCoords( coordsCtx );
-
-  int indexes[] =
-  {
-    0, 1, 2, 3, 0, 2, 1, 3,   // bottom rect
-    4, 5, 6, 7, 4, 6, 5, 7,   // top rect
-    0, 4, 1, 5, 2, 6, 3, 7,   // sides
-  };
-  int vertexCount = 24;
-
-  QByteArray vertexBufferData;
-  vertexBufferData.resize( vertexCount * 3 * sizeof( float ) );
-  float *rawVertexArray = reinterpret_cast<float *>( vertexBufferData.data() );
-  int idx = 0;
-
-  for ( int i = 0; i < vertexCount; ++i )
-  {
-    QgsVector3D &v = corners[indexes[i]];
-    rawVertexArray[idx++] = v.x();
-    rawVertexArray[idx++] = v.z();
-    rawVertexArray[idx++] = -v.y();
-  }
-
-  return lineEntity( vertexBufferData, vertexCount, Qt::red );
-}
-
-Qt3DCore::QEntity *entityForAABB( OBB &obb, CoordsContext &coordsCtx )
-{
-  QgsBox3d aabb = obb.aabb( coordsCtx );
-  QVector<QgsVector3D> corners
-  {
-    QgsVector3D( aabb.xMinimum(), aabb.yMinimum(), aabb.zMinimum() ),
-    QgsVector3D( aabb.xMaximum(), aabb.yMinimum(), aabb.zMinimum() ),
-    QgsVector3D( aabb.xMinimum(), aabb.yMaximum(), aabb.zMinimum() ),
-    QgsVector3D( aabb.xMaximum(), aabb.yMaximum(), aabb.zMinimum() ),
-    QgsVector3D( aabb.xMinimum(), aabb.yMinimum(), aabb.zMaximum() ),
-    QgsVector3D( aabb.xMaximum(), aabb.yMinimum(), aabb.zMaximum() ),
-    QgsVector3D( aabb.xMinimum(), aabb.yMaximum(), aabb.zMaximum() ),
-    QgsVector3D( aabb.xMaximum(), aabb.yMaximum(), aabb.zMaximum() ),
-  };
-
-  int indexes[] =
-  {
-    0, 1, 2, 3, 0, 2, 1, 3,   // bottom rect
-    4, 5, 6, 7, 4, 6, 5, 7,   // top rect
-    0, 4, 1, 5, 2, 6, 3, 7,   // sides
-  };
-  int vertexCount = 24;
-
-  QByteArray vertexBufferData;
-  vertexBufferData.resize( vertexCount * 3 * sizeof( float ) );
-  float *rawVertexArray = reinterpret_cast<float *>( vertexBufferData.data() );
-  int idx = 0;
-
-  for ( int i = 0; i < vertexCount; ++i )
-  {
-    QgsVector3D &v = corners[indexes[i]];
-    rawVertexArray[idx++] = v.x();
-    rawVertexArray[idx++] = v.z();
-    rawVertexArray[idx++] = -v.y();
-  }
-
-  return lineEntity( vertexBufferData, vertexCount, Qt::blue );
-}
-
-
-QgsVector3D reproject( QgsCoordinateTransform &ct, QgsVector3D v, bool inv )
-{
-  QgsVector3D t = ct.transform( v, inv ? Qgis::TransformDirection::Reverse : Qgis::TransformDirection::Forward );
-  return t;
 }

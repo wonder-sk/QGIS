@@ -16,8 +16,10 @@ size_t qHash( const QgsChunkNodeId &n )
 }
 
 // also flips to world coords
-QgsAABB aabbConvert( const QgsBox3d &b )
+QgsAABB aabbConvert( const QgsBox3d &b0, CoordsContext &coordsCtx )
 {
+  QgsBox3d b = b0;
+  moveBox3D( b, -coordsCtx.sceneOriginTargetCrs.x(), -coordsCtx.sceneOriginTargetCrs.y(), -coordsCtx.sceneOriginTargetCrs.z() );
   return QgsAABB( b.xMinimum(), b.zMinimum(), -b.yMaximum(), b.xMaximum(), b.zMaximum(), -b.yMinimum() );
 }
 
@@ -158,7 +160,7 @@ QgsChunkNode *QgsTiledMeshChunkLoaderFactory::createRootNode() const
   }
   else
   {
-    QgsAABB aabb = aabbConvert( mData.rootTile.region );
+    QgsAABB aabb = aabbConvert( mData.rootTile.region, mData.coords );
     qDebug() << "root" << nodeId.text() << aabb.toString() << mData.rootTile.geomError;
     return new QgsChunkNode( nodeId, aabb, mData.rootTile.geomError );
   }
@@ -183,14 +185,16 @@ QVector<QgsChunkNode *> QgsTiledMeshChunkLoaderFactory::createChildren( QgsChunk
       if ( ch.boundsType == Tile::BoundsOBB )
       {
         QgsPointXY c = mMap.extent().center();
-        QgsVector3D cEcef = reproject( *mData.coords.ecefToTargetCrs, QgsVector3D( c.x(), c.y(), 0 ), true );
-        QgsVector3D ecef2 = cEcef - ch.obb.center;
+        QgsVector3D cEcef = mData.coords.ecefToTargetCrs->transform( QgsVector3D( c.x(), c.y(), 0 ), Qgis::TransformDirection::Reverse );
+        QgsVector3D ecef2 = cEcef - QgsVector3D( ch.obb.centerX(), ch.obb.centerY(), ch.obb.centerZ() );
+
+        const double *half = ch.obb.halfAxes();
 
         // this is an approximate check anyway, no need for double precision matrix/vector
         QMatrix4x4 rot(
-          ch.obb.half[0], ch.obb.half[3], ch.obb.half[6], 0,
-          ch.obb.half[1], ch.obb.half[4], ch.obb.half[7], 0,
-          ch.obb.half[2], ch.obb.half[5], ch.obb.half[8], 0,
+          half[0], half[3], half[6], 0,
+          half[1], half[4], half[7], 0,
+          half[2], half[5], half[8], 0,
           0, 0, 0, 1 );
         QVector3D aaa = rot.inverted().map( ecef2.toVector3D() );
 
@@ -217,7 +221,7 @@ QVector<QgsChunkNode *> QgsTiledMeshChunkLoaderFactory::createChildren( QgsChunk
     }
     else
     {
-      QgsAABB aabb( aabbConvert( ch.region ) );
+      QgsAABB aabb( aabbConvert( ch.region, mData.coords ) );
       qDebug() << "child" << chId.text() << aabb.toString() << ch.geomError;
       nChild = new QgsChunkNode( chId, aabb, ch.geomError );
     }

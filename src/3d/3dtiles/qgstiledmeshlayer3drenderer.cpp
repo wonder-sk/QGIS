@@ -8,6 +8,14 @@
 #include "qgs3dmapsettings.h"
 #include "3dtiles.h"
 
+void collectOrientedBoxes( const Tile &t, QVector<QgsOrientedBox3D> &boxes )
+{
+  if ( t.boundsType == Tile::BoundsOBB )
+    boxes.append( t.obb );
+  for ( const Tile &child : t.children )
+    collectOrientedBoxes( child, boxes );
+}
+
 
 QgsTiledMeshLayer3DRenderer::QgsTiledMeshLayer3DRenderer( QString uri )
   : mUri( uri )
@@ -48,6 +56,12 @@ Qt3DCore::QEntity *QgsTiledMeshLayer3DRenderer::createEntity( const Qgs3DMapSett
     if ( mData.rootTile.additiveStrategy )
       e->setUsingAdditiveStrategy( true );
     e->setShowBoundingBoxes( true );
+
+    QVector<QgsOrientedBox3D> obbs;
+    collectOrientedBoxes( mData.rootTile, obbs );
+    Qt3DCore::QEntity *obbEntity = entityForOBB( obbs, mData.coords );
+    obbEntity->setParent( e );
+
     return e;
   }
   else
