@@ -7,7 +7,7 @@
 
 static bool isOBBTooBig( const QgsOrientedBox3D &box )
 {
-  QgsVector3D size = boxSize( box );
+  QgsVector3D size = box.size();
   return size.x() > 1e5 || size.y() > 1e5 || size.z() > 1e5;
 }
 
@@ -26,7 +26,7 @@ Tile parseTile( json &tileJson, QString relativePathBase, CoordsContext &coordsC
     if ( !t.largeBounds )
     {
       // convert to axis aligned bbox
-      t.region = ecefOBBtoAABB( t.obb, coordsCtx );
+      t.region = t.obb.reprojectedExtent( *coordsCtx.ecefToTargetCrs );
     }
   }
   else if ( bounds.contains( "region" ) )
@@ -66,8 +66,8 @@ Tile parseTile( json &tileJson, QString relativePathBase, CoordsContext &coordsC
   // TODO: also apply to sphere bounds
   if ( t.boundsType == Tile::BoundsOBB && !t.transform.isIdentity() )
   {
-    t.obb = transformedOBB( t.obb, t.transform );
-    t.region = ecefOBBtoAABB( t.obb, coordsCtx );
+    t.obb = t.obb.transformed( t.transform );
+    t.region = t.obb.reprojectedExtent( *coordsCtx.ecefToTargetCrs );
   }
 
   t.geomError = tileJson["geometricError"];
