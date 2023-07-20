@@ -42,7 +42,7 @@ Tile parseTile( json &tileJson, QString relativePathBase, CoordsContext &coordsC
     coordsCtx.regionToTargetCrs->transformInPlace( west, south, minHeight );
     coordsCtx.regionToTargetCrs->transformInPlace( east, north, maxHeight );
     //qDebug() << "region" << west << east << "|" << south << north << "|" << minHeight << maxHeight;
-    t.region = QgsBox3d( west, south, minHeight, east, north, maxHeight );
+    t.region = QgsBox3D( west, south, minHeight, east, north, maxHeight );
   }
 
   // TODO: 3d tiles support any combination of replacement/additive strategies

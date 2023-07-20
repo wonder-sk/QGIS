@@ -16,9 +16,9 @@ size_t qHash( const QgsChunkNodeId &n )
 }
 
 // converts box from map coordinates to world coords (also flips [X,Y] to [X,-Z])
-QgsAABB aabbConvert( const QgsBox3d &b0, CoordsContext &coordsCtx )
+QgsAABB aabbConvert( const QgsBox3D &b0, CoordsContext &coordsCtx )
 {
-  QgsBox3d b = b0 - coordsCtx.sceneOriginTargetCrs;
+  QgsBox3D b = b0 - coordsCtx.sceneOriginTargetCrs;
   return QgsAABB( b.xMinimum(), b.zMinimum(), -b.yMaximum(), b.xMaximum(), b.zMaximum(), -b.yMinimum() );
 }
 

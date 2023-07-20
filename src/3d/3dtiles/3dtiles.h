@@ -34,7 +34,7 @@ struct Tile
 
   bool largeBounds = false;   // indicates that the bounds are huge and should be considered as coverting the whole scene
 
-  QgsBox3d region;  // actual axis-aligned bounding box in our target CRS
+  QgsBox3D region;  // actual axis-aligned bounding box in our target CRS
 
   bool additiveStrategy = false;
 
