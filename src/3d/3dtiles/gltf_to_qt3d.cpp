@@ -20,49 +20,6 @@ static bool loadImageDataWithQImage(
   const unsigned char *bytes, int size, void *user_data );
 
 
-#if 0
-// 3D tiles when in ECEF often come with rotation on the globe.
-// As we're using XZ plane with Y going up, we need to transform the coordinates
-// using a rotation matrix.
-QMatrix4x4 rotationMatrixEcefToYUp( QVector3D ecef )
-{
-  QVector3D normal = ecef.normalized();
-  qDebug() << "normal" << normal;
-
-  QVector3D up( 0, 1, 0 );
-  QVector3D zAxis = normal;  // "forward"
-  QVector3D xAxis = QVector3D::crossProduct( up, zAxis ).normalized(); // "right"
-  QVector3D yAxis = QVector3D::crossProduct( zAxis, xAxis ).normalized(); // "up"
-  qDebug() << "x" << xAxis;
-  qDebug() << "y" << yAxis;
-  qDebug() << "z" << zAxis;
-  QMatrix3x3 m;
-  float *ptr = m.data();
-  // 1st column
-  ptr[0] = xAxis.x();  ptr[1] = xAxis.y();  ptr[2] = xAxis.z();
-  // 2nd column
-  ptr[3] = yAxis.x();  ptr[4] = yAxis.y();  ptr[5] = yAxis.z();
-  // 3rd column
-  ptr[6] = zAxis.x();  ptr[7] = zAxis.y();  ptr[8] = zAxis.z();
-
-  qDebug() << m;
-
-  QMatrix4x4 m4;
-  float *ptr4 = m4.data();
-  // column 1
-  ptr4[0] = ptr[0];  ptr4[1] = ptr[1];  ptr4[2] = ptr[2];  ptr4[3] = 0;
-  // column 2
-  ptr4[4] = ptr[3];  ptr4[5] = ptr[4];  ptr4[6] = ptr[5];  ptr4[7] = 0;
-  // column 3
-  ptr4[8] = ptr[6];  ptr4[9] = ptr[7];  ptr4[10] = ptr[8];  ptr4[11] = 0;
-  // column 4
-  ptr4[12] = 0;  ptr4[13] = 0;  ptr4[14] = 0;  ptr4[15] = 1;
-
-  return m4.transposed();
-}
-#endif
-
-
 Qt3DRender::QAttribute::VertexBaseType accessorComponentTypeToVertexBaseType( int componentType )
 {
   switch ( componentType )
@@ -158,6 +115,8 @@ Qt3DRender::QAttribute *accessorToAttribute( tinygltf::Model &model, int accesso
 
   return attribute;
 }
+
+#if 0
 #include <QFile>
 void dumpAttributeData( tinygltf::Model &model, int accessorIndex, double offsetX = 0, double offsetY = 0, double offsetZ = 0 )
 {
@@ -181,7 +140,7 @@ void dumpAttributeData( tinygltf::Model &model, int accessorIndex, double offset
     f.write( s.toUtf8() );
   }
 }
-
+#endif
 
 Qt3DRender::QAttribute *reprojectPositions( tinygltf::Model &model, int accessorIndex, CoordsContext &coordsCtx, const QgsVector3D &tileTranslationEcef, QMatrix4x4 *matrix )
 {
@@ -197,7 +156,7 @@ Qt3DRender::QAttribute *reprojectPositions( tinygltf::Model &model, int accessor
   char *ptr = ( char * ) b.data.data() + bv.byteOffset + accessor.byteOffset;
 
   QVector<double> vx( accessor.count ), vy( accessor.count ), vz( accessor.count );
-  for ( int i = 0; i < accessor.count; ++i )
+  for ( int i = 0; i < ( int )accessor.count; ++i )
   {
     float *fptr = ( float * )ptr;
     QVector3D vOrig( fptr[0], fptr[1], fptr[2] );
@@ -226,7 +185,7 @@ Qt3DRender::QAttribute *reprojectPositions( tinygltf::Model &model, int accessor
   float *out = ( float * )byteArray.data();
 
   QgsVector3D sceneOrigin = coordsCtx.sceneOriginTargetCrs;
-  for ( int i = 0; i < accessor.count; ++i )
+  for ( int i = 0; i < ( int )accessor.count; ++i )
   {
     double x = vx[i] - sceneOrigin.x();
     double y = vy[i] - sceneOrigin.y();
@@ -260,7 +219,6 @@ Qt3DRender::QAttribute *reprojectPositions( tinygltf::Model &model, int accessor
 
   return attribute;
 }
-
 
 
 class TinyGltfTextureImageDataGenerator : public Qt3DRender::QTextureImageDataGenerator
@@ -473,12 +431,7 @@ Qt3DCore::QEntity *entityForNode( tinygltf::Model &model, int nodeIndex, CoordsC
       Q_ASSERT( posIt != primitive.attributes.end() );
       int positionAccessorIndex = posIt->second;
 
-      Qt3DRender::QAttribute *positionAttribute;
-      if ( coordsCtx.ecefToTargetCrs )
-        positionAttribute = reprojectPositions( model, positionAccessorIndex, coordsCtx, tileTranslationEcef, matrix.get() );
-      else
-        positionAttribute = accessorToAttribute( model, positionAccessorIndex );
-
+      Qt3DRender::QAttribute *positionAttribute = reprojectPositions( model, positionAccessorIndex, coordsCtx, tileTranslationEcef, matrix.get() );
       positionAttribute->setName( Qt3DRender::QAttribute::defaultPositionAttributeName() );
       geom->addAttribute( positionAttribute );
 
@@ -534,36 +487,6 @@ Qt3DCore::QEntity *entityForNode( tinygltf::Model &model, int nodeIndex, CoordsC
 }
 
 
-
-QMatrix4x4 tileToSceneTransform( QVector3D sceneOriginECEF, QVector3D tileRootTranslation )
-{
-
-  QMatrix4x4 translateECEFtoSCENE;
-  translateECEFtoSCENE.translate( -sceneOriginECEF );
-
-  QMatrix4x4 rotateYUPtoZUP(
-    1.0, 0.0,  0.0, 0.0,
-    0.0, 0.0, -1.0, 0.0,
-    0.0, 1.0,  0.0, 0.0,
-    0.0, 0.0,  0.0, 1.0
-  );
-
-  QMatrix4x4 translateTILEtoECEF;
-  translateTILEtoECEF.translate( tileRootTranslation ); //QVector3D(-2693952.395885576, 3854579.3104452426, 4297074.539132856));
-  qDebug() << "tile to ecef";
-  qDebug() << translateTILEtoECEF;
-  qDebug() << translateTILEtoECEF.map( QVector3D( 500, 0, 0 ) );
-
-  QMatrix4x4 combined = rotateYUPtoZUP * translateTILEtoECEF;
-  qDebug() << combined.map( QVector3D( 500, 0, 0 ) );
-
-  QMatrix4x4 combinedFull = translateECEFtoSCENE * combined;
-  qDebug() << combinedFull.map( QVector3D( 500, 0, 0 ) );
-
-  return combinedFull;
-}
-
-
 static Qt3DCore::QEntity *gltfModelToEntity( tinygltf::Model &model, CoordsContext &coordsCtx, QString baseUri )
 {
   using namespace tinygltf;
@@ -579,25 +502,6 @@ static Qt3DCore::QEntity *gltfModelToEntity( tinygltf::Model &model, CoordsConte
 
   QgsVector3D tileTranslationEcef;
   Qt3DCore::QEntity *gltfEntity = entityForNode( model, scene.nodes[0], coordsCtx, tileTranslationEcef, baseUri );
-
-  if ( !coordsCtx.ecefToTargetCrs )
-  {
-    // only apply offset + rotation when not projecting to a plane
-
-    QMatrix4x4 rotateYUPtoZUP(
-      1.0, 0.0,  0.0, 0.0,
-      0.0, 0.0, -1.0, 0.0,
-      0.0, 1.0,  0.0, 0.0,
-      0.0, 0.0,  0.0, 1.0
-    );
-    QgsVector3D b = coordsCtx.sceneOriginTargetCrs, a = tileTranslationEcef;
-    rotateYUPtoZUP.setColumn( 3, QVector4D( a.x() - b.x(), a.y() - b.y(), a.z() - b.z(), 1 ) );
-
-    Qt3DCore::QTransform *tileTransform = new Qt3DCore::QTransform;
-    tileTransform->setMatrix( rotateYUPtoZUP );
-    gltfEntity->addComponent( tileTransform );
-  }
-
   return gltfEntity;
 }
 
