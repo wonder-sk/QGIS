@@ -87,15 +87,20 @@ Tile parseTile( json &tileJson, QString relativePathBase, CoordsContext &coordsC
       {
         t.contentUri.replace( "./", relativePathBase );
       }
+      else if ( !t.contentUri.startsWith( "/" ) )
+      {
+        // also treat as relative
+        t.contentUri = relativePathBase + "/" + t.contentUri;
+      }
 
       if ( QFile::exists( t.contentUri ) )
       {
         qDebug() << "loading extra tileset:" << t.contentUri;
-        t = loadTilesetJson( t.contentUri, relativePathBase, coordsCtx );
+        t = loadTilesetJson( t.contentUri, relativePathBase, coordsCtx, t.transform );
       }
       else
       {
-        //qDebug() << "skipped missing tileset:" << t.contentUri;
+        qDebug() << "skipped missing tileset:" << t.contentUri;
       }
     }
   }
@@ -113,12 +118,12 @@ Tile parseTile( json &tileJson, QString relativePathBase, CoordsContext &coordsC
 }
 
 
-Tile loadTilesetJson( QString tilesetPath, QString relativePathBase, CoordsContext &coordsCtx )
+Tile loadTilesetJson( QString tilesetPath, QString relativePathBase, CoordsContext &coordsCtx, QgsMatrix4x4 trParent )
 {
   std::ifstream f( tilesetPath.toStdString() );
   json data = json::parse( f );
 
-  Tile rootTile = parseTile( data["root"], relativePathBase, coordsCtx, QgsMatrix4x4() );
+  Tile rootTile = parseTile( data["root"], relativePathBase, coordsCtx, trParent );
 
   return rootTile;
 }

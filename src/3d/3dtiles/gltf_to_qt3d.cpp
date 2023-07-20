@@ -14,6 +14,11 @@
 
 #include "qgscoordinatetransform.h"
 
+static bool loadImageDataWithQImage(
+  tinygltf::Image *image, const int image_idx, std::string *err,
+  std::string *warn, int req_width, int req_height,
+  const unsigned char *bytes, int size, void *user_data );
+
 
 #if 0
 // 3D tiles when in ECEF often come with rotation on the globe.
@@ -178,7 +183,7 @@ void dumpAttributeData( tinygltf::Model &model, int accessorIndex, double offset
 }
 
 
-Qt3DRender::QAttribute *reprojectPositions( tinygltf::Model &model, int accessorIndex, CoordsContext &coordsCtx, const QgsVector3D &tileTranslationEcef )
+Qt3DRender::QAttribute *reprojectPositions( tinygltf::Model &model, int accessorIndex, CoordsContext &coordsCtx, const QgsVector3D &tileTranslationEcef, QMatrix4x4 *matrix )
 {
   tinygltf::Accessor &accessor = model.accessors[accessorIndex];
   tinygltf::BufferView &bv = model.bufferViews[accessor.bufferView];
@@ -189,20 +194,28 @@ Qt3DRender::QAttribute *reprojectPositions( tinygltf::Model &model, int accessor
   // TODO: expecting only float VEC3 here
   Q_ASSERT( accessor.componentType == 5126 && accessor.type == TINYGLTF_TYPE_VEC3 );
 
-  void *ptr = b.data.data() + bv.byteOffset + accessor.byteOffset;
-  float *fptr = ( float * )ptr;
+  char *ptr = ( char * ) b.data.data() + bv.byteOffset + accessor.byteOffset;
 
   QVector<double> vx( accessor.count ), vy( accessor.count ), vz( accessor.count );
   for ( int i = 0; i < accessor.count; ++i )
   {
-    // flip coordinates from GLTF y-up to ECEF z-up
-    vx[i] = tileTranslationEcef.x() + fptr[i * 3 + 0];
-    vy[i] = tileTranslationEcef.y() - fptr[i * 3 + 2];
-    vz[i] = tileTranslationEcef.z() + fptr[i * 3 + 1];
+    float *fptr = ( float * )ptr;
+    QVector3D vOrig( fptr[0], fptr[1], fptr[2] );
+
+    if ( matrix )
+      vOrig = matrix->map( vOrig );
+
+    // go from y-up to z-up according to 3D Tiles spec
+    QVector3D vFlip( vOrig.x(), -vOrig.z(), vOrig.y() );
 
     // apply also transform of the node
-    QgsVector3D v = coordsCtx.nodeTransform.map( QgsVector3D( vx[i], vy[i], vz[i] ) );
+    QgsVector3D v = coordsCtx.nodeTransform.map( QgsVector3D( vFlip ) + tileTranslationEcef );
     vx[i] = v.x(); vy[i] = v.y(); vz[i] = v.z();
+
+    if ( bv.byteStride )
+      ptr += bv.byteStride;
+    else
+      ptr += 3 * sizeof( float );
   }
 
   // TODO: handle exceptions
@@ -313,7 +326,7 @@ class TinyGltfTextureImage : public Qt3DRender::QAbstractTextureImage
 };
 
 
-Qt3DRender::QMaterial *materialToMaterial( tinygltf::Model &model, int materialIndex )
+Qt3DRender::QMaterial *materialToMaterial( tinygltf::Model &model, int materialIndex, QString baseUri )
 {
   tinygltf::Material &material = model.materials[materialIndex];
   tinygltf::PbrMetallicRoughness &pbr = material.pbrMetallicRoughness;
@@ -323,6 +336,39 @@ Qt3DRender::QMaterial *materialToMaterial( tinygltf::Model &model, int materialI
     tinygltf::Texture &tex = model.textures[pbr.baseColorTexture.index];
 
     tinygltf::Image &img = model.images[tex.source];
+
+    if ( !img.uri.empty() )
+    {
+      // TODO: if using a remote URI, we may need to do a network request
+      QString imgUri = QString::fromStdString( img.uri );
+      if ( imgUri.startsWith( "./" ) )
+        imgUri = QFileInfo( baseUri ).absolutePath() + "/" + imgUri;
+
+      qDebug() << "loading texture image " << imgUri;
+      QFile f( imgUri );
+      if ( f.open( QIODevice::ReadOnly ) )
+      {
+        QByteArray ba = f.readAll();
+        if ( !loadImageDataWithQImage( &img, -1, nullptr, nullptr, 0, 0, ( const unsigned char * ) ba.constData(), ba.size(), nullptr ) )
+        {
+          qDebug() << "failed to load image " << imgUri;
+        }
+      }
+      else
+      {
+        qDebug() << "can't open image " << imgUri;
+      }
+    }
+
+    if ( img.image.empty() )
+    {
+      // TODO: what else to do?
+      Qt3DExtras::QMetalRoughMaterial *pbrMaterial = new Qt3DExtras::QMetalRoughMaterial;
+      pbrMaterial->setMetalness( pbr.metallicFactor ); // [0..1] or texture
+      pbrMaterial->setRoughness( pbr.roughnessFactor );
+      pbrMaterial->setBaseColor( QColor::fromRgbF( pbr.baseColorFactor[0], pbr.baseColorFactor[1], pbr.baseColorFactor[2], pbr.baseColorFactor[3] ) );
+      return pbrMaterial;
+    }
 
     TinyGltfTextureImage *textureImage = new TinyGltfTextureImage( img );
 
@@ -372,7 +418,7 @@ Qt3DRender::QMaterial *materialToMaterial( tinygltf::Model &model, int materialI
   return pbrMaterial;
 }
 
-Qt3DCore::QEntity *entityForNode( tinygltf::Model &model, int nodeIndex, CoordsContext &coordsCtx, QgsVector3D &tileTranslationEcef )
+Qt3DCore::QEntity *entityForNode( tinygltf::Model &model, int nodeIndex, CoordsContext &coordsCtx, QgsVector3D &tileTranslationEcef, QString baseUri )
 {
   tinygltf::Node &node = model.nodes[nodeIndex];
 
@@ -396,6 +442,15 @@ Qt3DCore::QEntity *entityForNode( tinygltf::Model &model, int nodeIndex, CoordsC
     //qDebug()<< "TR" << rootTranslation;
   }
 
+  std::unique_ptr<QMatrix4x4> matrix;
+  if ( !node.matrix.empty() )
+  {
+    matrix.reset( new QMatrix4x4 );
+    float *mdata = matrix->data();
+    for ( int i = 0; i < 16; ++i )
+      mdata[i] = node.matrix[i];
+  }
+
   //        Qt3DCore::QTransform *tr = new Qt3DCore::QTransform;
   //        tr->setTranslation(QVector3D(node.translation[0], node.translation[1], node.translation[2]));
   //        e->addComponent(tr);
@@ -412,9 +467,6 @@ Qt3DCore::QEntity *entityForNode( tinygltf::Model &model, int nodeIndex, CoordsC
       // see https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#_mesh_primitive_mode
       Q_ASSERT( primitive.mode == 4 ); // triangles
 
-      // TODO: assuming always indexed
-      Q_ASSERT( primitive.indices != -1 );
-
       Qt3DRender::QGeometry *geom = new Qt3DRender::QGeometry;
 
       auto posIt = primitive.attributes.find( "POSITION" );
@@ -423,7 +475,7 @@ Qt3DCore::QEntity *entityForNode( tinygltf::Model &model, int nodeIndex, CoordsC
 
       Qt3DRender::QAttribute *positionAttribute;
       if ( coordsCtx.ecefToTargetCrs )
-        positionAttribute = reprojectPositions( model, positionAccessorIndex, coordsCtx, tileTranslationEcef );
+        positionAttribute = reprojectPositions( model, positionAccessorIndex, coordsCtx, tileTranslationEcef, matrix.get() );
       else
         positionAttribute = accessorToAttribute( model, positionAccessorIndex );
 
@@ -452,15 +504,19 @@ Qt3DCore::QEntity *entityForNode( tinygltf::Model &model, int nodeIndex, CoordsC
 
       // TODO: other attrs?
 
-      Qt3DRender::QAttribute *indexAttribute = accessorToAttribute( model, primitive.indices );
-      geom->addAttribute( indexAttribute );
+      Qt3DRender::QAttribute *indexAttribute = nullptr;
+      if ( primitive.indices != -1 )
+      {
+        indexAttribute = accessorToAttribute( model, primitive.indices );
+        geom->addAttribute( indexAttribute );
+      }
 
       Qt3DRender::QGeometryRenderer *geomRenderer = new Qt3DRender::QGeometryRenderer;
       geomRenderer->setGeometry( geom );
       geomRenderer->setPrimitiveType( Qt3DRender::QGeometryRenderer::Triangles ); // looks like same values as "mode"
-      geomRenderer->setVertexCount( indexAttribute->count() );
+      geomRenderer->setVertexCount( indexAttribute ? indexAttribute->count() : model.accessors[positionAccessorIndex].count );
 
-      Qt3DRender::QMaterial *material = materialToMaterial( model, primitive.material );
+      Qt3DRender::QMaterial *material = materialToMaterial( model, primitive.material, baseUri );
 
       Qt3DCore::QEntity *primitiveEntity = new Qt3DCore::QEntity( e );
       primitiveEntity->addComponent( geomRenderer );
@@ -508,7 +564,7 @@ QMatrix4x4 tileToSceneTransform( QVector3D sceneOriginECEF, QVector3D tileRootTr
 }
 
 
-static Qt3DCore::QEntity *gltfModelToEntity( tinygltf::Model &model, CoordsContext &coordsCtx )
+static Qt3DCore::QEntity *gltfModelToEntity( tinygltf::Model &model, CoordsContext &coordsCtx, QString baseUri )
 {
   using namespace tinygltf;
 
@@ -522,7 +578,7 @@ static Qt3DCore::QEntity *gltfModelToEntity( tinygltf::Model &model, CoordsConte
   Scene &scene = model.scenes[model.defaultScene];
 
   QgsVector3D tileTranslationEcef;
-  Qt3DCore::QEntity *gltfEntity = entityForNode( model, scene.nodes[0], coordsCtx, tileTranslationEcef );
+  Qt3DCore::QEntity *gltfEntity = entityForNode( model, scene.nodes[0], coordsCtx, tileTranslationEcef, baseUri );
 
   if ( !coordsCtx.ecefToTargetCrs )
   {
@@ -552,7 +608,7 @@ static bool loadImageDataWithQImage(
   std::string *warn, int req_width, int req_height,
   const unsigned char *bytes, int size, void *user_data )
 {
-  //qDebug() << "LoadImageData" << image << image_idx << req_width << req_height << bytes << size << user_data;
+  qDebug() << "LoadImageData" << image << image_idx << req_width << req_height << bytes << size << user_data;
 
   Q_ASSERT( req_width == 0 && req_height == 0 );  // unsure why we would request a particular width/height
 
@@ -585,7 +641,7 @@ static bool loadImageDataWithQImage(
   return true;
 }
 
-Qt3DCore::QEntity *gltfMemoryToEntity( const QByteArray &data, CoordsContext &coordsCtx )
+Qt3DCore::QEntity *gltfMemoryToEntity( const QByteArray &data, CoordsContext &coordsCtx, QString baseUri )
 {
   using namespace tinygltf;
 
@@ -604,7 +660,7 @@ Qt3DCore::QEntity *gltfMemoryToEntity( const QByteArray &data, CoordsContext &co
     return new Qt3DCore::QEntity;  // TODO
   }
 
-  return gltfModelToEntity( model, coordsCtx );
+  return gltfModelToEntity( model, coordsCtx, baseUri );
 }
 
 
@@ -639,5 +695,5 @@ Qt3DCore::QEntity *gltfToEntity( QString path, CoordsContext &coordsCtx )
     return new Qt3DCore::QEntity;  // TODO
   }
 
-  return gltfModelToEntity( model, coordsCtx );
+  return gltfModelToEntity( model, coordsCtx, path );
 }

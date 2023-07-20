@@ -115,7 +115,7 @@ Qt3DCore::QEntity *QgsTiledMeshChunkLoader::createEntity( Qt3DCore::QEntity *par
     }
 
     QByteArray baGLTF = file.readAll();
-    Qt3DCore::QEntity *gltfEntity = gltfMemoryToEntity( baGLTF, mData.coords );
+    Qt3DCore::QEntity *gltfEntity = gltfMemoryToEntity( baGLTF, mData.coords, uri );
     gltfEntity->setParent( parent );
     return gltfEntity;
   }

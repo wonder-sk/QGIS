@@ -47,7 +47,7 @@ Qt3DCore::QEntity *QgsTiledMeshLayer3DRenderer::createEntity( const Qgs3DMapSett
     }
   }
 
-  mData.rootTile = loadTilesetJson( mUri, mData.relativePathBase, mData.coords );
+  mData.rootTile = loadTilesetJson( mUri, mData.relativePathBase, mData.coords, QgsMatrix4x4() );
 
   if ( tilesetLevel < 0 )
   {
