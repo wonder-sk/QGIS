@@ -376,30 +376,11 @@ Qt3DRender::QMaterial *materialToMaterial( tinygltf::Model &model, int materialI
   return pbrMaterial;
 }
 
-Qt3DCore::QEntity *entityForNode( tinygltf::Model &model, int nodeIndex, CoordsContext &coordsCtx, QgsVector3D &tileTranslationEcef, QString baseUri )
+
+static std::unique_ptr<QMatrix4x4> readNodeTransform( tinygltf::Node &node )
 {
-  tinygltf::Node &node = model.nodes[nodeIndex];
-
-  Qt3DCore::QEntity *e = new Qt3DCore::QEntity;
-
-  if ( node.translation.size() )
-  {
-    tileTranslationEcef = QgsVector3D( node.translation[0], -node.translation[2], node.translation[1] );
-
-    //rootTranslation = QVector3D(node.translation[0], node.translation[1], node.translation[2]);
-    //qDebug()<< "TR" << rootTranslation;
-  }
-
-  if ( model.extensions.find( "CESIUM_RTC" ) != model.extensions.end() )
-  {
-    tinygltf::Value v = model.extensions["CESIUM_RTC"];
-    Q_ASSERT( v.IsObject() && v.Has( "center" ) );
-    tinygltf::Value center = v.Get( "center" );
-    Q_ASSERT( center.IsArray() && center.Size() == 3 );
-    tileTranslationEcef = QgsVector3D( center.Get( 0 ).GetNumberAsDouble(), center.Get( 1 ).GetNumberAsDouble(), center.Get( 2 ).GetNumberAsDouble() );
-    //qDebug()<< "TR" << rootTranslation;
-  }
-
+  // read node's transform: either specified with 4x4 "matrix" element
+  // -OR- given by "translation", "rotation" and "scale" elements (to be combined as T * R * S)
   std::unique_ptr<QMatrix4x4> matrix;
   if ( !node.matrix.empty() )
   {
@@ -408,19 +389,57 @@ Qt3DCore::QEntity *entityForNode( tinygltf::Model &model, int nodeIndex, CoordsC
     for ( int i = 0; i < 16; ++i )
       mdata[i] = node.matrix[i];
   }
+  else if ( node.translation.size() || node.rotation.size() || node.scale.size() )
+  {
+    matrix.reset( new QMatrix4x4 );
+    if ( node.scale.size() )
+    {
+      matrix->scale( node.scale[0], node.scale[1], node.scale[2] );
+    }
+    if ( node.rotation.size() )
+    {
+      matrix->rotate( QQuaternion( node.rotation[3], node.rotation[0], node.rotation[1], node.rotation[2] ) );
+    }
+    if ( node.translation.size() )
+    {
+      matrix->translate( node.translation[0], node.translation[1], node.translation[2] );
+    }
+  }
+  return matrix;
+}
 
-  //        Qt3DCore::QTransform *tr = new Qt3DCore::QTransform;
-  //        tr->setTranslation(QVector3D(node.translation[0], node.translation[1], node.translation[2]));
-  //        e->addComponent(tr);
 
-  // TODO: load transform (node: rotation, scale, translation  --or-- matrix)
 
+Qt3DCore::QEntity *entityForNode( tinygltf::Model &model, int nodeIndex, CoordsContext &coordsCtx, QgsVector3D &tileTranslationEcef, QString baseUri, QMatrix4x4 parentTransform )
+{
+  tinygltf::Node &node = model.nodes[nodeIndex];
+
+  Qt3DCore::QEntity *e = new Qt3DCore::QEntity;
+
+  // transform
+  std::unique_ptr<QMatrix4x4> matrix = readNodeTransform( node );
+  if ( !parentTransform.isIdentity() )
+  {
+    if ( matrix )
+      *matrix = parentTransform * *matrix;
+    else
+    {
+      matrix.reset( new QMatrix4x4( parentTransform ) );
+    }
+  }
+
+  // mesh
   if ( node.mesh >= 0 )
   {
     tinygltf::Mesh &mesh = model.meshes[node.mesh];
 
     for ( const tinygltf::Primitive &primitive : mesh.primitives )
     {
+      if ( primitive.mode != 4 )
+      {
+        qDebug() << "unsupported primitive " << primitive.mode;
+        continue;
+      }
       // TODO: support other primitive types
       // see https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#_mesh_primitive_mode
       Q_ASSERT( primitive.mode == 4 ); // triangles
@@ -435,7 +454,7 @@ Qt3DCore::QEntity *entityForNode( tinygltf::Model &model, int nodeIndex, CoordsC
       positionAttribute->setName( Qt3DRender::QAttribute::defaultPositionAttributeName() );
       geom->addAttribute( positionAttribute );
 
-      //dumpAttributeData(model, positionAccessorIndex, node.translation[0], -node.translation[2], node.translation[1]);
+      //dumpAttributeData(model, positionAccessorIndex, tileTranslationEcef.x(), tileTranslationEcef.y(), tileTranslationEcef.z() );
 
       auto normalIt = primitive.attributes.find( "NORMAL" );
       if ( normalIt != primitive.attributes.end() )
@@ -477,10 +496,14 @@ Qt3DCore::QEntity *entityForNode( tinygltf::Model &model, int nodeIndex, CoordsC
     }
   }
 
-  // TODO: recursively add children
+  // recursively add children
   if ( node.children.size() != 0 )
   {
-    qDebug() << "unsupported: root node has children: " << node.children.size();
+    for ( int childNodeIndex : node.children )
+    {
+      Qt3DCore::QEntity *eChild = entityForNode( model, childNodeIndex, coordsCtx, tileTranslationEcef, baseUri, matrix ? *matrix : QMatrix4x4() );
+      eChild->setParent( e );
+    }
   }
 
   return e;
@@ -501,7 +524,46 @@ static Qt3DCore::QEntity *gltfModelToEntity( tinygltf::Model &model, CoordsConte
   Scene &scene = model.scenes[model.defaultScene];
 
   QgsVector3D tileTranslationEcef;
-  Qt3DCore::QEntity *gltfEntity = entityForNode( model, scene.nodes[0], coordsCtx, tileTranslationEcef, baseUri );
+  if ( model.extensions.find( "CESIUM_RTC" ) != model.extensions.end() )
+  {
+    tinygltf::Value v = model.extensions["CESIUM_RTC"];
+    Q_ASSERT( v.IsObject() && v.Has( "center" ) );
+    tinygltf::Value center = v.Get( "center" );
+    Q_ASSERT( center.IsArray() && center.Size() == 3 );
+    tileTranslationEcef = QgsVector3D( center.Get( 0 ).GetNumberAsDouble(), center.Get( 1 ).GetNumberAsDouble(), center.Get( 2 ).GetNumberAsDouble() );
+    //qDebug()<< "TR" << rootTranslation;
+  }
+
+  if ( scene.nodes.size() == 0 )
+  {
+    qDebug() << "No nodes present in the gltf data!";
+    return nullptr;
+  }
+
+  if ( scene.nodes.size() > 1 )
+  {
+    // TODO: handle multiple root nodes
+    qDebug() << "GLTF scene contains multiple nodes: only loading the first one!";
+  }
+
+  int rootNodeIndex = scene.nodes[0];
+  tinygltf::Node &rootNode = model.nodes[rootNodeIndex];
+
+  if ( tileTranslationEcef.isNull() && rootNode.translation.size() )
+  {
+    QgsVector3D rootTranslation( rootNode.translation[0], rootNode.translation[1], rootNode.translation[2] );
+
+    // if root node of a GLTF contains translation by a large amount, let's handle it as the tile translation.
+    // this will ensure that we keep double precision rather than loosing precision when dealing with floats
+    if ( rootTranslation.length() > 1e6 )
+    {
+      // we flip Y/Z axes here because GLTF uses Y-up convention, while 3D Tiles use Z-up convention
+      tileTranslationEcef = QgsVector3D( rootTranslation.x(), -rootTranslation.z(), rootTranslation.y() );
+      rootNode.translation[0] = rootNode.translation[1] = rootNode.translation[2] = 0;
+    }
+  }
+
+  Qt3DCore::QEntity *gltfEntity = entityForNode( model, rootNodeIndex, coordsCtx, tileTranslationEcef, baseUri, QMatrix4x4() );
   return gltfEntity;
 }
 
