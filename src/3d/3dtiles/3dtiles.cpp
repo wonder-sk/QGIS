@@ -171,7 +171,9 @@ Qt3DCore::QEntity *loadAllSceneTiles( const Tile &rootTile, int tilesetLevel, QS
   const QStringList files = collectTilesAtLevel( rootTile, tilesetLevel, relativePathBase );
   for ( const QString &file : files )
   {
-    Qt3DCore::QEntity *gltfEntity = gltfToEntity( file, coordsCtx );
+    QFile f( file );
+    Q_ASSERT( f.open( QIODevice::ReadOnly ) );
+    Qt3DCore::QEntity *gltfEntity = gltfToEntity( f.readAll(), coordsCtx, file );
     gltfEntity->setParent( tilesEntity );
   }
 

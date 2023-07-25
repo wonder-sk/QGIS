@@ -51,8 +51,7 @@ struct Tile
 
 Tile loadTilesetJson( QString tilesetPath, QString relativePathBase, CoordsContext &coordsCtx, QgsMatrix4x4 trParent );
 
-Qt3DCore::QEntity *gltfToEntity( QString path, CoordsContext &coordsCtx );
-Qt3DCore::QEntity *gltfMemoryToEntity( const QByteArray &data, CoordsContext &coordsCtx, QString baseUri );
+Qt3DCore::QEntity *gltfToEntity( const QByteArray &data, CoordsContext &coordsCtx, QString baseUri );
 
 Qt3DCore::QEntity *loadAllSceneTiles( const Tile &rootTile, int tilesetLevel, QString relativePathBase, CoordsContext &coordsCtx );
 

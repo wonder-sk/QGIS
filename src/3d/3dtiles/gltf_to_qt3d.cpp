@@ -20,7 +20,7 @@ static bool loadImageDataWithQImage(
   const unsigned char *bytes, int size, void *user_data );
 
 
-Qt3DRender::QAttribute::VertexBaseType accessorComponentTypeToVertexBaseType( int componentType )
+Qt3DRender::QAttribute::VertexBaseType parseVertexBaseType( int componentType )
 {
   switch ( componentType )
   {
@@ -41,7 +41,7 @@ Qt3DRender::QAttribute::VertexBaseType accessorComponentTypeToVertexBaseType( in
   return Qt3DRender::QAttribute::UnsignedInt;
 }
 
-int accessorTypeToVertexSize( int type )
+int parseVertexSize( int type )
 {
   switch ( type )
   {
@@ -57,7 +57,7 @@ int accessorTypeToVertexSize( int type )
   return 1;
 }
 
-Qt3DRender::QAbstractTexture::Filter decodeTextureFilter( int filter )
+Qt3DRender::QAbstractTexture::Filter parseTextureFilter( int filter )
 {
   switch ( filter )
   {
@@ -72,7 +72,7 @@ Qt3DRender::QAbstractTexture::Filter decodeTextureFilter( int filter )
   return Qt3DRender::QTexture2D::Nearest;
 }
 
-Qt3DRender::QTextureWrapMode::WrapMode decodeTextureWrapMode( int wrapMode )
+Qt3DRender::QTextureWrapMode::WrapMode parseTextureWrapMode( int wrapMode )
 {
   switch ( wrapMode )
   {
@@ -85,7 +85,7 @@ Qt3DRender::QTextureWrapMode::WrapMode decodeTextureWrapMode( int wrapMode )
 }
 
 
-Qt3DRender::QAttribute *accessorToAttribute( tinygltf::Model &model, int accessorIndex )
+Qt3DRender::QAttribute *parseAttribute( tinygltf::Model &model, int accessorIndex )
 {
   tinygltf::Accessor &accessor = model.accessors[accessorIndex];
   tinygltf::BufferView &bv = model.bufferViews[accessor.bufferView];
@@ -110,8 +110,8 @@ Qt3DRender::QAttribute *accessorToAttribute( tinygltf::Model &model, int accesso
   attribute->setByteOffset( bv.byteOffset + accessor.byteOffset );
   attribute->setByteStride( bv.byteStride );  // could be zero, it seems that's fine (assuming packed)
   attribute->setCount( accessor.count );
-  attribute->setVertexBaseType( accessorComponentTypeToVertexBaseType( accessor.componentType ) );
-  attribute->setVertexSize( accessorTypeToVertexSize( accessor.type ) );
+  attribute->setVertexBaseType( parseVertexBaseType( accessor.componentType ) );
+  attribute->setVertexSize( parseVertexSize( accessor.type ) );
 
   return attribute;
 }
@@ -220,6 +220,8 @@ Qt3DRender::QAttribute *reprojectPositions( tinygltf::Model &model, int accessor
   return attribute;
 }
 
+// QAbstractFunctor marked as deprecated in 5.15, but undeprecated for Qt 6.0. TODO -- remove when we require 6.0
+Q_NOWARN_DEPRECATED_PUSH
 
 class TinyGltfTextureImageDataGenerator : public Qt3DRender::QTextureImageDataGenerator
 {
@@ -227,9 +229,7 @@ class TinyGltfTextureImageDataGenerator : public Qt3DRender::QTextureImageDataGe
     TinyGltfTextureImageDataGenerator( Qt3DRender::QTextureImageDataPtr imagePtr )
       : mImagePtr( imagePtr ) {}
 
-    //Q_NOWARN_DEPRECATED_PUSH
     QT3D_FUNCTOR( TinyGltfTextureImageDataGenerator )
-    //Q_NOWARN_DEPRECATED_POP
 
     Qt3DRender::QTextureImageDataPtr operator()() override
     {
@@ -244,6 +244,8 @@ class TinyGltfTextureImageDataGenerator : public Qt3DRender::QTextureImageDataGe
 
     Qt3DRender::QTextureImageDataPtr mImagePtr;
 };
+
+Q_NOWARN_DEPRECATED_POP
 
 class TinyGltfTextureImage : public Qt3DRender::QAbstractTextureImage
 {
@@ -284,7 +286,7 @@ class TinyGltfTextureImage : public Qt3DRender::QAbstractTextureImage
 };
 
 
-Qt3DRender::QMaterial *materialToMaterial( tinygltf::Model &model, int materialIndex, QString baseUri )
+static Qt3DRender::QMaterial *parseMaterial( tinygltf::Model &model, int materialIndex, QString baseUri )
 {
   tinygltf::Material &material = model.materials[materialIndex];
   tinygltf::PbrMetallicRoughness &pbr = material.pbrMetallicRoughness;
@@ -341,12 +343,12 @@ Qt3DRender::QMaterial *materialToMaterial( tinygltf::Model &model, int materialI
     {
       tinygltf::Sampler &sampler = model.samplers[tex.sampler];
       if ( sampler.minFilter >= 0 )
-        texture->setMinificationFilter( decodeTextureFilter( sampler.minFilter ) );
+        texture->setMinificationFilter( parseTextureFilter( sampler.minFilter ) );
       if ( sampler.magFilter >= 0 )
-        texture->setMagnificationFilter( decodeTextureFilter( sampler.magFilter ) );
+        texture->setMagnificationFilter( parseTextureFilter( sampler.magFilter ) );
       Qt3DRender::QTextureWrapMode wrapMode;
-      wrapMode.setX( decodeTextureWrapMode( sampler.wrapS ) );
-      wrapMode.setY( decodeTextureWrapMode( sampler.wrapT ) );
+      wrapMode.setX( parseTextureWrapMode( sampler.wrapS ) );
+      wrapMode.setY( parseTextureWrapMode( sampler.wrapT ) );
       texture->setWrapMode( wrapMode );
     }
     else
@@ -377,7 +379,7 @@ Qt3DRender::QMaterial *materialToMaterial( tinygltf::Model &model, int materialI
 }
 
 
-static std::unique_ptr<QMatrix4x4> readNodeTransform( tinygltf::Node &node )
+static std::unique_ptr<QMatrix4x4> parseNodeTransform( tinygltf::Node &node )
 {
   // read node's transform: either specified with 4x4 "matrix" element
   // -OR- given by "translation", "rotation" and "scale" elements (to be combined as T * R * S)
@@ -410,14 +412,14 @@ static std::unique_ptr<QMatrix4x4> readNodeTransform( tinygltf::Node &node )
 
 
 
-Qt3DCore::QEntity *entityForNode( tinygltf::Model &model, int nodeIndex, CoordsContext &coordsCtx, QgsVector3D &tileTranslationEcef, QString baseUri, QMatrix4x4 parentTransform )
+static Qt3DCore::QEntity *parseNode( tinygltf::Model &model, int nodeIndex, CoordsContext &coordsCtx, QgsVector3D &tileTranslationEcef, QString baseUri, QMatrix4x4 parentTransform )
 {
   tinygltf::Node &node = model.nodes[nodeIndex];
 
   Qt3DCore::QEntity *e = new Qt3DCore::QEntity;
 
   // transform
-  std::unique_ptr<QMatrix4x4> matrix = readNodeTransform( node );
+  std::unique_ptr<QMatrix4x4> matrix = parseNodeTransform( node );
   if ( !parentTransform.isIdentity() )
   {
     if ( matrix )
@@ -460,7 +462,7 @@ Qt3DCore::QEntity *entityForNode( tinygltf::Model &model, int nodeIndex, CoordsC
       if ( normalIt != primitive.attributes.end() )
       {
         int normalAccessorIndex = normalIt->second;
-        Qt3DRender::QAttribute *normalAttribute = accessorToAttribute( model, normalAccessorIndex );
+        Qt3DRender::QAttribute *normalAttribute = parseAttribute( model, normalAccessorIndex );
         normalAttribute->setName( Qt3DRender::QAttribute::defaultNormalAttributeName() );
         geom->addAttribute( normalAttribute );
       }
@@ -469,7 +471,7 @@ Qt3DCore::QEntity *entityForNode( tinygltf::Model &model, int nodeIndex, CoordsC
       if ( texIt != primitive.attributes.end() )
       {
         int texAccessorIndex = texIt->second;
-        Qt3DRender::QAttribute *texAttribute = accessorToAttribute( model, texAccessorIndex );
+        Qt3DRender::QAttribute *texAttribute = parseAttribute( model, texAccessorIndex );
         texAttribute->setName( Qt3DRender::QAttribute::defaultTextureCoordinateAttributeName() );
         geom->addAttribute( texAttribute );
       }
@@ -479,7 +481,7 @@ Qt3DCore::QEntity *entityForNode( tinygltf::Model &model, int nodeIndex, CoordsC
       Qt3DRender::QAttribute *indexAttribute = nullptr;
       if ( primitive.indices != -1 )
       {
-        indexAttribute = accessorToAttribute( model, primitive.indices );
+        indexAttribute = parseAttribute( model, primitive.indices );
         geom->addAttribute( indexAttribute );
       }
 
@@ -488,7 +490,7 @@ Qt3DCore::QEntity *entityForNode( tinygltf::Model &model, int nodeIndex, CoordsC
       geomRenderer->setPrimitiveType( Qt3DRender::QGeometryRenderer::Triangles ); // looks like same values as "mode"
       geomRenderer->setVertexCount( indexAttribute ? indexAttribute->count() : model.accessors[positionAccessorIndex].count );
 
-      Qt3DRender::QMaterial *material = materialToMaterial( model, primitive.material, baseUri );
+      Qt3DRender::QMaterial *material = parseMaterial( model, primitive.material, baseUri );
 
       Qt3DCore::QEntity *primitiveEntity = new Qt3DCore::QEntity( e );
       primitiveEntity->addComponent( geomRenderer );
@@ -501,7 +503,7 @@ Qt3DCore::QEntity *entityForNode( tinygltf::Model &model, int nodeIndex, CoordsC
   {
     for ( int childNodeIndex : node.children )
     {
-      Qt3DCore::QEntity *eChild = entityForNode( model, childNodeIndex, coordsCtx, tileTranslationEcef, baseUri, matrix ? *matrix : QMatrix4x4() );
+      Qt3DCore::QEntity *eChild = parseNode( model, childNodeIndex, coordsCtx, tileTranslationEcef, baseUri, matrix ? *matrix : QMatrix4x4() );
       eChild->setParent( e );
     }
   }
@@ -510,7 +512,7 @@ Qt3DCore::QEntity *entityForNode( tinygltf::Model &model, int nodeIndex, CoordsC
 }
 
 
-static Qt3DCore::QEntity *gltfModelToEntity( tinygltf::Model &model, CoordsContext &coordsCtx, QString baseUri )
+static Qt3DCore::QEntity *parseModel( tinygltf::Model &model, CoordsContext &coordsCtx, QString baseUri )
 {
   using namespace tinygltf;
 
@@ -563,7 +565,7 @@ static Qt3DCore::QEntity *gltfModelToEntity( tinygltf::Model &model, CoordsConte
     }
   }
 
-  Qt3DCore::QEntity *gltfEntity = entityForNode( model, rootNodeIndex, coordsCtx, tileTranslationEcef, baseUri, QMatrix4x4() );
+  Qt3DCore::QEntity *gltfEntity = parseNode( model, rootNodeIndex, coordsCtx, tileTranslationEcef, baseUri, QMatrix4x4() );
   return gltfEntity;
 }
 
@@ -607,7 +609,8 @@ static bool loadImageDataWithQImage(
   return true;
 }
 
-Qt3DCore::QEntity *gltfMemoryToEntity( const QByteArray &data, CoordsContext &coordsCtx, QString baseUri )
+
+Qt3DCore::QEntity *gltfToEntity( const QByteArray &data, CoordsContext &coordsCtx, QString baseUri )
 {
   using namespace tinygltf;
 
@@ -618,48 +621,24 @@ Qt3DCore::QEntity *gltfMemoryToEntity( const QByteArray &data, CoordsContext &co
 
   loader.SetImageLoader( loadImageDataWithQImage, nullptr );
 
-  bool res = loader.LoadBinaryFromMemory( &model, &err, &warn,
-                                          ( const unsigned char * )data.constData(), data.size(), "", REQUIRE_VERSION );
-  if ( !res )
-  {
-    qDebug() << "errors: " << err.data();
-    return new Qt3DCore::QEntity;  // TODO
-  }
-
-  return gltfModelToEntity( model, coordsCtx, baseUri );
-}
-
-
-Qt3DCore::QEntity *gltfToEntity( QString path, CoordsContext &coordsCtx )
-{
-  using namespace tinygltf;
-
-  Model model;
-  TinyGLTF loader;
-  std::string err;
-  std::string warn;
-
-  loader.SetImageLoader( loadImageDataWithQImage, nullptr );
-
-  QByteArray pathBA = path.toUtf8();
-  const char *filename = pathBA.constData();
+  std::string baseDir;  // TODO: may be useful to set it from baseUri
 
   bool res;
-  if ( QString( filename ).endsWith( ".glb" ) )
+  if ( data.startsWith( "glTF" ) )   // 4-byte magic value in binary GLTF
   {
-    //qDebug() << "GLB" << filename;
-    res = loader.LoadBinaryFromFile( &model, &err, &warn, filename );
+    res = loader.LoadBinaryFromMemory( &model, &err, &warn,
+                                       ( const unsigned char * )data.constData(), data.size(), baseDir );
   }
   else
   {
-    //qDebug() << "GLTF (ascii)" << filename;
-    res = loader.LoadASCIIFromFile( &model, &err, &warn, filename );
+    res = loader.LoadASCIIFromString( &model, &err, &warn,
+                                      data.constData(), data.size(), baseDir );
   }
   if ( !res )
   {
     qDebug() << "errors: " << err.data();
-    return new Qt3DCore::QEntity;  // TODO
+    return new Qt3DCore::QEntity;
   }
 
-  return gltfModelToEntity( model, coordsCtx, path );
+  return parseModel( model, coordsCtx, baseUri );
 }

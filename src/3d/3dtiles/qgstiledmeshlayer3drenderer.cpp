@@ -57,10 +57,10 @@ Qt3DCore::QEntity *QgsTiledMeshLayer3DRenderer::createEntity( const Qgs3DMapSett
       e->setUsingAdditiveStrategy( true );
     e->setShowBoundingBoxes( true );
 
-    QVector<QgsOrientedBox3D> obbs;
-    collectOrientedBoxes( mData.rootTile, obbs );
-    Qt3DCore::QEntity *obbEntity = entityForOBB( obbs, mData.coords );
-    obbEntity->setParent( e );
+//    QVector<QgsOrientedBox3D> obbs;
+//    collectOrientedBoxes( mData.rootTile, obbs );
+//    Qt3DCore::QEntity *obbEntity = entityForOBB( obbs, mData.coords );
+//    obbEntity->setParent( e );
 
     return e;
   }

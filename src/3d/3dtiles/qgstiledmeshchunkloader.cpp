@@ -115,7 +115,7 @@ Qt3DCore::QEntity *QgsTiledMeshChunkLoader::createEntity( Qt3DCore::QEntity *par
     }
 
     QByteArray baGLTF = file.readAll();
-    Qt3DCore::QEntity *gltfEntity = gltfMemoryToEntity( baGLTF, mData.coords, uri );
+    Qt3DCore::QEntity *gltfEntity = gltfToEntity( baGLTF, mData.coords, uri );
     gltfEntity->setParent( parent );
     return gltfEntity;
   }
@@ -123,7 +123,16 @@ Qt3DCore::QEntity *QgsTiledMeshChunkLoader::createEntity( Qt3DCore::QEntity *par
   {
     // we assume it is a GLTF content
 
-    Qt3DCore::QEntity *gltfEntity = gltfToEntity( uri, mData.coords );
+    QFile f( uri );
+    if ( !f.open( QIODevice::ReadOnly ) )
+    {
+      qDebug() << "unable to open GLTF file: " << uri;
+      return new Qt3DCore::QEntity( parent );
+    }
+
+    QByteArray data = f.readAll();
+
+    Qt3DCore::QEntity *gltfEntity = gltfToEntity( data, mData.coords, uri );
     gltfEntity->setParent( parent );
     return gltfEntity;
   }
