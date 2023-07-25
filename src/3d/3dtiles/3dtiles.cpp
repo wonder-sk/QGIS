@@ -121,7 +121,17 @@ Tile parseTile( json &tileJson, QString relativePathBase, CoordsContext &coordsC
 Tile loadTilesetJson( QString tilesetPath, QString relativePathBase, CoordsContext &coordsCtx, QgsMatrix4x4 trParent )
 {
   std::ifstream f( tilesetPath.toStdString() );
-  json data = json::parse( f );
+
+  json data;
+  try
+  {
+    data = json::parse( f );
+  }
+  catch ( json::parse_error &ex )
+  {
+    qDebug() << "Cannot parse json (error: " << ex.what() << ") from " << tilesetPath;
+    return Tile();
+  }
 
   Tile rootTile = parseTile( data["root"], relativePathBase, coordsCtx, trParent );
 
