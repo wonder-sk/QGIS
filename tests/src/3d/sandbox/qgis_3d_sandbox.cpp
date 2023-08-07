@@ -28,8 +28,12 @@
 #include "qgs3dmapscene.h"
 #include "qgs3dmapsettings.h"
 #include "qgs3dmapcanvas.h"
+#include "qgsprojectelevationproperties.h"
 #include "qgsprojectviewsettings.h"
 #include "qgspointlightsettings.h"
+#include "qgsterrainprovider.h"
+#include "qgstiledscenelayer.h"
+#include "qgstiledscenelayer3drenderer.h"
 
 #include <QScreen>
 
@@ -65,6 +69,7 @@ void initCanvas3D( Qgs3DMapCanvas *canvas )
   QgsFlatTerrainGenerator *flatTerrain = new QgsFlatTerrainGenerator;
   flatTerrain->setCrs( map->crs() );
   map->setTerrainGenerator( flatTerrain );
+  map->setTerrainElevationOffset( QgsProject::instance()->elevationProperties()->terrainProvider()->offset() );
 
   QgsPointLightSettings defaultPointLight;
   defaultPointLight.setPosition( QgsVector3D( 0, 1000, 0 ) );
@@ -126,6 +131,14 @@ int main( int argc, char *argv[] )
       r->setLayer( pcLayer );
       r->resolveReferences( *QgsProject::instance() );
       pcLayer->setRenderer3D( r );
+    }
+
+    if ( QgsTiledSceneLayer *tsLayer = qobject_cast<QgsTiledSceneLayer *>( layer ) )
+    {
+      QgsTiledSceneLayer3DRenderer *r = new QgsTiledSceneLayer3DRenderer();
+      r->setLayer( tsLayer );
+      r->resolveReferences( *QgsProject::instance() );
+      tsLayer->setRenderer3D( r );
     }
   }
 

@@ -26,6 +26,8 @@ set(QGIS_3D_SRCS
   qgsrulebased3drenderer.cpp
   qgsrulebasedchunkloader_p.cpp
   qgstessellatedpolygongeometry.cpp
+  qgstiledscenechunkloader.cpp
+  qgstiledscenelayer3drenderer.cpp
   qgstilingscheme.cpp
   qgsvectorlayer3drenderer.cpp
   qgsvectorlayerchunkloader_p.cpp
@@ -101,6 +103,8 @@ set(QGIS_3D_SRCS
   mesh/qgsmesh3dentity_p.cpp
   mesh/qgsmesh3dmaterial_p.cpp
   mesh/qgsmeshterraingenerator.cpp
+
+  3dtiles/utils.cpp
 )
 
 set(QGIS_3D_HDRS
