@@ -290,6 +290,27 @@ static QByteArray fetchUri( const QUrl &url, QStringList *errors )
   return QByteArray();
 }
 
+#include <Qt3DRender/QCullFace>
+#include <Qt3DRender/QEffect>
+#include <Qt3DRender/QTechnique>
+static void makeMaterialDoubleSided( Qt3DRender::QMaterial *material )
+{
+  // this is just a quick fix: we should either build a material that would
+  // inverts normals when rendering back faces, or make a copy of the geometry
+  // with opposite ordering of triangles and normals inverted on CPU
+  const auto techniques = material->effect()->techniques();
+  for ( auto tit = techniques.constBegin(); tit != techniques.constEnd(); ++tit )
+  {
+    auto renderPasses = ( *tit )->renderPasses();
+    for ( auto rpit = renderPasses.begin(); rpit != renderPasses.end(); ++rpit )
+    {
+      Qt3DRender::QCullFace *cullFace = new Qt3DRender::QCullFace;
+      cullFace->setMode( Qt3DRender::QCullFace::NoCulling );
+      ( *rpit )->addRenderState( cullFace );
+    }
+  }
+}
+
 
 static Qt3DRender::QMaterial *parseMaterial( tinygltf::Model &model, int materialIndex, QString baseUri, QStringList *errors )
 {
@@ -333,6 +354,8 @@ static Qt3DRender::QMaterial *parseMaterial( tinygltf::Model &model, int materia
       pbrMaterial->setMetalness( pbr.metallicFactor ); // [0..1] or texture
       pbrMaterial->setRoughness( pbr.roughnessFactor );
       pbrMaterial->setBaseColor( QColor::fromRgbF( pbr.baseColorFactor[0], pbr.baseColorFactor[1], pbr.baseColorFactor[2], pbr.baseColorFactor[3] ) );
+      if ( material.doubleSided )
+        makeMaterialDoubleSided( pbrMaterial );
       return pbrMaterial;
     }
 
@@ -363,6 +386,8 @@ static Qt3DRender::QMaterial *parseMaterial( tinygltf::Model &model, int materia
     // In the future we may want to have a switch whether to use unlit material or PBR material...
     Qt3DExtras::QTextureMaterial *mat = new Qt3DExtras::QTextureMaterial;
     mat->setTexture( texture );
+    if ( material.doubleSided )
+      makeMaterialDoubleSided( mat );
     return mat;
   }
 
@@ -370,6 +395,8 @@ static Qt3DRender::QMaterial *parseMaterial( tinygltf::Model &model, int materia
   pbrMaterial->setMetalness( pbr.metallicFactor ); // [0..1] or texture
   pbrMaterial->setRoughness( pbr.roughnessFactor );
   pbrMaterial->setBaseColor( QColor::fromRgbF( pbr.baseColorFactor[0], pbr.baseColorFactor[1], pbr.baseColorFactor[2], pbr.baseColorFactor[3] ) );
+  if ( material.doubleSided )
+    makeMaterialDoubleSided( pbrMaterial );
   return pbrMaterial;
 }
 
