@@ -204,6 +204,8 @@ class _3D_EXPORT QgsCameraController : public QObject
      */
     void setOrigin( const QgsVector3D &origin );
 
+    void setInputHandlersEnabled( bool enabled ) { mInputHandlersEnabled = enabled; }
+
   public slots:
 
     /**
@@ -362,6 +364,8 @@ class _3D_EXPORT QgsCameraController : public QObject
 
     // 3D world's origin in map coordinates
     QgsVector3D mOrigin;
+
+    bool mInputHandlersEnabled = true;
 
     // To test the cameracontroller
     friend class TestQgs3DRendering;

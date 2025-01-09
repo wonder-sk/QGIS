@@ -191,6 +191,8 @@ relative to other entities.
 .. versionadded:: 3.42
 %End
 
+    void setInputHandlersEnabled( bool enabled );
+
   public slots:
 
     void setCameraNavigationMode( Qgis::NavigationMode navigationMode );

@@ -274,6 +274,18 @@ class CORE_EXPORT QgsBox3D
     double zMaximum() const SIP_HOLDGIL { return mZmax; }
 
     /**
+     * Returns lower corner of the box (using minimum values of X,Y,Z)
+     * \since QGIS 3.42
+     */
+    QgsVector3D lowerCorner() const SIP_HOLDGIL { return QgsVector3D( mBounds2d.xMinimum(), mBounds2d.yMinimum(), mZmin ); }
+
+    /**
+     * Returns upper corner of the box (using maximum values of X,Y,Z)
+     * \since QGIS 3.42
+     */
+    QgsVector3D upperCorner() const SIP_HOLDGIL { return QgsVector3D( mBounds2d.xMaximum(), mBounds2d.yMaximum(), mZmax ); }
+
+    /**
      * Mark a box as being null (holding no spatial information).
      *
      * \since QGIS 3.34

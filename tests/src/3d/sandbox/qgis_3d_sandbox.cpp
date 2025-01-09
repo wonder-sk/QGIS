@@ -26,6 +26,7 @@
 #include "qgs3dutils.h"
 #include "qgsapplication.h"
 #include "qgsflatterrainsettings.h"
+#include "qgsframegraph.h"
 #include "qgsgui.h"
 #include "qgshelp.h"
 #include "qgslayertree.h"
@@ -47,6 +48,310 @@
 #include <QScreen>
 #include <QToolBar>
 
+#include "qgs3dmaptool.h"
+#include "qgschunknode.h"
+#include <Qt3DCore/QTransform>
+#include "qgsmultipoint.h"
+#include "qgsrubberband3d.h"
+#include "qgswindow3dengine.h"
+#include "qgspolygon.h"
+
+#include "copcrewrite.h"
+
+QVector<QgsVector3D> box3DCorners( QgsBox3D box )
+{
+  QgsVector3D lc = box.lowerCorner(), uc = box.upperCorner();
+  return {
+    QgsVector3D( lc.x(), lc.y(), lc.z() ),
+    QgsVector3D( lc.x(), lc.y(), uc.z() ),
+    QgsVector3D( lc.x(), uc.y(), lc.z() ),
+    QgsVector3D( lc.x(), uc.y(), uc.z() ),
+    QgsVector3D( uc.x(), lc.y(), lc.z() ),
+    QgsVector3D( uc.x(), lc.y(), uc.z() ),
+    QgsVector3D( uc.x(), uc.y(), lc.z() ),
+    QgsVector3D( uc.x(), uc.y(), uc.z() ),
+  };
+}
+
+struct MapToPixel3D
+{
+    QMatrix4x4 VP;  // combined view-projection matrix
+    QgsVector3D origin;  // shift of world coordinates
+    QSize canvasSize;
+
+    QPointF transform( double x, double y, double z ) const
+    {
+      QVector4D cClip = VP * QVector4D( x - origin.x(), y - origin.y(), z - origin.z(), 1 );
+      float xNdc = cClip.x()/cClip.w();
+      float yNdc = cClip.y()/cClip.w();
+      float xScreen = ( xNdc + 1 ) * 0.5 * canvasSize.width();
+      float yScreen = ( -yNdc + 1 ) * 0.5 * canvasSize.height();
+      return QPointF( xScreen, yScreen );
+    }
+};
+
+
+QgsGeometry box3DToPolygonInScreenSpace( QgsBox3D box, const MapToPixel3D &mapToPixel3D )
+{
+  QVector<QgsPoint*> pts;
+  for ( QgsVector3D c : box3DCorners( box ) )
+  {
+    QPointF pt = mapToPixel3D.transform( c.x(), c.y(), c.z() );
+    pts.append( new QgsPoint( pt.x(), pt.y() ) );
+  }
+
+  // TODO: maybe we should only do rectangle check rather than (more precise) convex hull?
+
+  // combine into QgsMultiPoint + apply convex hull
+  QgsGeometry g( new QgsMultiPoint( pts ) );
+  return g.convexHull();
+}
+
+struct SelectedPointInNode
+{
+    int pointIndex;
+    double x, y, z;   // in map coordinates
+};
+
+typedef QHash<QgsPointCloudNodeId, QVector<SelectedPointInNode> > SelectedPoints;
+
+
+
+QVector<SelectedPointInNode> selectedPointsInNode( const QgsGeometry &searchPolygon, const QgsChunkNode *ch, const MapToPixel3D &mapToPixel3D, QgsPointCloudIndex *pcIndex )
+{
+  QVector<SelectedPointInNode> selected;
+
+  QgsPointCloudNodeId n( ch->tileId().d, ch->tileId().x, ch->tileId().y, ch->tileId().z );
+  QgsPointCloudRequest request;
+  // TODO: apply filtering (if any)
+  request.setAttributes( pcIndex->attributes() );
+
+  // TODO: reuse cached block(s) if possible
+
+  std::unique_ptr<QgsPointCloudBlock> block( pcIndex->nodeData( n, request ) );
+  if ( !block )
+    return selected;
+
+  const QgsVector3D blockScale = block->scale();
+  const QgsVector3D blockOffset = block->offset();
+
+  const char *ptr = block->data();
+  const QgsPointCloudAttributeCollection blockAttributes = block->attributes();
+  const std::size_t recordSize = blockAttributes.pointRecordSize();
+  int xOffset = 0, yOffset = 0, zOffset = 0;
+  const QgsPointCloudAttribute::DataType xType = blockAttributes.find( QStringLiteral( "X" ), xOffset )->type();
+  const QgsPointCloudAttribute::DataType yType = blockAttributes.find( QStringLiteral( "Y" ), yOffset )->type();
+  const QgsPointCloudAttribute::DataType zType = blockAttributes.find( QStringLiteral( "Z" ), zOffset )->type();
+  for ( int i = 0; i < block->pointCount(); ++i )
+  {
+    // get map coordinates
+    double x, y, z;
+    QgsPointCloudAttribute::getPointXYZ( ptr, i, recordSize, xOffset, xType, yOffset, yType, zOffset, zType, blockScale, blockOffset, x, y, z );
+
+    // project to screen (map coords -> world coords -> clip coords -> NDC -> screen coords)
+    QPointF ptScreen = mapToPixel3D.transform( x, y, z );
+
+    if ( searchPolygon.intersects( QgsGeometry( new QgsPoint( ptScreen.x(), ptScreen.y() ) ) ) )
+    {
+      SelectedPointInNode p;
+      p.x = x; p.y = y; p.z = z;
+      p.pointIndex = i;
+      selected.append( p );
+    }
+  }
+  return selected;
+}
+
+
+class MyTool : public Qgs3DMapTool
+{
+  public:
+    MyTool( Qgs3DMapCanvas *canvas ) : Qgs3DMapTool( canvas )
+    {
+      mPolygonRubberBand = new QgsRubberBand3D( *mCanvas->mapSettings(), mCanvas->engine(), mCanvas->engine()->frameGraph()->rubberBandsRootEntity(), Qgis::GeometryType::Polygon );
+      mPolygonRubberBand->setHideLastMarker( true );
+
+      mSearchResultsRubberBand = new QgsRubberBand3D( *mCanvas->mapSettings(), mCanvas->engine(), mCanvas->engine()->frameGraph()->rubberBandsRootEntity(), Qgis::GeometryType::Point );
+      mSearchResultsRubberBand->setColor( Qt::yellow );
+      mSearchResultsRubberBand->setMarkerType( QgsRubberBand3D::MarkerType::Square );
+    }
+
+    QgsPoint screenPointToMap( QPoint pos )
+    {
+      const QgsRay3D ray = Qgs3DUtils::rayFromScreenPoint( pos, mCanvas->size(), mCanvas->cameraController()->camera() );
+
+      // pick an arbitrary point mid-way between near and far plane
+      float pointDistance = ( mCanvas->cameraController()->camera()->farPlane() + mCanvas->cameraController()->camera()->nearPlane() ) / 2;
+      QVector3D aa = ray.origin() + pointDistance * ray.direction().normalized();
+
+      QgsVector3D origin = mCanvas->mapSettings()->origin();
+      QgsPoint newPoint( aa.x() + origin.x(), aa.y() + origin.y(), aa.z() + origin.z() );
+      return newPoint;
+    }
+
+    void mousePressEvent( QMouseEvent *event ) override
+    {
+      mClickPoint = event->pos();
+    }
+
+    void mouseReleaseEvent( QMouseEvent *event ) override
+    {
+      if ( ( event->pos() - mClickPoint ).manhattanLength() > QApplication::startDragDistance() )
+        return;  // no dragging in this tool
+
+      qDebug() << event->pos();
+
+      QgsPoint newPoint = screenPointToMap( event->pos() );
+      //qDebug() << newPoint.asWkt(1);
+
+      if ( event->button() == Qt::LeftButton )
+      {
+        mStarted = true;
+        mCanvas->cameraController()->setInputHandlersEnabled( false );
+
+        if ( mFirstPoint )
+        {
+          mPolygonRubberBand->addPoint( newPoint );
+          mFirstPoint = false;
+        }
+        else
+        {
+          mPolygonRubberBand->moveLastPoint( newPoint );
+        }
+        mPolygonRubberBand->addPoint( newPoint );
+        mScreenPoints.addVertex( QgsPoint( event->x(), event->y() ) );
+      }
+      else
+      {
+        QgsGeometry searchPolygon = QgsGeometry( new QgsPolygon( mScreenPoints.clone() ) );
+        qDebug() << searchPolygon.asWkt(1);
+        QElapsedTimer t; t.start();
+        SelectedPoints sel = searchPoints( searchPolygon );
+        qDebug() << "search took " << t.elapsed() / 1000. << "secs";
+
+        t.start();
+        mSearchResultsRubberBand->reset();
+
+        int totalPoints = 0;
+        for ( QgsPointCloudNodeId n : sel.keys() )
+          totalPoints += sel[n].count();
+
+        QVector<double> xArray, yArray, zArray;
+        xArray.reserve( totalPoints );
+        yArray.reserve( totalPoints );
+        zArray.reserve( totalPoints );
+        for ( QgsPointCloudNodeId n : sel.keys() )
+        {
+          QVector< SelectedPointInNode > pts = sel.value( n );
+          if ( pts.count() )
+          {
+            for ( SelectedPointInNode p : pts )
+            {
+              xArray.append( p.x );
+              yArray.append( p.y );
+              zArray.append( p.z );
+            }
+          }
+        }
+        mSearchResultsRubberBand->setPoints( QgsLineString( xArray, yArray, zArray ) );
+
+        qDebug() << "found points: " << totalPoints;
+
+        mPolygonRubberBand->reset();
+        mStarted = false;
+        mCanvas->cameraController()->setInputHandlersEnabled( true );
+        mFirstPoint = true;
+        mScreenPoints.clear();
+
+        mSelection = sel;
+      }
+
+    }
+
+    void mouseMoveEvent( QMouseEvent *event ) override
+    {
+      if ( !mStarted )
+        return;
+      QgsPoint movedPoint = screenPointToMap( event->pos() );
+      mPolygonRubberBand->moveLastPoint( movedPoint );
+
+    }
+
+    SelectedPoints searchPoints( QgsGeometry searchPolygon )
+    {
+      SelectedPoints result;
+
+      MapToPixel3D mapToPixel3D;
+      mapToPixel3D.VP = mCanvas->camera()->projectionMatrix() * mCanvas->camera()->viewMatrix();
+      mapToPixel3D.origin = mCanvas->mapSettings()->origin();
+      mapToPixel3D.canvasSize = mCanvas->size();
+
+      QgsMapLayer *mapLayer = QgsProject::instance()->mapLayers().first();
+      Q_ASSERT( mapLayer->type() == Qgis::LayerType::PointCloud );
+      QgsPointCloudLayer *pcLayer = qobject_cast<QgsPointCloudLayer *>( mapLayer );
+      QgsPointCloudIndex *pcIndex = pcLayer->dataProvider()->index();
+      const QVector<const QgsChunkNode *> chunks = mCanvas->scene()->getLayerActiveChunkNodes( mapLayer );
+      for ( const QgsChunkNode *ch : chunks )
+      {
+        qDebug() << " - " << ch->tileId().text() << ch->box3D().toString(1);
+
+        // check whether the hull intersects the search polygon
+        QgsGeometry hull = box3DToPolygonInScreenSpace( ch->box3D(), mapToPixel3D );
+        if ( !hull.intersects( searchPolygon ) )
+          continue;
+
+        QVector<SelectedPointInNode> pts = selectedPointsInNode( searchPolygon, ch, mapToPixel3D, pcIndex );
+        if ( !pts.isEmpty() )
+        {
+          QgsPointCloudNodeId n( ch->tileId().d, ch->tileId().x, ch->tileId().y, ch->tileId().z );
+          result.insert( n, pts );
+        }
+      }
+      return result;
+    }
+
+    void save()
+    {
+      qDebug() << "saving!";
+
+      QgsMapLayer *mapLayer = QgsProject::instance()->mapLayers().first();
+      qDebug() << "src: " << mapLayer->source();
+      QString inputFilename = mapLayer->source();
+
+      CopcUpdater copc;
+      copc.read(inputFilename);
+
+      QHash<VoxelKey, CopcUpdater::UpdatedChunk> updatedChunks;
+
+      for ( QgsPointCloudNodeId nodeId : mSelection.keys() )
+      {
+        qDebug() << "node" << nodeId.toString() << mSelection[nodeId].count();
+        VoxelKey k{nodeId.d(), nodeId.x(), nodeId.y(), nodeId.z()};
+        QSet<int> indices;
+        for ( SelectedPointInNode p : mSelection[nodeId] )
+          indices << p.pointIndex;
+
+        Entry entry = copc.findVoxel( k );
+        updatedChunks[k].pointCount = entry.pointCount;
+        updatedChunks[k].chunkData = copc.updateChunkValues( 12, k, indices );
+      }
+
+      qDebug() << "writing...";
+      copc.write("/tmp/modified.copc.laz", updatedChunks);
+      qDebug() << "done.";
+    }
+
+  protected:
+    QgsRubberBand3D* mPolygonRubberBand;
+    QgsRubberBand3D* mSearchResultsRubberBand;
+    bool mFirstPoint = true;
+    bool mStarted = false;
+    QgsLineString mScreenPoints;
+    QPoint mClickPoint;
+
+    SelectedPoints mSelection;
+};
+
 void initCanvas3D( Qgs3DMapCanvas *canvas )
 {
   QgsLayerTree *root = QgsProject::instance()->layerTreeRoot();
@@ -63,6 +368,7 @@ void initCanvas3D( Qgs3DMapCanvas *canvas )
   ms.setDestinationCrs( QgsProject::instance()->crs() );
   ms.setLayers( visibleLayers );
   QgsRectangle fullExtent = QgsProject::instance()->viewSettings()->fullExtent();
+  qDebug() << "full extent" << fullExtent.toString(1);
 
   Qgs3DMapSettings *map = new Qgs3DMapSettings;
   map->setCrs( QgsProject::instance()->crs() );
@@ -105,6 +411,7 @@ void initCanvas3D( Qgs3DMapCanvas *canvas )
   extent.scale( 1.3 );
   const float dist = static_cast<float>( std::max( extent.width(), extent.height() ) );
   canvas->setViewFromTop( extent.center(), dist * 2, 0 );
+  qDebug() << "view from top:" << extent.center().toString(1) << "dist" << dist*2;
 
   QObject::connect( canvas->scene(), &Qgs3DMapScene::totalPendingJobsCountChanged, canvas, [canvas] {
     qDebug() << "pending jobs:" << canvas->scene()->totalPendingJobsCount();
@@ -169,6 +476,41 @@ QDialog *createConfigDialog( Qgs3DMapCanvas *canvas )
   return configDialog;
 }
 
+
+#if 0
+void copc_rewrite()
+{
+  //QString inputFilename = "/home/martin/qgis/git-master/tests/testdata/point_clouds/copc/extrabytes-dataset.copc.laz";
+  QString inputFilename = "/home/martin/data/las/sk-tatry/tatry_54_1.copc.laz";
+
+  QString outputFilename = "/tmp/output.copc.laz";
+
+  qDebug() << "hello COPC";
+
+  //
+  // do some updates to the point data
+  //
+
+  QHash<VoxelKey, CopcUpdater::UpdatedChunk> updatedChunks;
+
+  CopcUpdater copc;
+  copc.read( inputFilename );
+
+  // just modify the root node
+  Entry e = copc.findVoxel(VoxelKey{0,0,0,0});
+  QSet<int> indices;
+  for (int i = 0; i < e.pointCount/2; ++i)
+    indices.insert(i);
+
+  updatedChunks[e.key].pointCount = e.pointCount;
+  updatedChunks[e.key].chunkData = copc.updateChunkValues(12, VoxelKey{0,0,0,0}, indices);
+
+  copc.write( outputFilename, updatedChunks );
+}
+#endif
+
+
+
 int main( int argc, char *argv[] )
 {
   QgsApplication myApp( argc, argv, true, QString(), QStringLiteral( "desktop" ) );
@@ -195,13 +537,14 @@ int main( int argc, char *argv[] )
   // a hack to assign 3D renderer
   for ( QgsMapLayer *layer : QgsProject::instance()->layerTreeRoot()->checkedLayers() )
   {
+    /*
     if ( QgsPointCloudLayer *pcLayer = qobject_cast<QgsPointCloudLayer *>( layer ) )
     {
       QgsPointCloudLayer3DRenderer *r = new QgsPointCloudLayer3DRenderer();
       r->setLayer( pcLayer );
       r->resolveReferences( *QgsProject::instance() );
       pcLayer->setRenderer3D( r );
-    }
+    }*/
 
     if ( QgsTiledSceneLayer *tsLayer = qobject_cast<QgsTiledSceneLayer *>( layer ) )
     {
@@ -214,6 +557,9 @@ int main( int argc, char *argv[] )
 
   Qgs3DMapCanvas *canvas = new Qgs3DMapCanvas;
   initCanvas3D( canvas );
+
+  // %%%
+  canvas->setMapTool( new MyTool( canvas ) );
 
   // set up the UI
   QWidget *windowWidget = new QWidget;
@@ -234,6 +580,12 @@ int main( int argc, char *argv[] )
     configDialog->setVisible( true );
   } );
   toolBar->addAction( configureAction );
+
+  QAction *saveAction = new QAction( QgsApplication::getThemeIcon( QStringLiteral( "mActionSave.svg" ) ), QStringLiteral( "Save" ), windowWidget );
+  QObject::connect( saveAction, &QAction::triggered, windowWidget, [canvas] {
+    ((MyTool*)canvas->mapTool())->save();
+  } );
+  toolBar->addAction( saveAction );
 
   QWidget *container = QWidget::createWindowContainer( canvas );
   container->setSizePolicy( QSizePolicy::Expanding, QSizePolicy::Expanding );

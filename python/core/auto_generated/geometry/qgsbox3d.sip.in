@@ -249,6 +249,20 @@ Returns the maximum z value.
 .. seealso:: :py:func:`zMinimum`
 %End
 
+    QgsVector3D lowerCorner() const /HoldGIL/;
+%Docstring
+Returns lower corner of the box (using minimum values of X,Y,Z)
+
+.. versionadded:: 3.42
+%End
+
+    QgsVector3D upperCorner() const /HoldGIL/;
+%Docstring
+Returns upper corner of the box (using maximum values of X,Y,Z)
+
+.. versionadded:: 3.42
+%End
+
     void setNull() /HoldGIL/;
 %Docstring
 Mark a box as being null (holding no spatial information).

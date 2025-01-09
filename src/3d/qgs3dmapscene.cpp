@@ -324,6 +324,17 @@ void Qgs3DMapScene::onCameraChanged()
 
   QVector<QgsPointXY> extent2D = viewFrustum2DExtent();
   emit viewed2DExtentFrom3DChanged( extent2D );
+
+#if 0
+  qDebug() << "cam pos" << mEngine->camera()->position();
+  qDebug() << "cam dist from origin" << mEngine->camera()->position().length();
+  if ( mEngine->camera()->position().length() > 10000 )
+  {
+    QgsVector3D newOrigin = mMap.origin() + QgsVector3D( mEngine->camera()->position() );
+    qDebug() << "rebase to " << newOrigin.toString( 1 );
+    mMap.setOrigin( newOrigin );
+  }
+#endif
 }
 
 void Qgs3DMapScene::updateScene( bool forceUpdate )

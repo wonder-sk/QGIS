@@ -977,8 +977,8 @@ int Qgs3DUtils::openGlMaxClipPlanes( QSurface *surface )
   if ( context.create() )
   {
     context.makeCurrent( surface );
-    QOpenGLFunctions *funcs = context.functions();
-    funcs->glGetIntegerv( GL_MAX_CLIP_PLANES, &numPlanes );
+    //QOpenGLFunctions *funcs = context.functions();
+    //funcs->glGetIntegerv( GL_MAX_CLIP_PLANES, &numPlanes );
   }
 
   return numPlanes;
