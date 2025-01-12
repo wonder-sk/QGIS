@@ -56,7 +56,7 @@
 #include "qgswindow3dengine.h"
 #include "qgspolygon.h"
 
-#include "copcrewrite.h"
+#include "qgscopcupdate.h"
 
 QVector<QgsVector3D> box3DCorners( QgsBox3D box )
 {
@@ -318,22 +318,21 @@ class MyTool : public Qgs3DMapTool
       qDebug() << "src: " << mapLayer->source();
       QString inputFilename = mapLayer->source();
 
-      CopcUpdater copc;
+      QgsCopcUpdate copc;
       copc.read(inputFilename);
 
-      QHash<VoxelKey, CopcUpdater::UpdatedChunk> updatedChunks;
+      QHash<QgsPointCloudNodeId, QgsCopcUpdate::UpdatedChunk> updatedChunks;
 
       for ( QgsPointCloudNodeId nodeId : mSelection.keys() )
       {
         qDebug() << "node" << nodeId.toString() << mSelection[nodeId].count();
-        VoxelKey k{nodeId.d(), nodeId.x(), nodeId.y(), nodeId.z()};
         QSet<int> indices;
         for ( SelectedPointInNode p : mSelection[nodeId] )
           indices << p.pointIndex;
 
-        Entry entry = copc.findVoxel( k );
-        updatedChunks[k].pointCount = entry.pointCount;
-        updatedChunks[k].chunkData = copc.updateChunkValues( 12, k, indices );
+        QgsCopcUpdate::HierarchyEntry entry = copc.findVoxel( nodeId );
+        updatedChunks[nodeId].pointCount = entry.pointCount;
+        updatedChunks[nodeId].chunkData = copc.updateChunkValues( 12, nodeId, indices );
       }
 
       qDebug() << "writing...";

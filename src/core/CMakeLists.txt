@@ -2297,12 +2297,13 @@ if (WITH_EPT OR WITH_COPC)
       pointcloud/qgseptdecoder.cpp
       pointcloud/qgslazdecoder.cpp
       pointcloud/qgslazinfo.cpp
-      pointcloud/copcrewrite.cpp
+      pointcloud/qgscopcupdate.cpp
   )
   set(QGIS_CORE_HDRS ${QGIS_CORE_HDRS}
       pointcloud/qgseptdecoder.h
       pointcloud/qgslazdecoder.h
       pointcloud/qgslazinfo.h
+      pointcloud/qgscopcupdate.h
   )
 endif()
 
@@ -2330,8 +2331,7 @@ set(IMAGE_RCCS ../../images/images.qrc)
 # qgis_core library
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
-add_library(qgis_core ${LIBRARY_TYPE} ${QGIS_CORE_SRCS} ${QGIS_CORE_HDRS} ${QGIS_CORE_PRIVATE_HDRS} ${IMAGE_RCCS}
-  pointcloud/copcrewrite.h)
+add_library(qgis_core ${LIBRARY_TYPE} ${QGIS_CORE_SRCS} ${QGIS_CORE_HDRS} ${QGIS_CORE_PRIVATE_HDRS} ${IMAGE_RCCS})
 
 if(USE_PRECOMPILED_HEADERS)
   target_precompile_headers(qgis_core PRIVATE $<$<COMPILE_LANGUAGE:CXX>:qgis.h>)
