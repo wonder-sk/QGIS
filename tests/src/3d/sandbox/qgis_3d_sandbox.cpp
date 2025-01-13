@@ -117,18 +117,18 @@ typedef QHash<QgsPointCloudNodeId, QVector<SelectedPointInNode> > SelectedPoints
 
 
 
-QVector<SelectedPointInNode> selectedPointsInNode( const QgsGeometry &searchPolygon, const QgsChunkNode *ch, const MapToPixel3D &mapToPixel3D, QgsPointCloudIndex *pcIndex )
+QVector<SelectedPointInNode> selectedPointsInNode( const QgsGeometry &searchPolygon, const QgsChunkNode *ch, const MapToPixel3D &mapToPixel3D, QgsPointCloudIndex &pcIndex )
 {
   QVector<SelectedPointInNode> selected;
 
   QgsPointCloudNodeId n( ch->tileId().d, ch->tileId().x, ch->tileId().y, ch->tileId().z );
   QgsPointCloudRequest request;
   // TODO: apply filtering (if any)
-  request.setAttributes( pcIndex->attributes() );
+  request.setAttributes( pcIndex.attributes() );
 
   // TODO: reuse cached block(s) if possible
 
-  std::unique_ptr<QgsPointCloudBlock> block( pcIndex->nodeData( n, request ) );
+  std::unique_ptr<QgsPointCloudBlock> block( pcIndex.nodeData( n, request ) );
   if ( !block )
     return selected;
 
@@ -229,6 +229,7 @@ class MyTool : public Qgs3DMapTool
         SelectedPoints sel = searchPoints( searchPolygon );
         qDebug() << "search took " << t.elapsed() / 1000. << "secs";
 
+#if 0
         t.start();
         mSearchResultsRubberBand->reset();
 
@@ -256,14 +257,36 @@ class MyTool : public Qgs3DMapTool
         mSearchResultsRubberBand->setPoints( QgsLineString( xArray, yArray, zArray ) );
 
         qDebug() << "found points: " << totalPoints;
-
+#endif
         mPolygonRubberBand->reset();
         mStarted = false;
         mCanvas->cameraController()->setInputHandlersEnabled( true );
         mFirstPoint = true;
         mScreenPoints.clear();
 
-        mSelection = sel;
+        QgsMapLayer *mapLayer = QgsProject::instance()->mapLayers().first();
+        QgsPointCloudLayer *pcLayer = qobject_cast<QgsPointCloudLayer*>( mapLayer );
+        Q_ASSERT( pcLayer );
+        qDebug() << "src: " << mapLayer->source();
+
+        int attrOffset;
+        const QgsPointCloudAttribute *classificationAttribute = pcLayer->attributes().find( "Classification", attrOffset );
+
+        if ( !pcLayer->isEditable() )
+          pcLayer->startEditing();
+
+        QHash<QgsPointCloudNodeId, QgsCopcUpdate::UpdatedChunk> updatedChunks;
+
+        for ( QgsPointCloudNodeId nodeId : sel.keys() )
+        {
+          qDebug() << "node" << nodeId.toString() << sel[nodeId].count();
+          QVector<int> indices;
+          for ( SelectedPointInNode p : sel[nodeId] )
+            indices << p.pointIndex;
+
+          pcLayer->changeAttributeValue( nodeId, indices, *classificationAttribute, 12 );
+        }
+
       }
 
     }
@@ -289,7 +312,7 @@ class MyTool : public Qgs3DMapTool
       QgsMapLayer *mapLayer = QgsProject::instance()->mapLayers().first();
       Q_ASSERT( mapLayer->type() == Qgis::LayerType::PointCloud );
       QgsPointCloudLayer *pcLayer = qobject_cast<QgsPointCloudLayer *>( mapLayer );
-      QgsPointCloudIndex *pcIndex = pcLayer->dataProvider()->index();
+      QgsPointCloudIndex pcIndex = pcLayer->dataProvider()->index();
       const QVector<const QgsChunkNode *> chunks = mCanvas->scene()->getLayerActiveChunkNodes( mapLayer );
       for ( const QgsChunkNode *ch : chunks )
       {
@@ -312,31 +335,15 @@ class MyTool : public Qgs3DMapTool
 
     void save()
     {
-      qDebug() << "saving!";
-
       QgsMapLayer *mapLayer = QgsProject::instance()->mapLayers().first();
-      qDebug() << "src: " << mapLayer->source();
-      QString inputFilename = mapLayer->source();
+      QgsPointCloudLayer *pcLayer = qobject_cast<QgsPointCloudLayer*>( mapLayer );
+      Q_ASSERT( pcLayer );
 
-      QgsCopcUpdate copc;
-      copc.read(inputFilename);
+      if ( !pcLayer->isModified() )
+        return;
 
-      QHash<QgsPointCloudNodeId, QgsCopcUpdate::UpdatedChunk> updatedChunks;
-
-      for ( QgsPointCloudNodeId nodeId : mSelection.keys() )
-      {
-        qDebug() << "node" << nodeId.toString() << mSelection[nodeId].count();
-        QSet<int> indices;
-        for ( SelectedPointInNode p : mSelection[nodeId] )
-          indices << p.pointIndex;
-
-        QgsCopcUpdate::HierarchyEntry entry = copc.findVoxel( nodeId );
-        updatedChunks[nodeId].pointCount = entry.pointCount;
-        updatedChunks[nodeId].chunkData = copc.updateChunkValues( 12, nodeId, indices );
-      }
-
-      qDebug() << "writing...";
-      copc.write("/tmp/modified.copc.laz", updatedChunks);
+      qDebug() << "saving!";
+      pcLayer->commitChanges();
       qDebug() << "done.";
     }
 
@@ -348,7 +355,6 @@ class MyTool : public Qgs3DMapTool
     QgsLineString mScreenPoints;
     QPoint mClickPoint;
 
-    SelectedPoints mSelection;
 };
 
 void initCanvas3D( Qgs3DMapCanvas *canvas )

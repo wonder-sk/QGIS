@@ -17,70 +17,49 @@
 #include <lazperf/writers.hpp>
 
 
-
-#if 0
-// copied from copc verifier
-void dumpHeader( const lazperf::header14 &h )
+//! Keeps one entry of COPC hierarchy
+struct HierarchyEntry
 {
-  std::cout << "LAS Header:\n";
-  std::cout << "\tFile source ID: " << h.file_source_id << "\n";
-  std::cout << "\tGlobal encoding: " << h.global_encoding << "\n";
-  std::cout << "\t\tTime representation: " <<
-            ( ( h.global_encoding & 0x01 ) ? "GPS Satellite Time" : "GPS Week Time" ) << "\n";
-  std::cout << "\t\tSRS Type: " <<
-            ( ( h.global_encoding & 0x10 ) ? "WKT" : "GeoTIFF" ) << "\n";
-  std::cout << "\tVersion: " << ( int )h.version.major << "." << ( int )h.version.minor << "\n";
-  std::cout << "\tSystem ID: " << h.system_identifier << "\n";
-  std::cout << "\tSoftware ID: " << h.generating_software << "\n";
-  std::cout << "\tCreation day/year: " << h.creation.day << " / " << h.creation.year << "\n";
-  std::cout << "\tHeader Size: " << h.header_size << "\n";
-  std::cout << "\tPoint Offset: " << h.point_offset << "\n";
-  std::cout << "\tVLR Count: " << h.vlr_count << "\n";
-  std::cout << "\tEVLR Count: " << h.evlr_count << "\n";
-  std::cout << "\tEVLR Offset: " << h.evlr_offset << "\n";
-  std::cout << "\tPoint Format: " << ( h.point_format_id & 0xF ) << "\n";
-  std::cout << "\tPoint Length: " << h.point_record_length << "\n";
-  std::cout << "\tNumber of Points old/1.4: " <<
-            h.point_count << " / " << h.point_count_14 << "\n";
-  std::cout << std::fixed;
-  std::cout << "\tScale X Y Z: " << h.scale.x << " " << h.scale.y << " " << h.scale.z << "\n";
-  std::cout << "\tOffset X Y Z: " << h.offset.x << " " << h.offset.y << " " << h.offset.z << "\n";
-  std::cout << "\tMin X Y Z: " << h.minx << " " << h.miny << " " << h.minz << "\n";
-  std::cout << "\tMax X Y Z: " << h.maxx << " " << h.maxy << " " << h.maxz << "\n";
-  std::cout << std::defaultfloat;
-  std::cout << "\tPoint Counts by Return:     ";
-  for ( int i = 0; i < 5; ++i )
-    std::cout << h.points_by_return[i] << " ";
-  std::cout << "\n";
-  std::cout << "\tExt Point Counts by Return: ";
-  for ( int i = 0; i < 15; ++i )
-    std::cout << h.points_by_return_14[i] << " ";
-  std::cout << "\n\n";
-}
+  //! Key of the data to which this entry corresponds
+  QgsPointCloudNodeId key;
 
-void dumpCopcVlr( const lazperf::copc_info_vlr &v )
-{
-  std::cout << "COPC VLR:\n";
-  std::cout << "\tCenter X Y Z: " << v.center_x << " " << v.center_y << " " << v.center_z << "\n";
-  std::cout << "\tRoot node halfsize: " << v.halfsize << "\n";
-  std::cout << "\tRoot node point spacing: " << v.spacing << "\n";
-  std::cout << "\tGPS time min/max = " << v.gpstime_minimum << "/" << v.gpstime_maximum << "\n";
-  std::cout << "\n";
-}
-#endif
+  /**
+   * Absolute offset to the data chunk if the pointCount > 0.
+   * Absolute offset to a child hierarchy page if the pointCount is -1.
+   * 0 if the pointCount is 0.
+   */
+  uint64_t offset;
 
-QgsCopcUpdate::HierarchyEntries QgsCopcUpdate::getHierarchyPage( uint64_t offset, uint64_t size )
+  /**
+   * Size of the data chunk in bytes (compressed size) if the pointCount > 0.
+   * Size of the hierarchy page if the pointCount is -1.
+   * 0 if the pointCount is 0.
+   */
+  int32_t byteSize;
+
+  /**
+   * If > 0, represents the number of points in the data chunk.
+   * If -1, indicates the information for this octree node is found in another hierarchy page.
+   * If 0, no point data exists for this key, though may exist for child entries.
+   */
+  int32_t pointCount;
+};
+
+typedef QVector<HierarchyEntry> HierarchyEntries;
+
+
+HierarchyEntries getHierarchyPage( std::ifstream &file, uint64_t offset, uint64_t size )
 {
-  QgsCopcUpdate::HierarchyEntries page;
+  HierarchyEntries page;
   std::vector<char> buf( 32 );
   int numEntries = size / 32;
-  mFile.seekg( offset );
+  file.seekg( offset );
   while ( numEntries-- )
   {
-    mFile.read( buf.data(), buf.size() );
+    file.read( buf.data(), buf.size() );
     lazperf::LeExtractor s( buf.data(), buf.size() );
 
-    QgsCopcUpdate::HierarchyEntry e;
+    HierarchyEntry e;
     int d, x, y, z;
     s >> d >> x >> y >> z;
     s >> e.offset >> e.byteSize >> e.pointCount;
@@ -92,54 +71,7 @@ QgsCopcUpdate::HierarchyEntries QgsCopcUpdate::getHierarchyPage( uint64_t offset
 }
 
 
-#if 0
-// do a small rewrite of classification in the chunk so that we have updated data
-std::vector<unsigned char> rewrite_chunk( const lazperf::header14 &header, const char *chunkData, int chunkPointCount )
-{
-  lazperf::reader::chunk_decompressor decompressor( header.pointFormat(), header.ebCount(), chunkData );
-  lazperf::writer::chunk_compressor compressor( header.pointFormat(), header.ebCount() );
-
-  std::unique_ptr<char []> decodedData( new char[ header.point_record_length ] );
-
-  qDebug() << "pf" << header.pointFormat();
-  Q_ASSERT( header.pointFormat() == 6 || header.pointFormat() == 7 );   // like PF 6 but also with RGB
-
-  for ( int i = 0 ; i < chunkPointCount; ++i )
-  {
-    decompressor.decompress( decodedData.get() );
-    char *buf = decodedData.get();
-    //int cls = buf[16];
-    //if (cls !=2)
-    //  qDebug() << "pt" << cls;
-
-    // rewrite some of them
-    if ( i % 3 != 0 )
-      buf[16] = 1;
-
-    compressor.compress( decodedData.get() );
-  }
-
-  return compressor.done();
-}
-#endif
-
-
-#if 0
-// just modify the first entry of the root page
-Entries rootPage = getHierarchyPage( oldCopc.file, oldCopc.copcVlr.root_hier_offset, oldCopc.copcVlr.root_hier_size );
-Entry e = *rootPage.begin();
-
-qDebug() << "using chunk " << e.key.depth << "-" << e.key.x << "-" << e.key.y << "-" << e.key.z << " at " << e.offset << " size " << e.byteSize << " points " << e.pointCount;
-std::vector<char> chunkData( e.byteSize );
-oldCopc.file.seekg( e.offset );
-oldCopc.file.read( chunkData.data(), e.byteSize );
-updatedChunks[e.key].pointCount = e.pointCount;  // unchanged (for now)
-updatedChunks[e.key].chunkData = rewrite_chunk( oldCopc.header, chunkData.data(), e.pointCount );
-#endif
-
-
-
-void QgsCopcUpdate::write( QString outputFilename, const QHash<QgsPointCloudNodeId, UpdatedChunk> &updatedChunks )
+bool QgsCopcUpdate::write( QString outputFilename, const QHash<QgsPointCloudNodeId, UpdatedChunk> &updatedChunks )
 {
 
   std::ofstream m_f;
@@ -185,7 +117,7 @@ void QgsCopcUpdate::write( QString outputFilename, const QHash<QgsPointCloudNode
       // use updated one and skip in the original file
       mFile.seekg( ( uint64_t )mFile.tellg() + ch.offset );
 
-      m_f.write( ( const char * )updatedChunk.chunkData.data(), updatedChunk.chunkData.size() );
+      m_f.write( updatedChunk.chunkData.constData(), updatedChunk.chunkData.size() );
 
       // update sizes
       mChunks[chIndex].offset = updatedChunk.chunkData.size();
@@ -297,35 +229,40 @@ void QgsCopcUpdate::write( QString outputFilename, const QHash<QgsPointCloudNode
   m_f.seekp( mHeader.point_offset );
   m_f.write( ( const char * )&newChunkTableOffset, 8 );
 
+  return true;
 }
 
 
 
-void QgsCopcUpdate::read( QString inputFilename )
+bool QgsCopcUpdate::read( QString inputFilename )
 {
   mInputFilename = inputFilename;
 
   mFile.open( QgsLazDecoder::toNativePath( inputFilename ), std::ios::binary | std::ios::in );
   if ( mFile.fail() )
   {
-    qDebug() << "error opening";
-    return;
+    mErrorMessage = "Could not open file for reading: " + inputFilename;
+    return false;
   }
 
-  readHeader();
+  if ( !readHeader() )
+    return false;
+
   readChunkTable();
   readHierarchy();
+
+  return true;
 }
 
 
-void QgsCopcUpdate::readHeader()
+bool QgsCopcUpdate::readHeader()
 {
   // read header and COPC VLR
   mHeader = lazperf::header14::create( mFile );
   if ( !mFile )
   {
-    qDebug() << "error reading header";
-    return;
+    mErrorMessage = "Error reading COPC header";
+    return false;
   }
 
   //dumpHeader( mHeader );
@@ -340,9 +277,11 @@ void QgsCopcUpdate::readHeader()
   int baseCount = lazperf::baseCount( mHeader.point_format_id );
   if ( baseCount == 0 )
   {
-    qDebug() << "Bad point record format '" << mHeader.point_format_id << ".";
-    return;
+    mErrorMessage = QString( "Bad point record format: %1" ).arg( mHeader.point_format_id );
+    return false;
   }
+
+  return true;
 }
 
 
@@ -354,11 +293,6 @@ void QgsCopcUpdate::readChunkTable()
   mFile.read( ( char * )&chunkTableOffset, sizeof( chunkTableOffset ) );
   mFile.seekg( chunkTableOffset + 4 ); // The first 4 bytes are the version, then the chunk count.
   mFile.read( ( char * )&mChunkCount, sizeof( mChunkCount ) );
-  if ( mChunkCount > ( std::numeric_limits<int>::max )() )
-  {
-    std::cout << "Chunk count in chunk table exceeds maximum expected.";
-    return;
-  }
 
   qDebug() << "chunk table:";
   qDebug() << "offset  " << chunkTableOffset;
@@ -413,7 +347,7 @@ void QgsCopcUpdate::readHierarchy()
     childEntriesToProcess.pop_back();
 
     std::cout << "getting page at " << childEntry.offset << " size " << childEntry.byteSize << std::endl;
-    HierarchyEntries page = getHierarchyPage( childEntry.offset, childEntry.byteSize );
+    HierarchyEntries page = getHierarchyPage( mFile, childEntry.offset, childEntry.byteSize );
 
     for ( const HierarchyEntry &e : page )
     {
@@ -467,67 +401,25 @@ void QgsCopcUpdate::readHierarchy()
 }
 
 
-QgsCopcUpdate::HierarchyEntry QgsCopcUpdate::findVoxel( QgsPointCloudNodeId k )
+bool QgsCopcUpdate::writeUpdatedFile( const QString &inputFilename,
+                                      const QString &outputFilename,
+                                      const QHash<QgsPointCloudNodeId, UpdatedChunk> &updatedChunks,
+                                      QString *errorMessage )
 {
-  // TODO: this is not very efficient
-
-  HierarchyEntries childEntriesToProcess;
-  childEntriesToProcess.push_back( HierarchyEntry{ QgsPointCloudNodeId( 0, 0, 0, 0 ), mCopcVlr.root_hier_offset, ( int32_t )mCopcVlr.root_hier_size, -1 } );
-
-  while ( !childEntriesToProcess.empty() )
+  QgsCopcUpdate copcUpdate;
+  if ( !copcUpdate.read( inputFilename ) )
   {
-    HierarchyEntry childEntry = childEntriesToProcess.back();
-    childEntriesToProcess.pop_back();
-
-    HierarchyEntries page = getHierarchyPage( childEntry.offset, childEntry.byteSize );
-    for ( const HierarchyEntry &e : page )
-    {
-      if ( e.pointCount > 0 ) // it's a non-empty node
-      {
-        if ( e.key == k )
-          return e;
-      }
-      else if ( e.pointCount < 0 ) // referring to a child page
-      {
-        childEntriesToProcess.push_back( e );
-      }
-    }
-  }
-  Q_ASSERT( false );
-  return HierarchyEntry();
-}
-
-
-std::vector<unsigned char> QgsCopcUpdate::updateChunkValues( int newClassValue, QgsPointCloudNodeId k, QSet<int> pointIndices )
-{
-  // set new classification value for the given points in voxel and return updated chunk data
-
-  HierarchyEntry entry = findVoxel( k );
-
-  std::vector<char> chunkData( entry.byteSize );
-  mFile.seekg( entry.offset );
-  mFile.read( chunkData.data(), entry.byteSize );
-
-  lazperf::reader::chunk_decompressor decompressor( mHeader.pointFormat(), mHeader.ebCount(), chunkData.data() );
-  lazperf::writer::chunk_compressor compressor( mHeader.pointFormat(), mHeader.ebCount() );
-
-  std::unique_ptr<char []> decodedData( new char[ mHeader.point_record_length ] );
-
-  Q_ASSERT( mHeader.pointFormat() == 6 || mHeader.pointFormat() == 7 );
-
-  for ( int i = 0 ; i < entry.pointCount; ++i )
-  {
-    decompressor.decompress( decodedData.get() );
-    char *buf = decodedData.get();
-
-    if ( pointIndices.contains( i ) )
-    {
-      // TODO: support update of any attribute
-      buf[16] = ( char )newClassValue;
-    }
-
-    compressor.compress( decodedData.get() );
+    if ( errorMessage )
+      *errorMessage = copcUpdate.errorMessage();
+    return false;
   }
 
-  return compressor.done();
+  if ( !copcUpdate.write( outputFilename, updatedChunks ) )
+  {
+    if ( errorMessage )
+      *errorMessage = copcUpdate.errorMessage();
+    return false;
+  }
+
+  return true;
 }
