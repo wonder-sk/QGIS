@@ -29,6 +29,8 @@
 
 #define SIP_NO_FILE
 
+#include "qgis_3d.h"
+
 #include <Qt3DCore/QTransform>
 
 #include "qgsvector3d.h"
@@ -40,7 +42,7 @@
  * - stores translation as QgsVector3D, i.e. in double precision
  * - reacts to map scene's origin shifts and updates the QTransform accordingly
  */
-class QgsGeoTransform : public Qt3DCore::QTransform
+class _3D_EXPORT QgsGeoTransform : public Qt3DCore::QTransform
 {
     Q_OBJECT
   public:

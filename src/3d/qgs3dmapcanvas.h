@@ -198,8 +198,9 @@ class _3D_EXPORT Qgs3DMapCanvas : public QWindow
 
 #endif
 
-  private slots:
+  public slots:  // %%%
     void captureDepthBuffer();
+  private slots:
     void updateTemporalRange( const QgsDateTimeRange &timeRange );
     void onNavigationModeChanged( Qgis::NavigationMode mode );
     void updateHighlightSizes();

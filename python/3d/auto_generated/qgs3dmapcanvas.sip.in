@@ -56,6 +56,8 @@ Returns access to the view's camera controller. Returns ``None`` if the scene ha
 %End
 
 
+  public slots:  // %%%
+    void captureDepthBuffer();
   protected:
     virtual void showEvent( QShowEvent *e );
 

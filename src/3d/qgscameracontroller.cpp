@@ -308,6 +308,7 @@ void QgsCameraController::updateCameraFromPose()
 {
   if ( mCamera )
   {
+    qDebug() << "updating from pose :(";
     mCameraPose.updateCamera( mCamera );
     mCameraChanged = true;
   }
@@ -1110,6 +1111,7 @@ void QgsCameraController::setMouseParameters( const MouseOperation &newOperation
 
 void QgsCameraController::setOrigin( const QgsVector3D &origin )
 {
+  qDebug() << "QgsCameraController::setOrigin";
   QgsVector3D diff = origin - mOrigin;
   mCameraPose.setCenterPoint( mCameraPose.centerPoint() - diff );
 
@@ -1121,5 +1123,5 @@ void QgsCameraController::setOrigin( const QgsVector3D &origin )
 
   mOrigin = origin;
 
-  updateCameraFromPose();
+  // %%% updateCameraFromPose();
 }
