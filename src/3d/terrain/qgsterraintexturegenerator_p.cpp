@@ -171,7 +171,7 @@ QgsMapSettings QgsTerrainTextureGenerator::baseMapSettings()
   QgsMapSettings mapSettings;
 
   mapSettings.setOutputSize( mTextureSize );
-  mapSettings.setDestinationCrs( mMap.crs() );
+  mapSettings.setDestinationCrs( mMap.isGlobe() ? QgsCoordinateReferenceSystem("EPSG:4326") : mMap.crs() );
   mapSettings.setBackgroundColor( mMap.backgroundColor() );
   mapSettings.setFlag( Qgis::MapSettingsFlag::DrawLabeling, mMap.showLabels() );
   mapSettings.setFlag( Qgis::MapSettingsFlag::Render3DMap );
