@@ -488,7 +488,7 @@ QVector< long long > QgsCesiumTiledSceneIndex::getTiles( const QgsTiledSceneRequ
             if ( !( request.flags() & Qgis::TiledSceneRequestFlag::NoHierarchyFetch ) )
             {
               // do a blocking fetch of children
-              if ( fetchHierarchy( tile->id() ), request.feedback() )
+              if ( fetchHierarchy( tile->id(), request.feedback() ) )
               {
                 children = node->children();
               }
