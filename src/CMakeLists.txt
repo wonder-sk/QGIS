@@ -52,3 +52,7 @@ endif()
 if (WITH_QGIS_PROCESS)
   add_subdirectory(process)
 endif()
+
+if (WITH_RIBBONAPP AND WITH_GUI)
+  add_subdirectory(ribbonapp)
+endif()

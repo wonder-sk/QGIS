@@ -28,6 +28,7 @@ set (WITH_GUI TRUE CACHE BOOL "Determines whether QGIS GUI library should be bui
 set (WITH_ORACLE FALSE CACHE BOOL "Determines whether Oracle support should be built")
 set (WITH_PDAL TRUE CACHE BOOL "Determines whether PDAL support should be built")
 set (WITH_QGIS_PROCESS TRUE CACHE BOOL "Determines whether the standalone \"qgis_process\" tool should be built")
+set (WITH_RIBBONAPP FALSE CACHE BOOL "Determines whether the experimental ribbon-interface app should be built (requires WITH_GUI)")
 set (WITH_QTPOSITIONING TRUE CACHE BOOL "Determines whether QtPositioning support should be included")
 set (WITH_VCPKG FALSE CACHE BOOL "Use the vcpkg submodule for dependency management.")
 
