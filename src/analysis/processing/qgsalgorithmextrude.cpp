@@ -154,6 +154,7 @@ bool QgsExtrudeAlgorithm::prepareAlgorithm( const QVariantMap &parameters, QgsPr
 
 std::optional<QgsGeometry> QgsExtrudeAlgorithm::extrudePolygon( const QgsAbstractGeometry *polygon, const QgsVector3D &extrusion, const QgsFeatureId &featureId, QgsProcessingFeedback *feedback )
 {
+#ifdef WITH_SFCGAL
   try
   {
     QgsSfcgalGeometry inputSfcgalGeometry( polygon );
@@ -170,6 +171,13 @@ std::optional<QgsGeometry> QgsExtrudeAlgorithm::extrudePolygon( const QgsAbstrac
     feedback->reportError( QObject::tr( "Cannot calculate extrusion for feature %1: %2" ).arg( featureId ).arg( exception.what() ) );
     return std::nullopt;
   }
+#else
+  Q_UNUSED( polygon )
+  Q_UNUSED( extrusion )
+  Q_UNUSED( featureId )
+  Q_UNUSED( feedback )
+  throw QgsProcessingException( QObject::tr( "This processing algorithm requires a QGIS installation with SFCGAL support enabled. Please use a version of QGIS that includes SFCGAL." ) );
+#endif
 }
 
 QgsFeatureList QgsExtrudeAlgorithm::processFeature( const QgsFeature &feature, QgsProcessingContext &context, QgsProcessingFeedback *feedback )
