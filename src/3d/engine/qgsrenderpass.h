@@ -72,6 +72,17 @@ class _3D_EXPORT QgsRenderPass
     //! Sets the eye position in world coordinates, as lighting shaders expect it
     void setEyePosition( const QVector3D &position );
 
+    /**
+     * Sets the light sources every lit material in this pass shades with.
+     *
+     * Qt3D gathered these from QAbstractLight components in the entity tree; here the
+     * scene fills the block in and hands it over, once per frame.
+     */
+    void setLights( const QgsLightUniforms &lights ) { mLights = lights; }
+
+    //! Returns the light sources the pass shades with
+    const QgsLightUniforms &lights() const { return mLights; }
+
     //! Returns the view matrix set by setCamera()
     QMatrix4x4 viewMatrix() const { return mView; }
 
@@ -136,6 +147,7 @@ class _3D_EXPORT QgsRenderPass
     QMatrix4x4 mView;
     QMatrix4x4 mProjection;
     QVector3D mEyePosition;
+    QgsLightUniforms mLights;
     QColor mClearColor = Qt::black;
     float mDepthClearValue = 1.0f;
     bool mSortEnabled = true;
@@ -144,6 +156,7 @@ class _3D_EXPORT QgsRenderPass
     std::vector<ResolvedCommand> mResolved;
 
     QgsGpuBuffer mViewBuffer { QgsGpuBuffer::Role::Uniform, QgsGpuBuffer::Usage::Dynamic };
+    QgsGpuBuffer mLightBuffer { QgsGpuBuffer::Role::Uniform, QgsGpuBuffer::Usage::Dynamic };
     QgsUniformRing mDrawUniforms;
 };
 

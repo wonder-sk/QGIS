@@ -79,6 +79,11 @@ bool QgsRenderPass::execute( QgsRhiEngine *engine, QgsGraphicsPipelineCache *cac
   if ( !viewBuffer )
     return false;
 
+  mLightBuffer.setData( QByteArray( reinterpret_cast<const char *>( &mLights ), sizeof( QgsLightUniforms ) ) );
+  QRhiBuffer *lightBuffer = mLightBuffer.rhiBuffer( rhi, updates );
+  if ( !lightBuffer )
+    return false;
+
   // Phase one: stage the per draw uniforms for every command. Nothing is recorded yet, so
   // the ring buffer is free to grow and be recreated.
   mDrawUniforms.reset( rhi, sizeof( QgsDrawUniforms ) );
@@ -128,6 +133,7 @@ bool QgsRenderPass::execute( QgsRhiEngine *engine, QgsGraphicsPipelineCache *cac
     bindings.append(
       QRhiShaderResourceBinding::uniformBufferWithDynamicOffset( QgsRhiBinding::Draw, QRhiShaderResourceBinding::VertexStage | QRhiShaderResourceBinding::FragmentStage, drawBuffer, sizeof( QgsDrawUniforms ) )
     );
+    bindings.append( QRhiShaderResourceBinding::uniformBuffer( QgsRhiBinding::Lights, QRhiShaderResourceBinding::VertexStage | QRhiShaderResourceBinding::FragmentStage, lightBuffer ) );
 
     if ( !command.material->appendResourceBindings( rhi, updates, cache, &bindings ) )
       return false;
@@ -204,6 +210,7 @@ bool QgsRenderPass::execute( QgsRhiEngine *engine, QgsGraphicsPipelineCache *cac
 void QgsRenderPass::releaseGpuResources()
 {
   mViewBuffer.releaseGpuResources();
+  mLightBuffer.releaseGpuResources();
   mDrawUniforms.releaseGpuResources();
   mResolved.clear();
 }

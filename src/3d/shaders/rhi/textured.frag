@@ -3,12 +3,12 @@
 layout( location = 0 ) in vec2 texCoord;
 layout( location = 0 ) out vec4 fragColor;
 
-layout( std140, binding = 2 ) uniform QgsTexturedBlock
+layout( std140, binding = 3 ) uniform QgsTexturedBlock
 {
   float opacity;
 } material;
 
-layout( binding = 3 ) uniform sampler2D diffuseTexture;
+layout( binding = 4 ) uniform sampler2D diffuseTexture;
 
 void main()
 {

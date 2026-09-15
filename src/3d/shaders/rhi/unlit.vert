@@ -16,7 +16,7 @@ layout( location = 2 ) in vec3 instanceTranslation;
 
 layout( location = 0 ) out vec4 color;
 
-layout( std140, binding = 2 ) uniform QgsUnlitBlock
+layout( std140, binding = 3 ) uniform QgsUnlitBlock
 {
   vec4 materialColor;
 } material;

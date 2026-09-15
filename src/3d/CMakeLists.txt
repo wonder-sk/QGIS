@@ -175,7 +175,10 @@ set(QGIS_3D_SRCS
   engine/qgsrenderuniforms.cpp
   engine/qgsrhiengine.cpp
   engine/qgsrhishader.cpp
+  engine/qgstessellatedpolygongeometry3d.cpp
   engine/qgsuniformring.cpp
+
+  engine/materials/qgsphongmaterial3d.cpp
 )
 
 set(QGIS_3D_HDRS
@@ -328,8 +331,11 @@ set(QGIS_3D_HDRS
   engine/qgsrenderuniforms.h
   engine/qgsrhiengine.h
   engine/qgsrhishader.h
+  engine/qgstessellatedpolygongeometry3d.h
   engine/qgsuniformring.h
   engine/qgsvertexattribute.h
+
+  engine/materials/qgsphongmaterial3d.h
 )
 
 set(QGIS_3D_PRIVATE_HDRS
@@ -411,6 +417,103 @@ qt6_add_shaders(qgis_3d "qgis_3d_rhi_shaders_vertex_color"
     unlit_vertexcolor.vert.qsb
 )
 
+# The Phong variant matrix, spelled out rather than generated. Which vertex attributes a
+# variant reads differs, so these are genuinely different shaders, and listing them means a
+# missing one is a build error rather than a scene that quietly fails to draw.
+
+qt6_add_shaders(qgis_3d "qgis_3d_rhi_phong_vert"
+  SILENT
+  PREFIX "/shaders/rhi"
+  BASE "${CMAKE_CURRENT_SOURCE_DIR}/shaders/rhi"
+  GLSL "120,150,330"
+  HLSL 50
+  MSL 12
+  FILES shaders/rhi/phong.vert
+)
+
+qt6_add_shaders(qgis_3d "qgis_3d_rhi_phong_instanced_vert"
+  SILENT
+  PREFIX "/shaders/rhi"
+  BASE "${CMAKE_CURRENT_SOURCE_DIR}/shaders/rhi"
+  GLSL "120,150,330"
+  HLSL 50
+  MSL 12
+  DEFINES INSTANCING=1
+  FILES shaders/rhi/phong.vert
+  OUTPUTS phong_instanced.vert.qsb
+)
+
+qt6_add_shaders(qgis_3d "qgis_3d_rhi_phong_instanced_scale_vert"
+  SILENT
+  PREFIX "/shaders/rhi"
+  BASE "${CMAKE_CURRENT_SOURCE_DIR}/shaders/rhi"
+  GLSL "120,150,330"
+  HLSL 50
+  MSL 12
+  DEFINES INSTANCING=1;USE_INSTANCE_SCALE=1
+  FILES shaders/rhi/phong.vert
+  OUTPUTS phong_instanced_scale.vert.qsb
+)
+
+qt6_add_shaders(qgis_3d "qgis_3d_rhi_phong_instanced_rotation_vert"
+  SILENT
+  PREFIX "/shaders/rhi"
+  BASE "${CMAKE_CURRENT_SOURCE_DIR}/shaders/rhi"
+  GLSL "120,150,330"
+  HLSL 50
+  MSL 12
+  DEFINES INSTANCING=1;USE_INSTANCE_ROTATION=1
+  FILES shaders/rhi/phong.vert
+  OUTPUTS phong_instanced_rotation.vert.qsb
+)
+
+qt6_add_shaders(qgis_3d "qgis_3d_rhi_phong_instanced_scale_rotation_vert"
+  SILENT
+  PREFIX "/shaders/rhi"
+  BASE "${CMAKE_CURRENT_SOURCE_DIR}/shaders/rhi"
+  GLSL "120,150,330"
+  HLSL 50
+  MSL 12
+  DEFINES INSTANCING=1;USE_INSTANCE_SCALE=1;USE_INSTANCE_ROTATION=1
+  FILES shaders/rhi/phong.vert
+  OUTPUTS phong_instanced_scale_rotation.vert.qsb
+)
+
+qt6_add_shaders(qgis_3d "qgis_3d_rhi_phong_datadefined_vert"
+  SILENT
+  PREFIX "/shaders/rhi"
+  BASE "${CMAKE_CURRENT_SOURCE_DIR}/shaders/rhi"
+  GLSL "120,150,330"
+  HLSL 50
+  MSL 12
+  DEFINES DATA_DEFINED=1
+  FILES shaders/rhi/phong.vert
+  OUTPUTS phong_datadefined.vert.qsb
+)
+
+# only where the colour comes from differs in the fragment stage, so it has two variants
+qt6_add_shaders(qgis_3d "qgis_3d_rhi_phong_frag"
+  SILENT
+  PREFIX "/shaders/rhi"
+  BASE "${CMAKE_CURRENT_SOURCE_DIR}/shaders/rhi"
+  GLSL "120,150,330"
+  HLSL 50
+  MSL 12
+  FILES shaders/rhi/phong.frag
+)
+
+qt6_add_shaders(qgis_3d "qgis_3d_rhi_phong_datadefined_frag"
+  SILENT
+  PREFIX "/shaders/rhi"
+  BASE "${CMAKE_CURRENT_SOURCE_DIR}/shaders/rhi"
+  GLSL "120,150,330"
+  HLSL 50
+  MSL 12
+  DEFINES DATA_DEFINED=1
+  FILES shaders/rhi/phong.frag
+  OUTPUTS phong_datadefined.frag.qsb
+)
+
 qt6_add_shaders(qgis_3d "qgis_3d_rhi_shaders_instanced"
   SILENT
   PREFIX "/shaders/rhi"
@@ -439,6 +542,7 @@ target_include_directories(qgis_3d PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${CMAKE_CURRENT_SOURCE_DIR}/chunks
   ${CMAKE_CURRENT_SOURCE_DIR}/engine
+  ${CMAKE_CURRENT_SOURCE_DIR}/engine/materials
   ${CMAKE_CURRENT_SOURCE_DIR}/framegraph
   ${CMAKE_CURRENT_SOURCE_DIR}/lights
   ${CMAKE_CURRENT_SOURCE_DIR}/materials
