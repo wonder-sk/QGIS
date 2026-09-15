@@ -179,6 +179,8 @@ set(QGIS_3D_SRCS
   engine/qgsuniformring.cpp
 
   engine/materials/qgsphongmaterial3d.cpp
+
+  geometry/qgsprimitivegeometry3d.cpp
 )
 
 set(QGIS_3D_HDRS
@@ -336,6 +338,8 @@ set(QGIS_3D_HDRS
   engine/qgsvertexattribute.h
 
   engine/materials/qgsphongmaterial3d.h
+
+  geometry/qgsprimitivegeometry3d.h
 )
 
 set(QGIS_3D_PRIVATE_HDRS
@@ -543,6 +547,7 @@ target_include_directories(qgis_3d PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/chunks
   ${CMAKE_CURRENT_SOURCE_DIR}/engine
   ${CMAKE_CURRENT_SOURCE_DIR}/engine/materials
+  ${CMAKE_CURRENT_SOURCE_DIR}/geometry
   ${CMAKE_CURRENT_SOURCE_DIR}/framegraph
   ${CMAKE_CURRENT_SOURCE_DIR}/lights
   ${CMAKE_CURRENT_SOURCE_DIR}/materials
