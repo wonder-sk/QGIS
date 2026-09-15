@@ -634,6 +634,10 @@ if(WITH_CORE)
 
   if (WITH_3D)
     find_package(${QT_VERSION_BASE} COMPONENTS 3DCore 3DRender 3DInput 3DLogic 3DExtras REQUIRED)
+    # ShaderTools provides qsb and qt_add_shaders, which bake the QRhi shaders at build time
+    find_package(${QT_VERSION_BASE} COMPONENTS ShaderTools REQUIRED)
+    # QRhi is part of QtGui's private API, the same way Qt Quick and QRhiWidget consume it
+    find_package(${QT_VERSION_BASE} COMPONENTS GuiPrivate REQUIRED)
     set(HAVE_3D TRUE)  # used in qgsconfig.h
   endif()
 

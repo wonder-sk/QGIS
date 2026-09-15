@@ -165,6 +165,17 @@ set(QGIS_3D_SRCS
   mesh/qgsmesh3dentity_p.cpp
   mesh/qgsmesh3dmaterial_p.cpp
   mesh/qgsmeshterraingenerator.cpp
+
+  engine/qgsgeometry3d.cpp
+  engine/qgsgpubuffer.cpp
+  engine/qgsgputexture.cpp
+  engine/qgsgraphicspipelinecache.cpp
+  engine/qgsmaterial3d.cpp
+  engine/qgsrenderpass.cpp
+  engine/qgsrenderuniforms.cpp
+  engine/qgsrhiengine.cpp
+  engine/qgsrhishader.cpp
+  engine/qgsuniformring.cpp
 )
 
 set(QGIS_3D_HDRS
@@ -306,6 +317,19 @@ set(QGIS_3D_HDRS
   chunks/qgschunkedentity.h
 
   mesh/qgsmeshterraingenerator.h
+
+  engine/qgsgeometry3d.h
+  engine/qgsgpubuffer.h
+  engine/qgsgputexture.h
+  engine/qgsgraphicspipelinecache.h
+  engine/qgsmaterial3d.h
+  engine/qgsrendercommand.h
+  engine/qgsrenderpass.h
+  engine/qgsrenderuniforms.h
+  engine/qgsrhiengine.h
+  engine/qgsrhishader.h
+  engine/qgsuniformring.h
+  engine/qgsvertexattribute.h
 )
 
 set(QGIS_3D_PRIVATE_HDRS
@@ -348,6 +372,59 @@ if(QGISPOSTFIX)
   )
 endif()
 
+#############################################################
+# RHI shaders
+#
+# Shaders are written once as Vulkan style GLSL and baked by qsb at build time into
+# SPIR-V, GLSL, HLSL and MSL, all inside a single .qsb file per shader. Nothing is
+# translated at runtime, so there is no per-run cost and no shader cache to keep.
+#
+# Variants are spelled out rather than generated: the set of defines QGIS uses is small
+# and fully known, and an explicit list is what lets a missing variant be a build error
+# instead of a scene that silently fails to draw.
+
+qt6_add_shaders(qgis_3d "qgis_3d_rhi_shaders"
+  SILENT
+  PREFIX "/shaders/rhi"
+  BASE "${CMAKE_CURRENT_SOURCE_DIR}/shaders/rhi"
+  GLSL "120,150,330"
+  HLSL 50
+  MSL 12
+  FILES
+    shaders/rhi/unlit.vert
+    shaders/rhi/unlit.frag
+    shaders/rhi/textured.vert
+    shaders/rhi/textured.frag
+)
+
+qt6_add_shaders(qgis_3d "qgis_3d_rhi_shaders_vertex_color"
+  SILENT
+  PREFIX "/shaders/rhi"
+  BASE "${CMAKE_CURRENT_SOURCE_DIR}/shaders/rhi"
+  GLSL "120,150,330"
+  HLSL 50
+  MSL 12
+  DEFINES VERTEX_COLOR=1
+  FILES
+    shaders/rhi/unlit.vert
+  OUTPUTS
+    unlit_vertexcolor.vert.qsb
+)
+
+qt6_add_shaders(qgis_3d "qgis_3d_rhi_shaders_instanced"
+  SILENT
+  PREFIX "/shaders/rhi"
+  BASE "${CMAKE_CURRENT_SOURCE_DIR}/shaders/rhi"
+  GLSL "120,150,330"
+  HLSL 50
+  MSL 12
+  DEFINES INSTANCING=1
+  FILES
+    shaders/rhi/unlit.vert
+  OUTPUTS
+    unlit_instanced.vert.qsb
+)
+
 if (USE_PRECOMPILED_HEADERS)
   target_precompile_headers(qgis_3d PRIVATE $<$<COMPILE_LANGUAGE:CXX>:${CMAKE_SOURCE_DIR}/src/core/qgis.h>)
 endif()
@@ -361,6 +438,7 @@ target_include_directories(qgis_3d SYSTEM PUBLIC
 target_include_directories(qgis_3d PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${CMAKE_CURRENT_SOURCE_DIR}/chunks
+  ${CMAKE_CURRENT_SOURCE_DIR}/engine
   ${CMAKE_CURRENT_SOURCE_DIR}/framegraph
   ${CMAKE_CURRENT_SOURCE_DIR}/lights
   ${CMAKE_CURRENT_SOURCE_DIR}/materials
@@ -379,6 +457,9 @@ target_include_directories(qgis_3d PUBLIC
 )
 
 target_link_libraries(qgis_3d
+  # QRhi lives in QtGui's private headers, which is also how QRhiWidget, Qt Quick
+  # and Qt Quick 3D consume it
+  ${QT_VERSION_BASE}::GuiPrivate
   ${QT_VERSION_BASE}::3DCore
   ${QT_VERSION_BASE}::3DRender
   ${QT_VERSION_BASE}::3DInput
