@@ -40,6 +40,7 @@ namespace Qt3DRender
 } // namespace Qt3DRender
 
 class QgsFrameGraph;
+class QWindow;
 
 /**
  * \ingroup qgis_3d
@@ -87,14 +88,14 @@ class _3D_EXPORT QgsAbstract3DEngine : public QObject
      * The function does not block - when the depth buffer image is captured, it is returned in depthBufferCaptured() signal.
      * Only one image request can be active at a time.
      */
-    void requestDepthBufferCapture();
+    virtual void requestDepthBufferCapture();
 
     /**
      * Starts a request for an image rendered by the engine.
      * The function does not block - when the rendered image is captured, it is returned in imageCaptured() signal.
      * Only one image request can be active at a time.
      */
-    void requestCaptureImage();
+    virtual void requestCaptureImage();
 
     /**
      * Returns the surface of the engine
@@ -102,6 +103,12 @@ class _3D_EXPORT QgsAbstract3DEngine : public QObject
      * \since QGIS 3.14
      */
     virtual QSurface *surface() const = 0;
+
+    /**
+     * Returns the window the engine renders into, or NULLPTR if it renders offscreen.
+     * \since QGIS 3.46
+     */
+    virtual QWindow *window() { return nullptr; }
 
     /**
      * Returns the shadow rendering frame graph object used to render the scene

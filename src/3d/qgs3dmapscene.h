@@ -61,6 +61,7 @@ class QgsDoubleRange;
 class Qgs3DMapSceneEntity;
 class QgsCameraController;
 class QgsEnvironmentLight;
+class QgsSceneRenderer;
 
 /**
  * \ingroup qgis_3d
@@ -299,6 +300,19 @@ class _3D_EXPORT Qgs3DMapScene : public QObject
     void removeSceneEntity( Qgs3DMapSceneEntity *entity ) SIP_SKIP;
 
     /**
+     * Appends the commands drawing this scene to \a renderer, for the QRhi engine.
+     *
+     * This is what replaces the Qt3D entity tree walk: every chunked entity's active
+     * nodes hand their scene object to the forward pass, and to the shadow pass when
+     * shadows are on. Entities whose loaders have not been ported yet contribute nothing,
+     * which is why they are still drawn by Qt3D.
+     *
+     * \note Not available in Python bindings
+     * \since QGIS 3.46
+     */
+    void collectRenderCommands( QgsSceneRenderer &renderer ) SIP_SKIP;
+
+    /**
      * Returns list of clipping planes if clipping is enabled, otherwise an
      * empty list.
      *
@@ -346,10 +360,18 @@ class _3D_EXPORT Qgs3DMapScene : public QObject
     //! Updates the temporale entities
     void updateTemporal();
 
+    /**
+     * Advances the scene by \a dt seconds: moves the camera, updates the chunked
+     * entities and refits the near and far planes.
+     *
+     * Under Qt3D this is driven by a Qt3DLogic::QFrameAction; the QRhi engine calls it
+     * itself once per frame, since there is no aspect engine to tick it.
+     */
+    void onFrameTriggered( float dt );
+
   private slots:
     void onCameraChanged();
     void onViewed2DExtentFrom3DChanged();
-    void onFrameTriggered( float dt );
     void createTerrain();
     void onLayerRenderer3DChanged();
     void onLayersChanged();

@@ -16,6 +16,7 @@
 #include "qgsprimitivegeometry3d.h"
 #include "qgsrenderpass.h"
 #include "qgssceneobject3d.h"
+#include "qgsshadowrenderpass.h"
 #include "qgstest.h"
 #include "qgstexturematerial3d.h"
 #include "qgsunlitmaterial3d.h"
@@ -90,7 +91,7 @@ void TestQgsSceneObject3D::testCommandsCarryTheTransform()
   object.addPart( QgsPrimitiveGeometry3D::sphere(), std::make_unique<QgsUnlitMaterial3D>() );
 
   QgsRenderPass pass;
-  object.collectCommands( pass, false, 7 );
+  object.collectCommands( pass, 7 );
 
   QCOMPARE( pass.commands().size(), size_t( 2 ) );
 
@@ -127,11 +128,11 @@ void TestQgsSceneObject3D::testShadowPassSkipsNonCasters()
   flat->castsShadows = false;
 
   QgsRenderPass forwardPass;
-  object.collectCommands( forwardPass, false );
+  object.collectCommands( forwardPass );
   QCOMPARE( forwardPass.commands().size(), size_t( 2 ) );
 
-  QgsRenderPass shadowPass;
-  object.collectCommands( shadowPass, true );
+  QgsShadowRenderPass shadowPass;
+  object.collectShadowCommands( shadowPass );
   QCOMPARE( shadowPass.commands().size(), size_t( 1 ) );
   QCOMPARE( shadowPass.commands()[0].geometry, object.parts()[0]->geometry );
 }

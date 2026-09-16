@@ -50,7 +50,7 @@ class _3D_EXPORT QgsWindow3DEngine : public QgsAbstract3DEngine
     QgsWindow3DEngine( Qgs3DMapCanvas *parent );
 
     //! Returns the internal 3D window where all the rendered output is displayed
-    QWindow *window();
+    QWindow *window() override;
 
     //! Returns the root entity
     Qt3DCore::QEntity *root() const;

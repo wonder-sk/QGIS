@@ -23,6 +23,7 @@
 #include "qgsrange.h"
 #include "qgsraycastresult.h"
 
+#include <QElapsedTimer>
 #include <QtGui/QWindow>
 
 #ifndef SIP_RUN
@@ -63,6 +64,7 @@ class Qgs3DMapScene;
 class Qgs3DMapSceneEntity;
 class Qgs3DMapSettings;
 class Qgs3DMapTool;
+class QgsAbstract3DEngine;
 class QgsCameraController;
 class QgsFeature3DHandler;
 class QgsFeature;
@@ -71,6 +73,7 @@ class QgsPointXY;
 class QgsRayCastContext;
 class QgsRectangle;
 class QgsRubberBand3D;
+class QgsRhi3DEngine;
 class QgsTemporalController;
 class QgsWindow3DEngine;
 
@@ -187,8 +190,17 @@ class _3D_EXPORT Qgs3DMapCanvas : public QWindow
 
     /**
      * Returns the 3D engine.
+     *
+     * Returns NULLPTR when the canvas is drawing through the QRhi engine, which is not a
+     * QgsWindow3DEngine; use abstractEngine() for what both have in common.
      */
-    QgsWindow3DEngine *engine() const { return mEngine; }
+    QgsWindow3DEngine *engine() const { return mWindowEngine; }
+
+    /**
+     * Returns the 3D engine, whichever kind this canvas was built with.
+     * \since QGIS 3.46
+     */
+    QgsAbstract3DEngine *abstractEngine() const { return mEngine; }
 
     /**
      * Sets the temporal controller
@@ -250,6 +262,7 @@ class _3D_EXPORT Qgs3DMapCanvas : public QWindow
 #endif
 
   private slots:
+    void renderRhiFrame();
     void captureDepthBuffer();
     void updateTemporalRange( const QgsDateTimeRange &timeRange );
     void onNavigationModeChanged( Qgis::NavigationMode mode );
@@ -259,6 +272,9 @@ class _3D_EXPORT Qgs3DMapCanvas : public QWindow
      * Manages the display events specified in e.
      */
     void showEvent( QShowEvent *e ) override;
+
+    //! Starts and stops the QRhi frame loop as the window is shown and hidden
+    void exposeEvent( QExposeEvent *e ) override;
 
     /**
      * Resets the aspect ratio of the 3D window.
@@ -288,7 +304,15 @@ class _3D_EXPORT Qgs3DMapCanvas : public QWindow
 
     bool m_initialized = false;
 
-    QgsWindow3DEngine *mEngine = nullptr;
+    QgsAbstract3DEngine *mEngine = nullptr;
+    //! Set only when the canvas draws through Qt3D
+    QgsWindow3DEngine *mWindowEngine = nullptr;
+    //! Set only when the canvas draws through the QRhi engine
+    QgsRhi3DEngine *mRhiEngine = nullptr;
+    //! Drives the frame loop when drawing through the QRhi engine
+    QTimer *mFrameTimer = nullptr;
+    //! When the previous QRhi frame was rendered, used to work out the frame time
+    QElapsedTimer mFrameElapsedTimer;
 
     //! Description of the 3D scene
     Qgs3DMapSettings *mMapSettings = nullptr;

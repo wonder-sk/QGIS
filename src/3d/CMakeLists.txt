@@ -46,6 +46,7 @@ set(QGIS_3D_SRCS
   qgsobj3dutils.cpp
   qgsobjgeometry3d.cpp
   qgsoffscreen3dengine.cpp
+  qgsrhi3dengine.cpp
   qgsraycastingutils.cpp
   qgsraycastcontext.cpp
   qgsraycasthit.cpp
@@ -267,6 +268,7 @@ set(QGIS_3D_HDRS
   qgsobj3dutils.h
   qgsobjgeometry3d.h
   qgsoffscreen3dengine.h
+  qgsrhi3dengine.h
   qgsraycastingutils.h
   qgsraycastcontext.h
   qgsraycasthit.h

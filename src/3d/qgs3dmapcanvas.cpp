@@ -24,6 +24,7 @@
 #include "qgscameracontroller.h"
 #include "qgsframegraph.h"
 #include "qgsraycastcontext.h"
+#include "qgsrhi3dengine.h"
 #include "qgstemporalcontroller.h"
 #include "qgswindow3dengine.h"
 
@@ -53,19 +54,34 @@ Qgs3DMapCanvas::Qgs3DMapCanvas()
   , m_inputSettings( new Qt3DInput::QInputSettings )
   , m_root( new Qt3DCore::QEntity )
 {
-  setSurfaceType( QSurface::OpenGLSurface );
+  if ( QgsRhi3DEngine::isEnabled() )
+  {
+    // the surface type depends on the graphics backend, and has to be set before showing
+    QgsRhi3DEngine::prepareWindow( this );
+    mRhiEngine = new QgsRhi3DEngine( this, this );
+    mEngine = mRhiEngine;
 
-  // register aspects
-  m_aspectEngine->registerAspect( new Qt3DCore::QCoreAspect );
-  m_aspectEngine->registerAspect( m_renderAspect );
-  m_aspectEngine->registerAspect( m_inputAspect );
-  m_aspectEngine->registerAspect( m_logicAspect );
+    // there is no aspect engine to tick the scene, so the canvas drives the frame loop
+    mFrameTimer = new QTimer( this );
+    mFrameTimer->setInterval( 16 );
+    connect( mFrameTimer, &QTimer::timeout, this, &Qgs3DMapCanvas::renderRhiFrame );
+  }
+  else
+  {
+    setSurfaceType( QSurface::OpenGLSurface );
 
-  m_defaultCamera->setParent( m_root );
-  m_inputSettings->setEventSource( this );
+    // register aspects
+    m_aspectEngine->registerAspect( new Qt3DCore::QCoreAspect );
+    m_aspectEngine->registerAspect( m_renderAspect );
+    m_aspectEngine->registerAspect( m_inputAspect );
+    m_aspectEngine->registerAspect( m_logicAspect );
 
-  const QgsSettings setting;
-  mEngine = new QgsWindow3DEngine( this );
+    m_defaultCamera->setParent( m_root );
+    m_inputSettings->setEventSource( this );
+
+    mWindowEngine = new QgsWindow3DEngine( this );
+    mEngine = mWindowEngine;
+  }
 
   connect( mEngine, &QgsAbstract3DEngine::imageCaptured, this, [this]( const QImage &image ) {
     if ( image.save( mCaptureFileName, mCaptureFileFormat.toLocal8Bit().data() ) )
@@ -123,7 +139,7 @@ Qt3DRender::QRenderSettings *Qgs3DMapCanvas::renderSettings() const
 
 void Qgs3DMapCanvas::showEvent( QShowEvent *e )
 {
-  if ( !m_initialized )
+  if ( !m_initialized && !mRhiEngine )
   {
     m_root->addComponent( m_renderSettings );
     m_root->addComponent( m_inputSettings );
@@ -132,6 +148,35 @@ void Qgs3DMapCanvas::showEvent( QShowEvent *e )
     m_initialized = true;
   }
   QWindow::showEvent( e );
+}
+
+void Qgs3DMapCanvas::exposeEvent( QExposeEvent *e )
+{
+  QWindow::exposeEvent( e );
+
+  if ( !mFrameTimer )
+    return;
+
+  if ( isExposed() )
+  {
+    mFrameElapsedTimer.start();
+    mFrameTimer->start();
+    renderRhiFrame();
+  }
+  else
+  {
+    mFrameTimer->stop();
+  }
+}
+
+void Qgs3DMapCanvas::renderRhiFrame()
+{
+  if ( !mRhiEngine || !mScene || !isExposed() )
+    return;
+
+  const float dt = mFrameElapsedTimer.isValid() ? static_cast<float>( mFrameElapsedTimer.restart() ) / 1000.0f : 0.0f;
+  mScene->onFrameTriggered( dt );
+  mRhiEngine->renderFrame();
 }
 
 void Qgs3DMapCanvas::resizeEvent( QResizeEvent * )
@@ -147,6 +192,8 @@ void Qgs3DMapCanvas::setMapSettings( Qgs3DMapSettings *mapSettings )
   Q_ASSERT( !mMapSettings );
   Q_ASSERT( !mScene );
 
+  mapSettings->setRhiEngineEnabled( mRhiEngine != nullptr );
+
   Qgs3DMapScene *newScene = new Qgs3DMapScene( *mapSettings, mEngine );
 
   mEngine->setSize( size() );
@@ -160,6 +207,9 @@ void Qgs3DMapCanvas::setMapSettings( Qgs3DMapSettings *mapSettings )
   connect( mScene, &Qgs3DMapScene::fpsCountChanged, this, &Qgs3DMapCanvas::fpsCountChanged );
   connect( mScene, &Qgs3DMapScene::fpsCounterEnabledChanged, this, &Qgs3DMapCanvas::fpsCounterEnabledChanged );
   connect( mScene, &Qgs3DMapScene::viewed2DExtentFrom3DChanged, this, &Qgs3DMapCanvas::viewed2DExtentFrom3DChanged );
+
+  if ( mRhiEngine )
+    mRhiEngine->setScene( mScene );
 
   mHighlightsHandler.reset( new Qgs3DHighlightFeatureHandler( mScene ) );
 
@@ -251,6 +301,13 @@ void Qgs3DMapCanvas::saveAsImage( const QString &fileName, const QString &fileFo
 
   mCaptureFileName = fileName;
   mCaptureFileFormat = fileFormat;
+
+  if ( mRhiEngine )
+  {
+    // the next frame the canvas renders hands the image back
+    mRhiEngine->requestCaptureImage();
+    return;
+  }
   // Setup a frame action that is used to wait until next frame
   Qt3DLogic::QFrameAction *screenCaptureFrameAction = new Qt3DLogic::QFrameAction;
   mScene->addComponent( screenCaptureFrameAction );
@@ -266,6 +323,12 @@ void Qgs3DMapCanvas::captureDepthBuffer()
 {
   if ( !mScene )
     return;
+
+  if ( mRhiEngine )
+  {
+    mRhiEngine->requestDepthBufferCapture();
+    return;
+  }
 
   // Setup a frame action that is used to wait until next frame
   Qt3DLogic::QFrameAction *screenCaptureFrameAction = new Qt3DLogic::QFrameAction;

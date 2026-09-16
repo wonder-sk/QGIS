@@ -23,12 +23,14 @@
 #include "qgsgeometry3d.h"
 #include "qgsgputexture.h"
 #include "qgsmaterial3d.h"
+#include "qgsrendercommand.h"
 
 #include <QMatrix4x4>
 
 #define SIP_NO_FILE
 
 class QgsRenderPass;
+class QgsShadowRenderPass;
 
 /**
  * \ingroup qgis_3d
@@ -123,17 +125,26 @@ class _3D_EXPORT QgsSceneObject3D
     /**
      * Appends a command per part to \a pass, unless the object is disabled.
      *
-     * \a shadowPass says whether this is the shadow pass, in which case parts that do not
-     * cast shadows are left out and the material is ignored by the caller; \a baseSortKey
-     * is or-ed into each command's sort key, which is how a pass keeps transparent
-     * geometry behind opaque geometry.
+     * \a baseSortKey is or-ed into each command's sort key, which is how a pass keeps
+     * transparent geometry behind opaque geometry.
      */
-    void collectCommands( QgsRenderPass &pass, bool shadowPass = false, quint32 baseSortKey = 0 ) const;
+    void collectCommands( QgsRenderPass &pass, quint32 baseSortKey = 0 ) const;
+
+    /**
+     * Appends a command to \a pass for each part that casts a shadow.
+     *
+     * The shadow pass draws every caster with its own position only material, so the
+     * part's material is not carried over; what matters is the geometry and where it is.
+     */
+    void collectShadowCommands( QgsShadowRenderPass &pass ) const;
 
     //! Returns roughly how much GPU memory the object's geometries take, in bytes
     qint64 gpuMemorySize() const;
 
   private:
+    //! Builds one command per part, leaving out non-casters when \a shadowPass is TRUE
+    void buildCommands( bool shadowPass, quint32 baseSortKey, std::vector<QgsRenderCommand> &commands ) const;
+
     std::vector<std::unique_ptr<Part>> mParts;
     std::vector<std::unique_ptr<QgsGpuTexture>> mTextures;
     std::vector<std::shared_ptr<void>> mGeometrySources;

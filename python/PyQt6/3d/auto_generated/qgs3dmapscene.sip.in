@@ -210,6 +210,7 @@ Disables OpenGL clipping.
 
 
 
+
     QList<QVector4D> clipPlaneEquations() const;
 %Docstring
 Returns list of clipping planes if clipping is enabled, otherwise an
@@ -262,6 +263,16 @@ currently needed.
     void updateTemporal();
 %Docstring
 Updates the temporale entities
+%End
+
+    void onFrameTriggered( float dt );
+%Docstring
+Advances the scene by ``dt`` seconds: moves the camera, updates the
+chunked entities and refits the near and far planes.
+
+Under Qt3D this is driven by a Qt3DLogic.QFrameAction; the QRhi engine
+calls it itself once per frame, since there is no aspect engine to tick
+it.
 %End
 
   private:

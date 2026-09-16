@@ -130,6 +130,12 @@ Emitted when the cross section mode is enabled or disabled
 Manages the display events specified in e.
 %End
 
+    virtual void exposeEvent( QExposeEvent *e );
+
+%Docstring
+Starts and stops the QRhi frame loop as the window is shown and hidden
+%End
+
     virtual void resizeEvent( QResizeEvent * );
 
 %Docstring

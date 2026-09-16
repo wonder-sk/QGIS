@@ -62,6 +62,8 @@
 #include "qgspostprocessingentity.h"
 #include "qgsrubberbandrenderview.h"
 #include "qgsrulebased3drenderer.h"
+#include "qgssceneobject3d.h"
+#include "qgsscenerenderer.h"
 #include "qgsshadowrenderview.h"
 #include "qgsskyboxentity.h"
 #include "qgsskyboxsettings.h"
@@ -1613,6 +1615,30 @@ void Qgs3DMapScene::handleClippingOnAllEntities() const
   if ( mGlobe )
   {
     handleClippingOnEntity( mGlobe );
+  }
+}
+
+void Qgs3DMapScene::collectRenderCommands( QgsSceneRenderer &renderer )
+{
+  const bool shadowsEnabled = renderer.shadowsEnabled();
+
+  for ( Qgs3DMapSceneEntity *entity : std::as_const( mSceneEntities ) )
+  {
+    QgsChunkedEntity *chunkedEntity = qobject_cast<QgsChunkedEntity *>( entity );
+    if ( !chunkedEntity || !chunkedEntity->isEnabled() )
+      continue;
+
+    const QList<QgsChunkNode *> nodes = chunkedEntity->activeNodes();
+    for ( QgsChunkNode *node : nodes )
+    {
+      QgsSceneObject3D *object = node->sceneObject();
+      if ( !object )
+        continue;
+
+      object->collectCommands( renderer.forwardPass().renderPass() );
+      if ( shadowsEnabled )
+        object->collectShadowCommands( renderer.shadowPass() );
+    }
   }
 }
 
