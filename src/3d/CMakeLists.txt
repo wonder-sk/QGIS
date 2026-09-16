@@ -178,6 +178,7 @@ set(QGIS_3D_SRCS
   engine/qgstessellatedpolygongeometry3d.cpp
   engine/qgsuniformring.cpp
 
+  engine/materials/qgsglobematerial3d.cpp
   engine/materials/qgsgoochmaterial3d.cpp
   engine/materials/qgsmaterial3dutils.cpp
   engine/materials/qgsmetalroughmaterial3d.cpp
@@ -343,6 +344,7 @@ set(QGIS_3D_HDRS
   engine/qgsuniformring.h
   engine/qgsvertexattribute.h
 
+  engine/materials/qgsglobematerial3d.h
   engine/materials/qgsgoochmaterial3d.h
   engine/materials/qgsmaterial3dutils.h
   engine/materials/qgsmetalroughmaterial3d.h
@@ -503,6 +505,10 @@ qgis_add_rhi_shader(phongtextured_datadefined_vert
   FILE phongtextured.vert DEFINES DATA_DEFINED_TEXTURE_TRANSFORMS=1
   OUTPUT phongtextured_datadefined.vert.qsb)
 qgis_add_rhi_instanced_shaders(phongtextured)
+
+# QgsGlobeMaterial3D
+qgis_add_rhi_shader(globe_vert FILE globe.vert)
+qgis_add_rhi_shader(globe_frag FILE globe.frag)
 
 # QgsMetalRoughMaterial3D. Its eleven feature #defines became run time flags, so what is
 # left to bake is only what changes which vertex attributes are read - a shader input no

@@ -13,6 +13,7 @@
  ***************************************************************************/
 
 #include "qgsgeometry3d.h"
+#include "qgsglobematerial3d.h"
 #include "qgsgoochmaterial3d.h"
 #include "qgsgpubuffer.h"
 #include "qgsgputexture.h"
@@ -85,6 +86,9 @@ class TestQgsMaterials3D : public QgsTest
     void testGoochUniformBlockLayout();
     void testGoochTones();
     void testGoochDataDefined();
+
+    void testGlobeUniformBlockLayout();
+    void testGlobeShading();
 
     void testMetalRoughVariantsExist();
     void testMetalRoughUniformBlockLayout();
@@ -780,6 +784,131 @@ void TestQgsMaterials3D::testGoochDataDefined()
 
   pass.releaseGpuResources();
   material.releaseGpuResources();
+  cache.clear();
+}
+
+//
+// QgsGlobeMaterial3D
+//
+
+void TestQgsMaterials3D::testGlobeUniformBlockLayout()
+{
+  const std::shared_ptr<QgsRhiShader> shader = QgsRhiShader::load( u":/shaders/rhi/globe.vert.qsb"_s, u":/shaders/rhi/globe.frag.qsb"_s );
+  QVERIFY( shader );
+
+  QCOMPARE( shader->uniformBlockSize( QgsRhiBinding::Material ), int( sizeof( QgsGlobeUniforms ) ) );
+  QCOMPARE( shader->inputLocation( u"vertexNormal"_s ), 1 );
+  QCOMPARE( shader->inputLocation( u"vertexTexCoord"_s ), 2 );
+
+  QString error;
+  const QVector<QgsUniformMember> members {
+    { u"texCoordScale"_s, offsetof( QgsGlobeUniforms, texCoordScale ), 4 },
+  };
+  QVERIFY2( shader->checkUniformBlockLayout( QgsRhiBinding::Material, members, &error ), error.toUtf8() );
+  QVERIFY2( shader->checkStageInterface( &error ), error.toUtf8() );
+
+  const QVector<QShaderDescription::InOutVariable> samplers = shader->samplers();
+  QCOMPARE( samplers.size(), 1 );
+  QCOMPARE( samplers.at( 0 ).binding, QgsGlobeMaterial3D::DiffuseTextureBinding );
+}
+
+void TestQgsMaterials3D::testGlobeShading()
+{
+  if ( skipIfNoPixels() )
+    QSKIP( "The Null backend draws no pixels" );
+
+  const std::unique_ptr<QgsRhiEngine> engine = makeEngine();
+  QVERIFY( engine );
+  QgsGraphicsPipelineCache cache;
+
+  QgsGpuBuffer vertexBuffer( QgsGpuBuffer::Role::Vertex );
+  makeQuad( vertexBuffer );
+
+  const quint32 stride = 12 * sizeof( float );
+  QgsGeometry3D geometry;
+  geometry.addAttribute( { u"vertexPosition"_s, &vertexBuffer, QRhiVertexInputAttribute::Float3, 0, stride, 0 } );
+  geometry.addAttribute( { u"vertexNormal"_s, &vertexBuffer, QRhiVertexInputAttribute::Float3, 3 * sizeof( float ), stride, 0 } );
+  geometry.addAttribute( { u"vertexTexCoord"_s, &vertexBuffer, QRhiVertexInputAttribute::Float2, 6 * sizeof( float ), stride, 0 } );
+  geometry.setVertexCount( 6 );
+
+  QImage source( 4, 4, QImage::Format_RGBA8888 );
+  source.fill( QColor( 200, 200, 200 ) );
+  QgsGpuTexture texture;
+  texture.setImage( source );
+
+  QgsGlobeMaterial3D material;
+  material.setCullMode( QRhiGraphicsPipeline::None );
+  material.setDiffuseTexture( &texture );
+  QCOMPARE( material.diffuseTexture(), &texture );
+
+  QgsRenderPass pass( u"globe"_s );
+  setTopDownCamera( pass );
+  pass.setClearColor( QColor( 0, 0, 255 ) );
+
+  QgsRenderCommand command;
+  command.geometry = &geometry;
+  command.material = &material;
+  pass.addCommand( command );
+
+  // the camera is 30 units away, far inside the distance at which the edge darkening
+  // starts, so the texture comes through at the shader's unshaded 30% floor plus the
+  // full 70% a surface facing the camera keeps
+  engine->setReadbackEnabled( true );
+  QVERIFY( engine->beginFrame() );
+  QVERIFY( pass.execute( engine.get(), &cache ) );
+  engine->endFrame();
+  QVERIFY2( colorsClose( centerPixel( engine->readbackImage() ), QColor( 200, 200, 200 ) ), centerPixel( engine->readbackImage() ).name().toUtf8() );
+
+  // now blow the same square up to globe scale and back the camera off past the distance
+  // at which the shader starts darkening. Facing the camera head on it still keeps all of
+  // its colour, which is the half of the shading that depends on the angle.
+  const float scale = 1.0e5f;
+  QMatrix4x4 worldTransform;
+  worldTransform.scale( scale );
+
+  QMatrix4x4 view;
+  const QVector3D farEye( 5.0f * scale, 5.0f * scale, 2.0e6f );
+  view.lookAt( farEye, QVector3D( 5.0f * scale, 5.0f * scale, 0.0f ), QVector3D( 0.0f, 1.0f, 0.0f ) );
+  QMatrix4x4 projection;
+  projection.perspective( 45.0f, 1.0f, 1.0e3f, 1.0e7f );
+  pass.setCamera( view, projection );
+  pass.setEyePosition( farEye );
+
+  pass.clearCommands();
+  command.worldTransform = worldTransform;
+  pass.addCommand( command );
+
+  QVERIFY( engine->beginFrame() );
+  QVERIFY( pass.execute( engine.get(), &cache ) );
+  engine->endFrame();
+  QVERIFY2( colorsClose( centerPixel( engine->readbackImage() ), QColor( 200, 200, 200 ) ), centerPixel( engine->readbackImage() ).name().toUtf8() );
+
+  // and one turned side on to it is darkened all the way to the shader's 30% floor. This
+  // is also what says the fragment shader reads the camera out of the view block's
+  // inverse view matrix, where the Qt3D material had a uniform of its own for it.
+  QgsGpuBuffer sideBuffer( QgsGpuBuffer::Role::Vertex );
+  makeQuad( sideBuffer, QVector3D( 0.0f, 1.0f, 0.0f ) );
+
+  QgsGeometry3D sideGeometry;
+  sideGeometry.addAttribute( { u"vertexPosition"_s, &sideBuffer, QRhiVertexInputAttribute::Float3, 0, stride, 0 } );
+  sideGeometry.addAttribute( { u"vertexNormal"_s, &sideBuffer, QRhiVertexInputAttribute::Float3, 3 * sizeof( float ), stride, 0 } );
+  sideGeometry.addAttribute( { u"vertexTexCoord"_s, &sideBuffer, QRhiVertexInputAttribute::Float2, 6 * sizeof( float ), stride, 0 } );
+  sideGeometry.setVertexCount( 6 );
+
+  pass.clearCommands();
+  command.geometry = &sideGeometry;
+  pass.addCommand( command );
+
+  QVERIFY( engine->beginFrame() );
+  QVERIFY( pass.execute( engine.get(), &cache ) );
+  engine->endFrame();
+  // the shader scales the sampled colour as a whole, alpha included, exactly as the Qt3D
+  // one did, so the floor shows up in the alpha channel too
+  QVERIFY2( colorsClose( centerPixel( engine->readbackImage() ), QColor( 60, 60, 60, 77 ), 2 ), centerPixel( engine->readbackImage() ).name( QColor::HexArgb ).toUtf8() );
+
+  pass.releaseGpuResources();
+  material.releaseGpuResources();
+  texture.releaseGpuResources();
   cache.clear();
 }
 
