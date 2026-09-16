@@ -21,11 +21,16 @@
 #include "qgs3dutils.h"
 #include "qgsblockingnetworkrequest.h"
 #include "qgscoordinatetransform.h"
+#include "qgsgltfgeometry3d.h"
 #include "qgsgltfutils.h"
+#include "qgsgputexture.h"
 #include "qgslogger.h"
 #include "qgsmaterial3dhandler.h"
 #include "qgsmetalroughmaterial.h"
+#include "qgsmetalroughmaterial3d.h"
+#include "qgssceneobject3d.h"
 #include "qgstexturematerial.h"
+#include "qgstexturematerial3d.h"
 #include "qgsziputils.h"
 
 #include <QFile>
@@ -982,6 +987,493 @@ Qt3DCore::QEntity *QgsGltf3DUtils::gltfToEntity( const QByteArray &data, const Q
   }
 
   return parsedGltfToEntity( model, transform, baseUri, context, errors );
+}
+
+//
+// The QRhi path.
+//
+// The decisions below - which material a primitive gets, which positions are reprojected
+// and which are left in the model's own space - are the same ones the Qt3D functions
+// above make. What differs is that the result is a flat list of parts on one scene
+// object, and that a primitive now has to declare which attributes it supplies, because
+// a shader reading one the geometry has not got leaves the pipeline unbuildable.
+//
+
+static QRhiSampler::Filter parseRhiTextureFilter( int filter )
+{
+  switch ( filter )
+  {
+    case TINYGLTF_TEXTURE_FILTER_NEAREST:
+    case TINYGLTF_TEXTURE_FILTER_NEAREST_MIPMAP_NEAREST:
+    case TINYGLTF_TEXTURE_FILTER_NEAREST_MIPMAP_LINEAR:
+      return QRhiSampler::Nearest;
+    case TINYGLTF_TEXTURE_FILTER_LINEAR:
+    case TINYGLTF_TEXTURE_FILTER_LINEAR_MIPMAP_NEAREST:
+    case TINYGLTF_TEXTURE_FILTER_LINEAR_MIPMAP_LINEAR:
+      return QRhiSampler::Linear;
+  }
+
+  // play it safe and handle malformed models
+  return QRhiSampler::Linear;
+}
+
+static QRhiSampler::AddressMode parseRhiTextureWrapMode( int wrapMode )
+{
+  switch ( wrapMode )
+  {
+    case TINYGLTF_TEXTURE_WRAP_CLAMP_TO_EDGE:
+      return QRhiSampler::ClampToEdge;
+    case TINYGLTF_TEXTURE_WRAP_MIRRORED_REPEAT:
+      return QRhiSampler::Mirror;
+    case TINYGLTF_TEXTURE_WRAP_REPEAT:
+      return QRhiSampler::Repeat;
+  }
+
+  // some malformed GLTF models have incorrect texture wrap modes, and repeating is the
+  // glTF default anyway (eg
+  // https://qld.digitaltwin.terria.io/api/v0/data/b73ccb60-66ef-4470-8c3c-44af36c4d69b/CBD/tileset.json )
+  return QRhiSampler::Repeat;
+}
+
+//! The reprojected positions of a position accessor, as tightly packed floats
+static QByteArray reprojectedPositionData( tinygltf::Model &model, int accessorIndex, const QgsGltf3DUtils::EntityTransform &transform, const QgsVector3D &tileTranslationEcef, QMatrix4x4 *matrix )
+{
+  const tinygltf::Accessor &accessor = model.accessors[accessorIndex];
+
+  QVector<double> vx, vy, vz;
+  if ( !QgsGltfUtils::accessorToMapCoordinates( model, accessorIndex, transform.tileTransform, transform.ecefToTargetCrs, tileTranslationEcef, matrix, transform.gltfUpAxis, vx, vy, vz ) )
+    return QByteArray();
+
+  QByteArray data;
+  data.resize( static_cast<qsizetype>( accessor.count ) * 3 * static_cast<qsizetype>( sizeof( float ) ) );
+  float *out = reinterpret_cast<float *>( data.data() );
+
+  const QgsVector3D sceneOrigin = transform.chunkOriginTargetCrs;
+  for ( int i = 0; i < static_cast<int>( accessor.count ); ++i )
+  {
+    *out++ = static_cast<float>( vx[i] - sceneOrigin.x() );
+    *out++ = static_cast<float>( vy[i] - sceneOrigin.y() );
+    *out++ = static_cast<float>( ( vz[i] * transform.zValueScale ) + transform.zValueOffset - sceneOrigin.z() );
+  }
+  return data;
+}
+
+//! The untouched positions of a position accessor, as tightly packed floats
+static QByteArray rawPositionData( const tinygltf::Model &model, int accessorIndex )
+{
+  const tinygltf::Accessor &accessor = model.accessors[accessorIndex];
+  if ( accessor.componentType != TINYGLTF_PARAMETER_TYPE_FLOAT || accessor.type != TINYGLTF_TYPE_VEC3 )
+    return QByteArray();
+
+  const tinygltf::BufferView &bufferView = model.bufferViews[accessor.bufferView];
+  const tinygltf::Buffer &buffer = model.buffers[bufferView.buffer];
+  const unsigned char *element = buffer.data.data() + bufferView.byteOffset + accessor.byteOffset;
+  const int stride = bufferView.byteStride ? static_cast<int>( bufferView.byteStride ) : 3 * static_cast<int>( sizeof( float ) );
+
+  QByteArray data;
+  data.resize( static_cast<qsizetype>( accessor.count ) * 3 * static_cast<qsizetype>( sizeof( float ) ) );
+  float *out = reinterpret_cast<float *>( data.data() );
+  for ( std::size_t i = 0; i < accessor.count; ++i, element += stride )
+  {
+    const float *in = reinterpret_cast<const float *>( element );
+    *out++ = in[0];
+    *out++ = in[1];
+    *out++ = in[2];
+  }
+  return data;
+}
+
+/**
+ * Builds a GPU texture from a glTF image, owned by \a object.
+ *
+ * Returns NULLPTR when the image has no pixels, which is how a model whose texture could
+ * not be fetched falls back to a plain PBR material.
+ */
+static QgsGpuTexture *gltfImageToTexture( QgsSceneObject3D *object, const tinygltf::Image &image )
+{
+  if ( image.image.empty() || image.width <= 0 || image.height <= 0 )
+    return nullptr;
+
+  Q_ASSERT( image.bits == 8 );
+  Q_ASSERT( image.component == 4 );
+
+  // QgsGltfUtils::loadImageDataWithQImage() leaves the bytes in QImage's own ARGB32
+  // order, so they are wrapped back up as a QImage rather than reswizzled here;
+  // setImage() then converts to the RGBA8888 that every QRhi backend supports
+  const QImage wrapped( reinterpret_cast<const uchar *>( image.image.data() ), image.width, image.height, QImage::Format_ARGB32 );
+
+  auto texture = std::make_unique<QgsGpuTexture>();
+  texture->setImage( wrapped );
+  // a tile is drawn at every distance, so it is worth a mip chain
+  texture->setMipmapsEnabled( true );
+  return object->addTexture( std::move( texture ) );
+}
+
+//! What a primitive supplies beyond positions, which is what picks the shader variant
+struct GltfPrimitiveAttributes
+{
+    bool hasNormals = false;
+    bool hasTexCoords = false;
+};
+
+/**
+ * Builds the QRhi material for one glTF primitive, or NULLPTR if it should be skipped.
+ *
+ * \a attributes says what the primitive actually supplies: a base colour texture is only
+ * usable with texture coordinates, and a primitive without normals has to be flat shaded,
+ * which is what the glTF spec asks for.
+ */
+static std::unique_ptr<QgsMaterial3D> parseMaterial3D(
+  QgsSceneObject3D *object, tinygltf::Model &model, int materialIndex, const QString &baseUri, QStringList *errors, const QgsMaterialContext &context, const GltfPrimitiveAttributes &attributes, bool instanced
+)
+{
+  Q_UNUSED( context )
+
+  // instanced geometry always carries all three per-instance attributes, because
+  // QgsGltfGeometry3D::setInstances() writes all three
+  const Qgis::InstancedMaterialFlags instanceFlags = instanced ? Qgis::InstancedMaterialFlags( Qgis::InstancedMaterialFlag::DataDefinedScale | Qgis::InstancedMaterialFlag::DataDefinedRotation )
+                                                               : Qgis::InstancedMaterialFlags();
+
+  QgsMetalRoughMaterial3D::VertexAttributes metalRoughAttributes;
+  if ( attributes.hasTexCoords )
+    metalRoughAttributes |= QgsMetalRoughMaterial3D::VertexAttribute::TextureCoords;
+
+  const auto makePbrMaterial = [&]( const tinygltf::PbrMetallicRoughness *pbr ) -> std::unique_ptr<QgsMaterial3D> {
+    auto material = std::make_unique<QgsMetalRoughMaterial3D>( instanced ? QgsMetalRoughMaterial3D::Mode::Instanced : QgsMetalRoughMaterial3D::Mode::Uniform, metalRoughAttributes, instanceFlags );
+
+    if ( pbr )
+    {
+      material->setMetalness( static_cast<float>( pbr->metallicFactor ) );
+      material->setRoughness( static_cast<float>( pbr->roughnessFactor ) );
+      material->setBaseColor( QColor::fromRgbF( pbr->baseColorFactor[0], pbr->baseColorFactor[1], pbr->baseColorFactor[2], pbr->baseColorFactor[3] ) );
+    }
+    else
+    {
+      // no material at all in the model: the glTF default, a white dielectric
+      material->setMetalness( 1 );
+      material->setRoughness( 1 );
+      material->setBaseColor( QColor::fromRgbF( 1, 1, 1 ) );
+    }
+
+    // if normals are not present in the data they should be generated by us, according
+    // to the GLTF spec, which for a shading model means deriving one per fragment
+    if ( !attributes.hasNormals )
+      material->setFlatShadingEnabled( true );
+
+    return material;
+  };
+
+  if ( materialIndex < 0 )
+    return makePbrMaterial( nullptr );
+
+  tinygltf::Material &material = model.materials[materialIndex];
+  tinygltf::PbrMetallicRoughness &pbr = material.pbrMetallicRoughness;
+
+  // a base colour texture is only of any use with texture coordinates to sample it at,
+  // and under QRhi a shader that reads coordinates the primitive has not got draws
+  // nothing at all rather than drawing it wrongly
+  if ( pbr.baseColorTexture.index >= 0 && attributes.hasTexCoords )
+  {
+    tinygltf::Texture &tex = model.textures[pbr.baseColorTexture.index];
+
+    // source can be undefined if the texture is provided by an extension
+    if ( tex.source >= 0 )
+    {
+      tinygltf::Image &img = model.images[tex.source];
+
+      if ( !img.uri.empty() )
+      {
+        const QString imgUri = QString::fromStdString( img.uri );
+        const QUrl url = QUrl( baseUri ).resolved( imgUri );
+        const QByteArray ba = fetchUri( url, errors );
+        if ( !ba.isEmpty() )
+        {
+          if ( !QgsGltfUtils::loadImageDataWithQImage( &img, -1, nullptr, nullptr, 0, 0, ( const unsigned char * ) ba.constData(), ba.size(), nullptr ) )
+          {
+            if ( errors )
+              *errors << u"Failed to load image: %1"_s.arg( imgUri );
+          }
+        }
+      }
+
+      if ( QgsGpuTexture *texture = gltfImageToTexture( object, img ) )
+      {
+        // we should be using a PBR material unless an unlit one is requested through the
+        // KHR_materials_unlit extension, but in various datasets that extension is not
+        // used even though it should have been
+        auto textured = std::make_unique<QgsTextureMaterial3D>( instanced, instanceFlags );
+        textured->setDiffuseTexture( texture );
+
+        QgsMaterial3D::TextureBinding binding;
+        binding.binding = QgsTextureMaterial3D::DiffuseTextureBinding;
+        binding.texture = texture;
+        binding.mipmapMode = QRhiSampler::Linear;
+        if ( tex.sampler >= 0 )
+        {
+          const tinygltf::Sampler &sampler = model.samplers[tex.sampler];
+          if ( sampler.minFilter >= 0 )
+            binding.minFilter = parseRhiTextureFilter( sampler.minFilter );
+          if ( sampler.magFilter >= 0 )
+            binding.magFilter = parseRhiTextureFilter( sampler.magFilter );
+          binding.addressU = parseRhiTextureWrapMode( sampler.wrapS );
+          binding.addressV = parseRhiTextureWrapMode( sampler.wrapT );
+        }
+        else
+        {
+          // the glTF default is to repeat in both directions
+          binding.addressU = QRhiSampler::Repeat;
+          binding.addressV = QRhiSampler::Repeat;
+        }
+        textured->setTexture( binding );
+
+        return textured;
+      }
+    }
+  }
+
+  if ( qgsDoubleNear( pbr.baseColorFactor[3], 0 ) )
+    return nullptr; // completely transparent primitive, just skip it
+
+  return makePbrMaterial( &pbr );
+}
+
+/**
+ * Appends a part to \a object for every triangle primitive of node \a nodeIndex, and
+ * recurses into its children.
+ */
+static void parseNodeToSceneObject(
+  QgsSceneObject3D *object,
+  tinygltf::Model &model,
+  int nodeIndex,
+  const QgsGltf3DUtils::EntityTransform &transform,
+  const QgsVector3D &tileTranslationEcef,
+  const QString &baseUri,
+  const QMatrix4x4 &parentTransform,
+  const Qgs3DRenderContext &context,
+  QStringList *errors
+)
+{
+  const QgsMaterialContext materialContext = QgsMaterialContext::fromRenderContext( context );
+  tinygltf::Node &node = model.nodes[nodeIndex];
+
+  // the node's transform is folded into the positions rather than kept as a part
+  // transform, because accessorToMapCoordinates() has to reproject the transformed
+  // positions anyway - there is no single matrix that would do it afterwards
+  std::unique_ptr<QMatrix4x4> matrix = QgsGltfUtils::parseNodeTransform( node );
+  if ( !parentTransform.isIdentity() )
+  {
+    if ( matrix )
+      *matrix = parentTransform * *matrix;
+    else
+      matrix = std::make_unique<QMatrix4x4>( parentTransform );
+  }
+
+  // mesh - skip nodes with EXT_mesh_gpu_instancing, which addInstancedGltfToSceneObject() owns
+  if ( node.mesh >= 0 && node.extensions.find( "EXT_mesh_gpu_instancing" ) == node.extensions.end() )
+  {
+    tinygltf::Mesh &mesh = model.meshes[node.mesh];
+
+    for ( const tinygltf::Primitive &primitive : mesh.primitives )
+    {
+      if ( primitive.mode != TINYGLTF_MODE_TRIANGLES )
+      {
+        if ( errors )
+          *errors << u"Unsupported mesh primitive: %1"_s.arg( primitive.mode );
+        continue;
+      }
+
+      const auto posIt = primitive.attributes.find( "POSITION" );
+      Q_ASSERT( posIt != primitive.attributes.end() );
+      const int positionAccessorIndex = posIt->second;
+
+      const tinygltf::Accessor &posAccessor = model.accessors[positionAccessorIndex];
+      if ( posAccessor.componentType != TINYGLTF_PARAMETER_TYPE_FLOAT || posAccessor.type != TINYGLTF_TYPE_VEC3 )
+      {
+        if ( errors )
+          *errors << u"Unsupported position accessor type: %1 / %2"_s.arg( posAccessor.componentType ).arg( posAccessor.type );
+        continue;
+      }
+
+      const auto normalIt = primitive.attributes.find( "NORMAL" );
+      const auto texIt = primitive.attributes.find( "TEXCOORD_0" );
+
+      GltfPrimitiveAttributes attributes;
+      attributes.hasNormals = normalIt != primitive.attributes.end();
+      attributes.hasTexCoords = texIt != primitive.attributes.end();
+
+      std::unique_ptr<QgsMaterial3D> material = parseMaterial3D( object, model, primitive.material, baseUri, errors, materialContext, attributes, false );
+      if ( !material )
+      {
+        // primitive should be skipped, eg fully transparent material
+        continue;
+      }
+
+      const QByteArray positions = reprojectedPositionData( model, positionAccessorIndex, transform, tileTranslationEcef, matrix.get() );
+      if ( positions.isEmpty() )
+      {
+        if ( errors )
+          *errors << u"Failed to reproject the positions of a mesh primitive"_s;
+        continue;
+      }
+
+      auto geometry = std::make_unique<QgsGltfGeometry3D>();
+      geometry->setPositions( positions, static_cast<int>( posAccessor.count ) );
+
+      QString error;
+      if ( attributes.hasNormals && !geometry->addAttribute( u"vertexNormal"_s, model, normalIt->second, &error ) )
+      {
+        // the material was built expecting a normal attribute, so there is no drawing
+        // this primitive without one
+        if ( errors )
+          *errors << error;
+        continue;
+      }
+
+      // TODO: we may need to transform normal vectors when we are altering positions
+      // (but quite often normals are actually not needed - e.g. when using textured data)
+
+      if ( attributes.hasTexCoords && !geometry->addAttribute( u"vertexTexCoord"_s, model, texIt->second, &error ) )
+      {
+        if ( errors )
+          *errors << error;
+        continue;
+      }
+
+      if ( primitive.indices != -1 && !geometry->setIndices( model, primitive.indices, &error ) )
+      {
+        if ( errors )
+          *errors << error;
+        continue;
+      }
+
+      object->addPart( std::move( geometry ), std::move( material ) );
+    }
+  }
+
+  for ( const int childNodeIndex : node.children )
+    parseNodeToSceneObject( object, model, childNodeIndex, transform, tileTranslationEcef, baseUri, matrix ? *matrix : QMatrix4x4(), context, errors );
+}
+
+bool QgsGltf3DUtils::addGltfToSceneObject( QgsSceneObject3D *object, tinygltf::Model &model, const EntityTransform &transform, const QString &baseUri, const Qgs3DRenderContext &context, QStringList *errors )
+{
+  bool sceneOk = false;
+  const std::size_t sceneIndex = QgsGltfUtils::sourceSceneForModel( model, sceneOk );
+  if ( !sceneOk )
+  {
+    if ( errors )
+      *errors << "No scenes present in the gltf data!";
+    return false;
+  }
+
+  const tinygltf::Scene &scene = model.scenes[sceneIndex];
+  if ( scene.nodes.empty() )
+  {
+    if ( errors )
+      *errors << "No nodes present in the gltf data!";
+    return false;
+  }
+
+  const QgsVector3D tileTranslationEcef = QgsGltfUtils::extractTileTranslation( model );
+  for ( const int nodeIndex : scene.nodes )
+    parseNodeToSceneObject( object, model, nodeIndex, transform, tileTranslationEcef, baseUri, QMatrix4x4(), context, errors );
+
+  return true;
+}
+
+void QgsGltf3DUtils::addInstancedGltfToSceneObject(
+  QgsSceneObject3D *object,
+  tinygltf::Model &model,
+  const QVector<QgsGltfUtils::InstancedPrimitive> &primitives,
+  const EntityTransform &transform,
+  const QString &baseUri,
+  const QgsMaterialContext &context,
+  QStringList *errors
+)
+{
+  for ( const QgsGltfUtils::InstancedPrimitive &entry : primitives )
+  {
+    if ( entry.meshIndex < 0 || entry.meshIndex >= static_cast<int>( model.meshes.size() ) )
+      continue;
+
+    const tinygltf::Mesh &mesh = model.meshes[entry.meshIndex];
+    if ( entry.primitiveIndex < 0 || entry.primitiveIndex >= static_cast<int>( mesh.primitives.size() ) )
+      continue;
+
+    const tinygltf::Primitive &primitive = mesh.primitives[entry.primitiveIndex];
+    if ( primitive.mode != TINYGLTF_MODE_TRIANGLES )
+    {
+      if ( errors )
+        *errors << u"Unsupported mesh primitive mode for instancing: %1"_s.arg( primitive.mode );
+      continue;
+    }
+
+    const auto posIt = primitive.attributes.find( "POSITION" );
+    if ( posIt == primitive.attributes.end() )
+      continue;
+
+    const int positionAccessorIndex = posIt->second;
+    const auto normalIt = primitive.attributes.find( "NORMAL" );
+    const auto texIt = primitive.attributes.find( "TEXCOORD_0" );
+
+    GltfPrimitiveAttributes attributes;
+    attributes.hasNormals = normalIt != primitive.attributes.end();
+    attributes.hasTexCoords = texIt != primitive.attributes.end();
+
+    std::unique_ptr<QgsMaterial3D> material = parseMaterial3D( object, model, entry.materialIndex, baseUri, errors, context, attributes, true );
+    if ( !material )
+      continue;
+
+    // the positions stay in the model's own space, with no transform and no axis flip:
+    // where each instance goes is the per-instance attributes' job
+    const QByteArray positions = rawPositionData( model, positionAccessorIndex );
+    if ( positions.isEmpty() )
+      continue;
+
+    const QVector<InstanceChunkTransform> chunkTransforms = tileSpaceToChunkLocal( entry, transform );
+    if ( chunkTransforms.isEmpty() )
+      continue;
+
+    auto geometry = std::make_unique<QgsGltfGeometry3D>();
+    geometry->setPositions( positions, static_cast<int>( model.accessors[positionAccessorIndex].count ) );
+
+    QString error;
+    if ( attributes.hasNormals && !geometry->addAttribute( u"vertexNormal"_s, model, normalIt->second, &error ) )
+    {
+      if ( errors )
+        *errors << error;
+      continue;
+    }
+
+    if ( attributes.hasTexCoords && !geometry->addAttribute( u"vertexTexCoord"_s, model, texIt->second, &error ) )
+    {
+      if ( errors )
+        *errors << error;
+      continue;
+    }
+
+    if ( primitive.indices != -1 && !geometry->setIndices( model, primitive.indices, &error ) )
+    {
+      if ( errors )
+        *errors << error;
+      continue;
+    }
+
+    QVector<QgsGltfGeometry3D::InstanceTransform> instances;
+    instances.reserve( chunkTransforms.size() );
+    for ( const InstanceChunkTransform &chunkTransform : chunkTransforms )
+    {
+      QgsGltfGeometry3D::InstanceTransform instance;
+      instance.translation = chunkTransform.translation;
+      instance.rotation = chunkTransform.rotation;
+      instance.scale = chunkTransform.scale;
+      instances.append( instance );
+    }
+    geometry->setInstances( instances );
+
+    const int instanceCount = geometry->instanceCount();
+    QgsSceneObject3D::Part *part = object->addPart( std::move( geometry ), std::move( material ) );
+    part->instanceCount = instanceCount;
+  }
 }
 
 static Qt3DCore::QAttribute *parseAttributeCached( tinygltf::Model &model, int accessorIndex, QHash<int, Qt3DCore::QBuffer *> &bufferViewCache, Qt3DCore::QNode *bufferParent )

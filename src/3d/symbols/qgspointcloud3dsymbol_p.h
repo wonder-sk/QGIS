@@ -18,6 +18,9 @@
 
 ///@cond PRIVATE
 
+#include <memory>
+
+#include "qgspointcloudmaterial3d.h"
 #include "qgsvector3d.h"
 
 #include <QVector3D>
@@ -37,6 +40,8 @@ class QgsPointCloudBlock;
 class QgsPointCloudRequest;
 class QgsPointCloud3DRenderContext;
 class QgsPointCloudNodeId;
+class QgsPointCloudGeometry3D;
+class QgsSceneObject3D;
 
 class QgsPointCloud3DSymbolHandler
 {
@@ -50,6 +55,15 @@ class QgsPointCloud3DSymbolHandler
     virtual bool prepare( const QgsPointCloud3DRenderContext &context ) = 0;                                                                                 // override;
     virtual void processNode( QgsPointCloudIndex &pc, QgsPointCloudNodeId n, const QgsPointCloud3DRenderContext &context, PointData *output = nullptr ) = 0; // override;
     virtual void finalize( Qt3DCore::QEntity *parent, const QgsPointCloud3DRenderContext &context ) = 0;                                                     // override;
+
+    /**
+     * Run in the main thread: turns the points this handler loaded into a scene object
+     * for the QRhi engine, the counterpart of finalize().
+     *
+     * Returns NULLPTR for a chunk with no points in it, which is what tells
+     * QgsChunkedEntity that the node has nothing to draw.
+     */
+    std::unique_ptr<QgsSceneObject3D> createSceneObject( const QgsPointCloud3DRenderContext &context );
 
     void triangulate( QgsPointCloudIndex &pc, QgsPointCloudNodeId n, const QgsPointCloud3DRenderContext &context, const QgsBox3D &box3D );
 
@@ -75,6 +89,15 @@ class QgsPointCloud3DSymbolHandler
     void makeEntity( Qt3DCore::QEntity *parent, const QgsPointCloud3DRenderContext &context, const PointData &out, bool selected, const QStringList &shaderDefines );
 
     virtual Qt3DCore::QGeometry *makeGeometry( Qt3DCore::QNode *parent, const QgsPointCloud3DSymbolHandler::PointData &data, unsigned int byteStride ) = 0;
+
+    /**
+     * Builds the QRhi material this handler's points are drawn with, already configured
+     * from the symbol in \a context.
+     *
+     * \a triangulated says whether the chunk is drawn as a lit surface rather than as
+     * points, which the material has to bake rather than switch on later.
+     */
+    virtual std::unique_ptr<QgsPointCloudMaterial3D> makeMaterial3D( const QgsPointCloud3DRenderContext &context, bool triangulated ) const = 0;
 
     std::unique_ptr<QgsPointCloudBlock> pointCloudBlock( QgsPointCloudIndex &pc, QgsPointCloudNodeId node, const QgsPointCloudRequest &request, const QgsPointCloud3DRenderContext &context );
 
@@ -110,6 +133,7 @@ class QgsSingleColorPointCloud3DSymbolHandler : public QgsPointCloud3DSymbolHand
 
   private:
     Qt3DCore::QGeometry *makeGeometry( Qt3DCore::QNode *parent, const QgsPointCloud3DSymbolHandler::PointData &data, unsigned int byteStride ) override;
+    std::unique_ptr<QgsPointCloudMaterial3D> makeMaterial3D( const QgsPointCloud3DRenderContext &context, bool triangulated ) const override;
 };
 
 class QgsColorRampPointCloud3DSymbolHandler : public QgsPointCloud3DSymbolHandler
@@ -123,6 +147,7 @@ class QgsColorRampPointCloud3DSymbolHandler : public QgsPointCloud3DSymbolHandle
 
   private:
     Qt3DCore::QGeometry *makeGeometry( Qt3DCore::QNode *parent, const QgsPointCloud3DSymbolHandler::PointData &data, unsigned int byteStride ) override;
+    std::unique_ptr<QgsPointCloudMaterial3D> makeMaterial3D( const QgsPointCloud3DRenderContext &context, bool triangulated ) const override;
 };
 
 class QgsRGBPointCloud3DSymbolHandler : public QgsPointCloud3DSymbolHandler
@@ -136,6 +161,7 @@ class QgsRGBPointCloud3DSymbolHandler : public QgsPointCloud3DSymbolHandler
 
   private:
     Qt3DCore::QGeometry *makeGeometry( Qt3DCore::QNode *parent, const QgsPointCloud3DSymbolHandler::PointData &data, unsigned int byteStride ) override;
+    std::unique_ptr<QgsPointCloudMaterial3D> makeMaterial3D( const QgsPointCloud3DRenderContext &context, bool triangulated ) const override;
 };
 
 class QgsClassificationPointCloud3DSymbolHandler : public QgsPointCloud3DSymbolHandler
@@ -149,6 +175,7 @@ class QgsClassificationPointCloud3DSymbolHandler : public QgsPointCloud3DSymbolH
 
   private:
     Qt3DCore::QGeometry *makeGeometry( Qt3DCore::QNode *parent, const QgsPointCloud3DSymbolHandler::PointData &data, unsigned int byteStride ) override;
+    std::unique_ptr<QgsPointCloudMaterial3D> makeMaterial3D( const QgsPointCloud3DRenderContext &context, bool triangulated ) const override;
 };
 
 class QgsPointCloud3DGeometry : public Qt3DCore::QGeometry

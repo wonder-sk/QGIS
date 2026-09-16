@@ -25,6 +25,7 @@
 #include "qgsmeshmaterial3d.h"
 #include "qgsmetalroughmaterial3d.h"
 #include "qgsphongtexturedmaterial3d.h"
+#include "qgspointcloudmaterial3d.h"
 #include "qgsrendercommand.h"
 #include "qgsrenderpass.h"
 #include "qgsrenderuniforms.h"
@@ -139,6 +140,13 @@ class TestQgsMaterials3D : public QgsTest
     void testPhongTexturedQuad();
     void testPhongTexturedTextureTransform();
 
+    void testPointCloudVariantsExist();
+    void testPointCloudUniformBlockLayout();
+    void testPointCloudTriangulatedSingleColor();
+    void testPointCloudTriangulatedColorRamp();
+    void testPointCloudClassification();
+    void testPointCloudPoints();
+
   private:
     std::unique_ptr<QgsRhiEngine> makeEngine( QSize size = QSize( 64, 64 ) );
 
@@ -164,6 +172,19 @@ class TestQgsMaterials3D : public QgsTest
      * a "scalarMagnitude" attribute holding \a magnitude at every vertex.
      */
     void makeMeshGeometry( QgsGpuBuffer &vertexBuffer, QgsGpuBuffer &magnitudeBuffer, QgsGeometry3D &geometry, float magnitude, const QVector3D &normal = QVector3D( 0.0f, 0.0f, 1.0f ) );
+
+    /**
+     * Builds a triangulated point cloud chunk: the same flat square, as six points whose
+     * interleaved attributes are what \a style reads, plus the separate normal buffer
+     * QgsPointCloudGeometry3D keeps triangulation normals in.
+     *
+     * \a parameter is what every point's "vertexParameter" and "vertexSize" hold, which
+     * for the colour ramp style is the value the ramp is sampled at and for the
+     * classification style is the class code.
+     */
+    void makePointCloudSurface(
+      QgsGpuBuffer &vertexBuffer, QgsGpuBuffer &normalBuffer, QgsGeometry3D &geometry, QgsPointCloudMaterial3D::Style style = QgsPointCloudMaterial3D::Style::SingleColor, float parameter = 0.0f
+    );
 
     //! Adds one white directional light shining straight down, which fully lights the square
     void setOverheadLight( QgsRenderPass &pass );
@@ -226,6 +247,59 @@ void TestQgsMaterials3D::makeMeshGeometry( QgsGpuBuffer &vertexBuffer, QgsGpuBuf
   geometry.addAttribute( { u"vertexPosition"_s, &vertexBuffer, QRhiVertexInputAttribute::Float3, 0, stride, 0 } );
   geometry.addAttribute( { u"vertexNormal"_s, &vertexBuffer, QRhiVertexInputAttribute::Float3, 3 * sizeof( float ), stride, 0 } );
   geometry.addAttribute( { u"scalarMagnitude"_s, &magnitudeBuffer, QRhiVertexInputAttribute::Float, 0, 0, 0 } );
+  geometry.setVertexCount( 6 );
+}
+
+void TestQgsMaterials3D::makePointCloudSurface( QgsGpuBuffer &vertexBuffer, QgsGpuBuffer &normalBuffer, QgsGeometry3D &geometry, QgsPointCloudMaterial3D::Style style, float parameter )
+{
+  const float corners[4][2] = { { 0.0f, 0.0f }, { 10.0f, 0.0f }, { 10.0f, 10.0f }, { 0.0f, 10.0f } };
+  const int order[6] = { 0, 1, 2, 0, 2, 3 };
+
+  QVector<float> vertices;
+  QVector<float> normals;
+  for ( const int corner : order )
+  {
+    vertices << corners[corner][0] << corners[corner][1] << 0.0f;
+    switch ( style )
+    {
+      case QgsPointCloudMaterial3D::Style::SingleColor:
+        break;
+      case QgsPointCloudMaterial3D::Style::ColorRamp:
+        vertices << parameter;
+        break;
+      case QgsPointCloudMaterial3D::Style::Rgb:
+        vertices << 1.0f << 1.0f << 1.0f;
+        break;
+      case QgsPointCloudMaterial3D::Style::Classification:
+        vertices << parameter << 1.0f;
+        break;
+    }
+    normals << 0.0f << 0.0f << 1.0f;
+  }
+
+  const int floatsPerPoint = static_cast<int>( vertices.size() ) / 6;
+  const quint32 stride = static_cast<quint32>( floatsPerPoint ) * sizeof( float );
+
+  vertexBuffer.setData( QByteArray( reinterpret_cast<const char *>( vertices.constData() ), vertices.size() * int( sizeof( float ) ) ) );
+  normalBuffer.setData( QByteArray( reinterpret_cast<const char *>( normals.constData() ), normals.size() * int( sizeof( float ) ) ) );
+
+  geometry.addAttribute( { u"vertexPosition"_s, &vertexBuffer, QRhiVertexInputAttribute::Float3, 0, stride, 0 } );
+  switch ( style )
+  {
+    case QgsPointCloudMaterial3D::Style::SingleColor:
+      break;
+    case QgsPointCloudMaterial3D::Style::ColorRamp:
+      geometry.addAttribute( { u"vertexParameter"_s, &vertexBuffer, QRhiVertexInputAttribute::Float, 3 * sizeof( float ), stride, 0 } );
+      break;
+    case QgsPointCloudMaterial3D::Style::Rgb:
+      geometry.addAttribute( { u"vertexColor"_s, &vertexBuffer, QRhiVertexInputAttribute::Float3, 3 * sizeof( float ), stride, 0 } );
+      break;
+    case QgsPointCloudMaterial3D::Style::Classification:
+      geometry.addAttribute( { u"vertexParameter"_s, &vertexBuffer, QRhiVertexInputAttribute::Float, 3 * sizeof( float ), stride, 0 } );
+      geometry.addAttribute( { u"vertexSize"_s, &vertexBuffer, QRhiVertexInputAttribute::Float, 4 * sizeof( float ), stride, 0 } );
+      break;
+  }
+  geometry.addAttribute( { u"vertexNormal"_s, &normalBuffer, QRhiVertexInputAttribute::Float3, 0, 3 * sizeof( float ), 0 } );
   geometry.setVertexCount( 6 );
 }
 
@@ -1485,7 +1559,11 @@ void TestQgsMaterials3D::testMetalRoughVariantsExist()
       u"metalrough_instanced"_s,
       u"metalrough_instanced_scale"_s,
       u"metalrough_instanced_rotation"_s,
-      u"metalrough_instanced_scale_rotation"_s },
+      u"metalrough_instanced_scale_rotation"_s,
+      u"metalrough_instanced_texcoord"_s,
+      u"metalrough_instanced_scale_rotation_texcoord"_s,
+      u"metalrough_instanced_texcoord_tangent"_s,
+      u"metalrough_instanced_scale_rotation_texcoord_tangent"_s },
     fragment
   );
   checkVariantsExist( { u"metalrough_datadefined"_s }, u":/shaders/rhi/metalrough_datadefined.frag.qsb"_s );
@@ -1533,7 +1611,7 @@ void TestQgsMaterials3D::testMetalRoughVariantsExist()
   const std::shared_ptr<QgsRhiShader> ddTexture = QgsRhiShader::load( u":/shaders/rhi/metalrough_ddtexture.vert.qsb"_s, fragment );
   QCOMPARE( ddTexture->inputLocation( u"ddTextureTransform"_s ), 6 );
 
-  const std::shared_ptr<QgsRhiShader> instanced = QgsRhiShader::load( u":/shaders/rhi/metalrough_instanced_scale_rotation.vert.qsb"_s, fragment );
+  const std::shared_ptr<QgsRhiShader> instanced = QgsRhiShader::load( u":/shaders/rhi/metalrough_instanced_scale_rotation_texcoord_tangent.vert.qsb"_s, fragment );
   QCOMPARE( instanced->inputLocation( u"instanceTranslation"_s ), 7 );
   QCOMPARE( instanced->inputLocation( u"instanceScale"_s ), 8 );
   QCOMPARE( instanced->inputLocation( u"instanceRotation"_s ), 9 );
@@ -2126,6 +2204,311 @@ void TestQgsMaterials3D::testPhongTexturedTextureTransform()
   pass.releaseGpuResources();
   material.releaseGpuResources();
   texture.releaseGpuResources();
+  cache.clear();
+}
+
+//
+// QgsPointCloudMaterial3D
+//
+
+void TestQgsMaterials3D::testPointCloudVariantsExist()
+{
+  const QString fragment = u":/shaders/rhi/pointcloud.frag.qsb"_s;
+  checkVariantsExist(
+    { u"pointcloud_singlecolor"_s,
+      u"pointcloud_singlecolor_triangulated"_s,
+      u"pointcloud_colorramp"_s,
+      u"pointcloud_colorramp_triangulated"_s,
+      u"pointcloud_rgb"_s,
+      u"pointcloud_rgb_triangulated"_s,
+      u"pointcloud_classification"_s,
+      u"pointcloud_classification_triangulated"_s },
+    fragment
+  );
+
+  // each style reads a different set of per-point attributes, which is the whole reason
+  // the style has to be baked rather than switched on at run time
+  const std::shared_ptr<QgsRhiShader> singleColor = QgsRhiShader::load( u":/shaders/rhi/pointcloud_singlecolor.vert.qsb"_s, fragment );
+  QCOMPARE( singleColor->inputNames().size(), 1 );
+
+  const std::shared_ptr<QgsRhiShader> colorRamp = QgsRhiShader::load( u":/shaders/rhi/pointcloud_colorramp.vert.qsb"_s, fragment );
+  QCOMPARE( colorRamp->inputLocation( u"vertexParameter"_s ), 1 );
+  QCOMPARE( colorRamp->inputLocation( u"vertexColor"_s ), -1 );
+
+  const std::shared_ptr<QgsRhiShader> rgb = QgsRhiShader::load( u":/shaders/rhi/pointcloud_rgb.vert.qsb"_s, fragment );
+  QCOMPARE( rgb->inputLocation( u"vertexColor"_s ), 2 );
+  QCOMPARE( rgb->inputLocation( u"vertexParameter"_s ), -1 );
+
+  const std::shared_ptr<QgsRhiShader> classification = QgsRhiShader::load( u":/shaders/rhi/pointcloud_classification.vert.qsb"_s, fragment );
+  QCOMPARE( classification->inputLocation( u"vertexParameter"_s ), 1 );
+  QCOMPARE( classification->inputLocation( u"vertexSize"_s ), 3 );
+
+  // and triangulating a chunk is what adds its normal, so that too has to be baked
+  const std::shared_ptr<QgsRhiShader> triangulated = QgsRhiShader::load( u":/shaders/rhi/pointcloud_singlecolor_triangulated.vert.qsb"_s, fragment );
+  QCOMPARE( triangulated->inputLocation( u"vertexNormal"_s ), 4 );
+  QCOMPARE( singleColor->inputLocation( u"vertexNormal"_s ), -1 );
+
+  // what the material asks for and what CMake bakes are written in two different places,
+  // so walk every combination the constructor can produce and check it resolves
+  for ( const QgsPointCloudMaterial3D::Style style :
+        { QgsPointCloudMaterial3D::Style::SingleColor, QgsPointCloudMaterial3D::Style::ColorRamp, QgsPointCloudMaterial3D::Style::Rgb, QgsPointCloudMaterial3D::Style::Classification } )
+  {
+    for ( const bool triangulated : { false, true } )
+    {
+      const QgsPointCloudMaterial3D material( style, triangulated );
+      QVERIFY( material.shader() );
+      QCOMPARE( material.style(), style );
+      QCOMPARE( material.isTriangulated(), triangulated );
+      QCOMPARE( material.features().testFlag( QgsPointCloudMaterial3D::Feature::Triangulated ), triangulated );
+
+      // points are their own topology, and a triangulated chunk is an ordinary surface
+      QCOMPARE( material.topology(), triangulated ? QRhiGraphicsPipeline::Triangles : QRhiGraphicsPipeline::Points );
+    }
+  }
+
+  // the ramp is the only sampler the material binds, whatever the style
+  const QVector<QShaderDescription::InOutVariable> samplers = materialSamplers( singleColor.get() );
+  QCOMPARE( samplers.size(), 1 );
+  QCOMPARE( samplers.at( 0 ).binding, int( QgsPointCloudMaterial3D::ColorRampTextureBinding ) );
+}
+
+void TestQgsMaterials3D::testPointCloudUniformBlockLayout()
+{
+  const std::shared_ptr<QgsRhiShader> shader = QgsRhiShader::load( u":/shaders/rhi/pointcloud_colorramp.vert.qsb"_s, u":/shaders/rhi/pointcloud.frag.qsb"_s );
+  QVERIFY( shader );
+
+  QCOMPARE( shader->uniformBlockSize( QgsRhiBinding::Material ), int( sizeof( QgsPointCloudUniforms ) ) );
+
+  QString error;
+  const QVector<QgsUniformMember> members {
+    { u"singleColor"_s, offsetof( QgsPointCloudUniforms, singleColor ), 16 },
+    { u"pointSize"_s, offsetof( QgsPointCloudUniforms, pointSize ), 4 },
+    { u"style"_s, offsetof( QgsPointCloudUniforms, style ), 4 },
+    { u"colorRampType"_s, offsetof( QgsPointCloudUniforms, colorRampType ), 4 },
+    { u"colorRampCount"_s, offsetof( QgsPointCloudUniforms, colorRampCount ), 4 },
+    { u"featureFlags"_s, offsetof( QgsPointCloudUniforms, featureFlags ), 4 },
+  };
+  QVERIFY2( shader->checkUniformBlockLayout( QgsRhiBinding::Material, members, &error ), error.toUtf8() );
+}
+
+void TestQgsMaterials3D::testPointCloudTriangulatedSingleColor()
+{
+  if ( skipIfNoPixels() )
+    QSKIP( "The Null backend draws no pixels" );
+
+  std::unique_ptr<QgsRhiEngine> engine = makeEngine();
+  if ( !engine )
+    QSKIP( "No usable QRhi device for the default backend" );
+
+  QgsGraphicsPipelineCache cache;
+
+  QgsGpuBuffer vertexBuffer( QgsGpuBuffer::Role::Vertex );
+  QgsGpuBuffer normalBuffer( QgsGpuBuffer::Role::Vertex );
+  QgsGeometry3D geometry;
+  makePointCloudSurface( vertexBuffer, normalBuffer, geometry );
+
+  QgsPointCloudMaterial3D material( QgsPointCloudMaterial3D::Style::SingleColor, true );
+  material.setSingleColor( QColor( 255, 0, 0 ) );
+
+  QgsRenderPass pass( u"pointcloud"_s );
+  setTopDownCamera( pass );
+  setOverheadLight( pass );
+  pass.setClearColor( Qt::black );
+
+  QgsRenderCommand command;
+  command.geometry = &geometry;
+  command.material = &material;
+  pass.addCommand( command );
+
+  engine->setReadbackEnabled( true );
+  QVERIFY( engine->beginFrame() );
+  QVERIFY( pass.execute( engine.get(), &cache ) );
+  engine->endFrame();
+
+  // a lit surface, so the single colour comes through at full brightness
+  QVERIFY2( colorsClose( centerPixel( engine->readbackImage() ), QColor( 255, 0, 0 ) ), centerPixel( engine->readbackImage() ).name().toUtf8() );
+
+  pass.releaseGpuResources();
+  material.releaseGpuResources();
+  cache.clear();
+}
+
+void TestQgsMaterials3D::testPointCloudTriangulatedColorRamp()
+{
+  if ( skipIfNoPixels() )
+    QSKIP( "The Null backend draws no pixels" );
+
+  std::unique_ptr<QgsRhiEngine> engine = makeEngine();
+  if ( !engine )
+    QSKIP( "No usable QRhi device for the default backend" );
+
+  QgsGraphicsPipelineCache cache;
+
+  QgsGpuBuffer vertexBuffer( QgsGpuBuffer::Role::Vertex );
+  QgsGpuBuffer normalBuffer( QgsGpuBuffer::Role::Vertex );
+  QgsGeometry3D geometry;
+  // every vertex carries the parameter 5, halfway between the ramp's two break points
+  makePointCloudSurface( vertexBuffer, normalBuffer, geometry, QgsPointCloudMaterial3D::Style::ColorRamp, 5.0f );
+
+  QgsColorRampShader ramp;
+  ramp.setColorRampType( Qgis::ShaderInterpolationMethod::Linear );
+  ramp.setColorRampItemList( { QgsColorRampShader::ColorRampItem( 0.0, QColor( 0, 0, 255 ) ), QgsColorRampShader::ColorRampItem( 10.0, QColor( 255, 0, 0 ) ) } );
+
+  QgsPointCloudMaterial3D material( QgsPointCloudMaterial3D::Style::ColorRamp, true );
+  material.setColorRamp( ramp );
+  QCOMPARE( material.uniforms().colorRampCount, 2 );
+
+  QgsRenderPass pass( u"pointcloud"_s );
+  setTopDownCamera( pass );
+  setOverheadLight( pass );
+  pass.setClearColor( Qt::black );
+
+  QgsRenderCommand command;
+  command.geometry = &geometry;
+  command.material = &material;
+  pass.addCommand( command );
+
+  engine->setReadbackEnabled( true );
+  QVERIFY( engine->beginFrame() );
+  QVERIFY( pass.execute( engine.get(), &cache ) );
+  engine->endFrame();
+
+  // the ramp is mixed in sRGB and only then converted to linear, which is what keeps it
+  // looking evenly spaced: halfway between blue and red is sRGB 0.5, or linear 0.5^2.2,
+  // and the 15% ambient on top of a fully lit surface scales that by 1.15
+  const int expected = static_cast<int>( std::round( std::pow( 0.5, 2.2 ) * 1.15 * 255.0 ) );
+  QVERIFY2( colorsClose( centerPixel( engine->readbackImage() ), QColor( expected, 0, expected ), 3 ), centerPixel( engine->readbackImage() ).name().toUtf8() );
+
+  // an empty ramp is black here rather than the grey the mesh material falls back to,
+  // which is what the Qt3D point cloud shader did too
+  material.setColorRamp( QgsColorRampShader() );
+  QCOMPARE( material.uniforms().colorRampCount, 0 );
+
+  QVERIFY( engine->beginFrame() );
+  QVERIFY( pass.execute( engine.get(), &cache ) );
+  engine->endFrame();
+  QVERIFY2( colorsClose( centerPixel( engine->readbackImage() ), QColor( 0, 0, 0 ), 3 ), centerPixel( engine->readbackImage() ).name().toUtf8() );
+
+  pass.releaseGpuResources();
+  material.releaseGpuResources();
+  cache.clear();
+}
+
+void TestQgsMaterials3D::testPointCloudClassification()
+{
+  if ( skipIfNoPixels() )
+    QSKIP( "The Null backend draws no pixels" );
+
+  std::unique_ptr<QgsRhiEngine> engine = makeEngine();
+  if ( !engine )
+    QSKIP( "No usable QRhi device for the default backend" );
+
+  QgsGraphicsPipelineCache cache;
+
+  QgsGpuBuffer vertexBuffer( QgsGpuBuffer::Role::Vertex );
+  QgsGpuBuffer normalBuffer( QgsGpuBuffer::Role::Vertex );
+  QgsGeometry3D geometry;
+  // the second category, which the handler writes as its index plus one
+  makePointCloudSurface( vertexBuffer, normalBuffer, geometry, QgsPointCloudMaterial3D::Style::Classification, 2.0f );
+
+  QgsColorRampShader ramp;
+  ramp.setColorRampType( Qgis::ShaderInterpolationMethod::Exact );
+  ramp.setColorRampItemList( { QgsColorRampShader::ColorRampItem( 1.0, QColor( 0, 0, 255 ) ), QgsColorRampShader::ColorRampItem( 2.0, QColor( 0, 255, 0 ) ) } );
+
+  QgsPointCloudMaterial3D material( QgsPointCloudMaterial3D::Style::Classification, true );
+  material.setColorRamp( ramp );
+
+  QgsRenderPass pass( u"pointcloud"_s );
+  setTopDownCamera( pass );
+  setOverheadLight( pass );
+  pass.setClearColor( Qt::black );
+
+  QgsRenderCommand command;
+  command.geometry = &geometry;
+  command.material = &material;
+  pass.addCommand( command );
+
+  engine->setReadbackEnabled( true );
+  QVERIFY( engine->beginFrame() );
+  QVERIFY( pass.execute( engine.get(), &cache ) );
+  engine->endFrame();
+
+  // the class code indexes the ramp by position, so class 2 is the second entry. A
+  // transparent category would shift this, which is why the texture keeps them all.
+  QVERIFY2( colorsClose( centerPixel( engine->readbackImage() ), QColor( 0, 255, 0 ) ), centerPixel( engine->readbackImage() ).name().toUtf8() );
+
+  pass.releaseGpuResources();
+  material.releaseGpuResources();
+  cache.clear();
+}
+
+void TestQgsMaterials3D::testPointCloudPoints()
+{
+  if ( skipIfNoPixels() )
+    QSKIP( "The Null backend draws no pixels" );
+
+  std::unique_ptr<QgsRhiEngine> engine = makeEngine();
+  if ( !engine )
+    QSKIP( "No usable QRhi device for the default backend" );
+
+  QgsGraphicsPipelineCache cache;
+
+  // one point in the middle of what the top down camera looks at
+  const float position[3] = { 5.0f, 5.0f, 0.0f };
+  QgsGpuBuffer vertexBuffer( QgsGpuBuffer::Role::Vertex );
+  vertexBuffer.setData( QByteArray( reinterpret_cast<const char *>( position ), sizeof( position ) ) );
+
+  QgsGeometry3D geometry;
+  geometry.addAttribute( { u"vertexPosition"_s, &vertexBuffer, QRhiVertexInputAttribute::Float3, 0, 3 * sizeof( float ), 0 } );
+  geometry.setVertexCount( 1 );
+
+  QgsPointCloudMaterial3D material( QgsPointCloudMaterial3D::Style::SingleColor, false );
+  material.setSingleColor( QColor( 255, 0, 0 ) );
+  material.setPointSize( 1.0f );
+
+  const auto drawAndCountRedPixels = [&]() {
+    QgsRenderPass pass( u"pointcloud"_s );
+    setTopDownCamera( pass );
+    setOverheadLight( pass );
+    pass.setClearColor( Qt::black );
+
+    QgsRenderCommand command;
+    command.geometry = &geometry;
+    command.material = &material;
+    pass.addCommand( command );
+
+    engine->setReadbackEnabled( true );
+    if ( !engine->beginFrame() )
+      return -1;
+    const bool ok = pass.execute( engine.get(), &cache );
+    engine->endFrame();
+    pass.releaseGpuResources();
+    if ( !ok )
+      return -1;
+
+    const QImage image = engine->readbackImage();
+    int count = 0;
+    for ( int y = 0; y < image.height(); ++y )
+      for ( int x = 0; x < image.width(); ++x )
+        if ( image.pixelColor( x, y ).red() > 100 )
+          ++count;
+    return count;
+  };
+
+  // a point of size one is the only size every backend has to honour, and it is not lit,
+  // so the single colour reaches the pixel unchanged
+  const int onePixel = drawAndCountRedPixels();
+  QCOMPARE( onePixel, 1 );
+
+  // a bigger point only covers more pixels where the backend supports sizing points from
+  // the vertex shader at all, which is what P6's instanced quads exist to stop depending on
+  if ( engine->rhi()->isFeatureSupported( QRhi::VertexShaderPointSize ) )
+  {
+    material.setPointSize( 6.0f );
+    QVERIFY( drawAndCountRedPixels() > onePixel );
+  }
+
+  material.releaseGpuResources();
   cache.clear();
 }
 

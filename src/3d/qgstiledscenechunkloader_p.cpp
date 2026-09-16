@@ -28,6 +28,7 @@
 #include "qgsray3d.h"
 #include "qgsraycastcontext.h"
 #include "qgsraycastingutils.h"
+#include "qgssceneobject3d.h"
 #include "qgstiledsceneboundingvolume.h"
 #include "qgstiledscenetile.h"
 
@@ -82,7 +83,13 @@ void QgsTiledSceneChunkLoader::start()
   const QgsChunkNodeId tileId = node->tileId();
   const QgsVector3D chunkOrigin = node->box3D().center();
   const bool isGlobe = mFactory.mRenderContext.crs().type() == Qgis::CrsType::Geocentric;
-  const QFuture<void> future = QtConcurrent::run( [this, tileId, boundsTransform, chunkOrigin, isGlobe] {
+
+  // which payload this tile produces. Building either one on a worker thread is safe: a
+  // QgsSceneObject3D holds nothing but CPU side buffers and creates its GPU resources on
+  // the render thread, and the Qt3D entity is moved to the main thread at the end.
+  const bool useRhi = mFactory.mRenderContext.rhiEngineEnabled();
+
+  const QFuture<void> future = QtConcurrent::run( [this, tileId, boundsTransform, chunkOrigin, isGlobe, useRhi] {
     const QgsTiledSceneTile tile = mIndex.getTile( tileId.uniqueId );
 
     // we do not load tiles that are too big when not in globe scene mode...
@@ -125,7 +132,15 @@ void QgsTiledSceneChunkLoader::start()
         QgsQuantizedMeshTile qmTile( content );
         qmTile.removeDegenerateTriangles();
         tinygltf::Model model = qmTile.toGltf( true, 100 );
-        mEntity = QgsGltf3DUtils::parsedGltfToEntity( model, entityTransform, uri, mFactory.mRenderContext, &errors );
+        if ( useRhi )
+        {
+          mSceneObject = std::make_unique<QgsSceneObject3D>();
+          QgsGltf3DUtils::addGltfToSceneObject( mSceneObject.get(), model, entityTransform, uri, mFactory.mRenderContext, &errors );
+        }
+        else
+        {
+          mEntity = QgsGltf3DUtils::parsedGltfToEntity( model, entityTransform, uri, mFactory.mRenderContext, &errors );
+        }
       }
       catch ( QgsQuantizedMeshParsingException &ex )
       {
@@ -139,6 +154,8 @@ void QgsTiledSceneChunkLoader::start()
         return;
 
       QVector<Qt3DCore::QEntity *> childEntities;
+      if ( useRhi )
+        mSceneObject = std::make_unique<QgsSceneObject3D>();
 
       for ( const QgsCesiumUtils::TileContents &innerContent : tileContents )
       {
@@ -163,25 +180,45 @@ void QgsTiledSceneChunkLoader::start()
         if ( instancedPrimitives.isEmpty() )
         {
           // the common case (b3dm or glTF tile without EXT_mesh_gpu_instancing)
-          Qt3DCore::QEntity *e = QgsGltf3DUtils::parsedGltfToEntity( model, innerTransform, uri, mFactory.mRenderContext, &errors );
-          if ( e )
-            childEntities << e;
+          if ( useRhi )
+          {
+            QgsGltf3DUtils::addGltfToSceneObject( mSceneObject.get(), model, innerTransform, uri, mFactory.mRenderContext, &errors );
+          }
+          else
+          {
+            Qt3DCore::QEntity *e = QgsGltf3DUtils::parsedGltfToEntity( model, innerTransform, uri, mFactory.mRenderContext, &errors );
+            if ( e )
+              childEntities << e;
+          }
         }
         else
         {
           // the instanced case (i3dm or glTF tile with EXT_mesh_gpu_instancing)
           QgsMaterialContext materialContext = QgsMaterialContext::fromRenderContext( mFactory.mRenderContext );
-          childEntities << QgsGltf3DUtils::createInstancedEntities( model, instancedPrimitives, innerTransform, uri, materialContext, &errors );
+          if ( useRhi )
+            QgsGltf3DUtils::addInstancedGltfToSceneObject( mSceneObject.get(), model, instancedPrimitives, innerTransform, uri, materialContext, &errors );
+          else
+            childEntities << QgsGltf3DUtils::createInstancedEntities( model, instancedPrimitives, innerTransform, uri, materialContext, &errors );
 
           if ( !innerContent.instancing.has_value() )
           {
             // for glTF tiles with EXT_mesh_gpu_instancing, the model can have a mixture of instanced
             // and non-instanced nodes. Handle the non-instanced nodes here (if any).
-            Qt3DCore::QEntity *nonInstancedEntity = QgsGltf3DUtils::parsedGltfToEntity( model, innerTransform, uri, mFactory.mRenderContext, &errors );
-            if ( nonInstancedEntity )
-              childEntities << nonInstancedEntity;
+            if ( useRhi )
+            {
+              QgsGltf3DUtils::addGltfToSceneObject( mSceneObject.get(), model, innerTransform, uri, mFactory.mRenderContext, &errors );
+            }
+            else
+            {
+              Qt3DCore::QEntity *nonInstancedEntity = QgsGltf3DUtils::parsedGltfToEntity( model, innerTransform, uri, mFactory.mRenderContext, &errors );
+              if ( nonInstancedEntity )
+                childEntities << nonInstancedEntity;
+            }
           }
         }
+
+        if ( useRhi )
+          continue; // every inner content adds its parts to the one scene object
 
         if ( childEntities.size() == 1 )
         {
@@ -208,7 +245,15 @@ void QgsTiledSceneChunkLoader::start()
         return;
       }
 
-      mEntity = QgsGltf3DUtils::parsedGltfToEntity( model, entityTransform, QString(), mFactory.mRenderContext, &errors );
+      if ( useRhi )
+      {
+        mSceneObject = std::make_unique<QgsSceneObject3D>();
+        QgsGltf3DUtils::addGltfToSceneObject( mSceneObject.get(), model, entityTransform, QString(), mFactory.mRenderContext, &errors );
+      }
+      else
+      {
+        mEntity = QgsGltf3DUtils::parsedGltfToEntity( model, entityTransform, QString(), mFactory.mRenderContext, &errors );
+      }
     }
     else
       return; // unsupported tile content type
@@ -217,6 +262,22 @@ void QgsTiledSceneChunkLoader::start()
     if ( !errors.isEmpty() )
     {
       QgsDebugError( "gltf load errors: " + errors.join( '\n' ) );
+    }
+
+    if ( mSceneObject )
+    {
+      // the tile's vertices are relative to the chunk origin, so the transform is where
+      // that origin is in world coordinates
+      QMatrix4x4 transform;
+      transform.translate( ( chunkOrigin - mFactory.mRenderContext.origin() ).toVector3D() );
+      mSceneObject->setTransform( transform );
+
+      if ( mSceneObject->parts().empty() )
+      {
+        // nothing in the tile could be drawn, so say so rather than hand the chunk an
+        // empty payload it would account for and render nothing from
+        mSceneObject.reset();
+      }
     }
 
     if ( mEntity )
@@ -247,6 +308,12 @@ Qt3DCore::QEntity *QgsTiledSceneChunkLoader::createEntity( Qt3DCore::QEntity *pa
   if ( mEntity )
     mEntity->setParent( parent );
   return mEntity;
+}
+
+std::unique_ptr<QgsSceneObject3D> QgsTiledSceneChunkLoader::createSceneObject()
+{
+  // the worker thread built it already; all that is left is to hand it over
+  return std::move( mSceneObject );
 }
 
 ///

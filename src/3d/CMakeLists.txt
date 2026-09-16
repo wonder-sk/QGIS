@@ -206,6 +206,7 @@ set(QGIS_3D_SRCS
   engine/materials/qgsoverlaytexturematerial3d.cpp
   engine/materials/qgsphongmaterial3d.cpp
   engine/materials/qgsphongtexturedmaterial3d.cpp
+  engine/materials/qgspointcloudmaterial3d.cpp
   engine/materials/qgspostprocessingmaterial3d.cpp
   engine/materials/qgsshadowcastermaterial3d.cpp
   engine/materials/qgstexturematerial3d.cpp
@@ -403,6 +404,7 @@ set(QGIS_3D_HDRS
   engine/materials/qgsoverlaytexturematerial3d.h
   engine/materials/qgsphongmaterial3d.h
   engine/materials/qgsphongtexturedmaterial3d.h
+  engine/materials/qgspointcloudmaterial3d.h
   engine/materials/qgspostprocessingmaterial3d.h
   engine/materials/qgsshadowcastermaterial3d.h
   engine/materials/qgstexturematerial3d.h
@@ -506,21 +508,25 @@ endfunction()
 # constructed, and which attributes the shader reads is what differs, so these are
 # genuinely different shaders rather than a flag. All four always exist, so a material can
 # never ask for a combination that was not baked.
+# SUFFIX names a second axis on top of the four: a material whose instanced geometry may
+# or may not carry texture coordinates needs the four instancing variants once per
+# attribute set, and the suffix is what keeps those apart, both in the baked file name and
+# in the material's shaderVariant().
 function(qgis_add_rhi_instanced_shaders base)
-  cmake_parse_arguments(ARG "" "" "DEFINES" ${ARGN})
+  cmake_parse_arguments(ARG "" "SUFFIX" "DEFINES" ${ARGN})
 
-  qgis_add_rhi_shader(${base}_instanced
+  qgis_add_rhi_shader(${base}_instanced${ARG_SUFFIX}
     FILE ${base}.vert DEFINES INSTANCING=1 ${ARG_DEFINES}
-    OUTPUT ${base}_instanced.vert.qsb)
-  qgis_add_rhi_shader(${base}_instanced_scale
+    OUTPUT ${base}_instanced${ARG_SUFFIX}.vert.qsb)
+  qgis_add_rhi_shader(${base}_instanced_scale${ARG_SUFFIX}
     FILE ${base}.vert DEFINES INSTANCING=1 USE_INSTANCE_SCALE=1 ${ARG_DEFINES}
-    OUTPUT ${base}_instanced_scale.vert.qsb)
-  qgis_add_rhi_shader(${base}_instanced_rotation
+    OUTPUT ${base}_instanced_scale${ARG_SUFFIX}.vert.qsb)
+  qgis_add_rhi_shader(${base}_instanced_rotation${ARG_SUFFIX}
     FILE ${base}.vert DEFINES INSTANCING=1 USE_INSTANCE_ROTATION=1 ${ARG_DEFINES}
-    OUTPUT ${base}_instanced_rotation.vert.qsb)
-  qgis_add_rhi_shader(${base}_instanced_scale_rotation
+    OUTPUT ${base}_instanced_rotation${ARG_SUFFIX}.vert.qsb)
+  qgis_add_rhi_shader(${base}_instanced_scale_rotation${ARG_SUFFIX}
     FILE ${base}.vert DEFINES INSTANCING=1 USE_INSTANCE_SCALE=1 USE_INSTANCE_ROTATION=1 ${ARG_DEFINES}
-    OUTPUT ${base}_instanced_scale_rotation.vert.qsb)
+    OUTPUT ${base}_instanced_scale_rotation${ARG_SUFFIX}.vert.qsb)
 endfunction()
 
 # QgsUnlitMaterial3D. The fragment stage has no variants at all: which of the uniform, the
@@ -610,6 +616,25 @@ qgis_add_rhi_shader(mesh_scalar_vert
   FILE mesh.vert DEFINES HAS_SCALAR_MAGNITUDE=1
   OUTPUT mesh_scalar.vert.qsb)
 
+# QgsPointCloudMaterial3D. The style is baked because each one reads a different set of
+# per-point attributes, and triangulation is baked because that is what adds the normal.
+# The fragment stage has no variants at all: every vertex variant writes the same
+# varyings, so which style applies is a branch on the uniform block.
+function(qgis_add_rhi_pointcloud_shaders style define)
+  qgis_add_rhi_shader(pointcloud_${style}_vert
+    FILE pointcloud.vert DEFINES ${define}=1
+    OUTPUT pointcloud_${style}.vert.qsb)
+  qgis_add_rhi_shader(pointcloud_${style}_triangulated_vert
+    FILE pointcloud.vert DEFINES ${define}=1 TRIANGULATE=1
+    OUTPUT pointcloud_${style}_triangulated.vert.qsb)
+endfunction()
+
+qgis_add_rhi_shader(pointcloud_frag FILE pointcloud.frag)
+qgis_add_rhi_pointcloud_shaders(singlecolor STYLE_SINGLE_COLOR)
+qgis_add_rhi_pointcloud_shaders(colorramp STYLE_COLOR_RAMP)
+qgis_add_rhi_pointcloud_shaders(rgb STYLE_RGB)
+qgis_add_rhi_pointcloud_shaders(classification STYLE_CLASSIFICATION)
+
 # QgsMetalRoughMaterial3D. Its eleven feature #defines became run time flags, so what is
 # left to bake is only what changes which vertex attributes are read - a shader input no
 # attribute feeds makes the pipeline fail to build, so those cannot be flags.
@@ -633,7 +658,12 @@ qgis_add_rhi_shader(metalrough_ddtexture_vert
 qgis_add_rhi_shader(metalrough_ddtexture_tangent_vert
   FILE metalrough.vert DEFINES HAS_TEXCOORD=1 HAS_TANGENT=1 DATA_DEFINED_TEXTURE_TRANSFORMS=1
   OUTPUT metalrough_ddtexture_tangent.vert.qsb)
-qgis_add_rhi_instanced_shaders(metalrough DEFINES HAS_TEXCOORD=1 HAS_TANGENT=1)
+# instanced geometry gets the four instancing variants once per attribute set, because a
+# glTF tile drawn with EXT_mesh_gpu_instancing may have texture coordinates, tangents or
+# neither, while the primitive generators the point symbols use always have both
+qgis_add_rhi_instanced_shaders(metalrough)
+qgis_add_rhi_instanced_shaders(metalrough SUFFIX _texcoord DEFINES HAS_TEXCOORD=1)
+qgis_add_rhi_instanced_shaders(metalrough SUFFIX _texcoord_tangent DEFINES HAS_TEXCOORD=1 HAS_TANGENT=1)
 
 # QgsShadowCasterMaterial3D. Position only, so the only thing to vary is instancing.
 qgis_add_rhi_shader(shadowcaster_vert FILE shadowcaster.vert)

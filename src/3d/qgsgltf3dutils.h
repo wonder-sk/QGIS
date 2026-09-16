@@ -49,6 +49,7 @@
 class QgsCoordinateTransform;
 class Qgs3DRenderContext;
 class QgsMaterialContext;
+class QgsSceneObject3D;
 
 namespace Qt3DCore
 {
@@ -149,6 +150,42 @@ class _3D_EXPORT QgsGltf3DUtils
      */
     static QVector<Qt3DCore::QEntity *> createInstancedEntities(
       tinygltf::Model &model, const QVector<QgsGltfUtils::InstancedPrimitive> &primitives, const EntityTransform &transform, const QString &baseUri, const QgsMaterialContext &context, QStringList *errors
+    );
+
+    /**
+     * Appends one part per glTF triangle primitive to \a object, for the QRhi engine.
+     *
+     * The counterpart of parsedGltfToEntity(): the model is read and its positions
+     * reprojected in exactly the same way, and what differs is that the result is a flat
+     * list of parts on one scene object rather than a tree of entities. A glTF scene
+     * graph is only ever a transform hierarchy here, and parseNode() has already baked
+     * those transforms into the positions, so nothing is lost by flattening it.
+     *
+     * Returns FALSE if the model has no scene to draw at all. Parts whose material is
+     * fully transparent, or whose primitive is not triangles, are skipped rather than
+     * failing the whole tile.
+     *
+     * \since QGIS 4.2
+     */
+    static bool addGltfToSceneObject( QgsSceneObject3D *object, tinygltf::Model &model, const EntityTransform &transform, const QString &baseUri, const Qgs3DRenderContext &context, QStringList *errors );
+
+    /**
+     * Appends one instanced part per entry of \a primitives to \a object.
+     *
+     * The QRhi counterpart of createInstancedEntities(), for i3dm tiles and for glTF
+     * tiles using EXT_mesh_gpu_instancing. Vertex positions stay in the model's own
+     * space; where each instance goes is a per-instance vertex attribute.
+     *
+     * \since QGIS 4.2
+     */
+    static void addInstancedGltfToSceneObject(
+      QgsSceneObject3D *object,
+      tinygltf::Model &model,
+      const QVector<QgsGltfUtils::InstancedPrimitive> &primitives,
+      const EntityTransform &transform,
+      const QString &baseUri,
+      const QgsMaterialContext &context,
+      QStringList *errors
     );
 
     /**

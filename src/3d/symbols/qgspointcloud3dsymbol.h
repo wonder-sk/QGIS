@@ -522,11 +522,20 @@ class _3D_EXPORT QgsClassificationPointCloud3DSymbol : public QgsPointCloud3DSym
     unsigned int byteStride() override { return 5 * sizeof( float ); }
     void fillMaterial( QgsMaterial *material ) override SIP_SKIP;
 
+    /**
+     * Returns the categories as an exact color ramp, one break point per category.
+     *
+     * The class code of a point indexes this ramp by position, which is how both the
+     * Qt3D and the QRhi point cloud materials colour a classified cloud.
+     *
+     * \note Not available in Python bindings
+     * \since QGIS 4.2
+     */
+    QgsColorRampShader colorRampShader() const SIP_SKIP;
+
   private:
     QString mRenderingParameter;
     QgsPointCloudCategoryList mCategoriesList;
-
-    QgsColorRampShader colorRampShader() const;
 };
 
 #endif // QGSPOINTCLOUD3DSYMBOL_H

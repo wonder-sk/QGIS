@@ -170,6 +170,26 @@ class _3D_EXPORT Qgs3DRenderContext
      */
     void setTextureFilterQuality( Qgis::TextureFilterQuality quality ) { mTextureFilterQuality = quality; }
 
+    /**
+     * Returns TRUE if the scene is drawn by the QRhi engine rather than by Qt3D.
+     *
+     * Chunk loaders ask this to decide which payload to build: a QgsSceneObject3D or a
+     * Qt3D entity. It is a copy of Qgs3DMapSettings::rhiEngineEnabled(), because a loader
+     * runs on a worker thread and must not touch the map settings.
+     *
+     * \see setRhiEngineEnabled()
+     * \since QGIS 4.2
+     */
+    bool rhiEngineEnabled() const SIP_SKIP { return mRhiEngineEnabled; }
+
+    /**
+     * Sets whether the scene is drawn by the QRhi engine rather than by Qt3D.
+     *
+     * \see rhiEngineEnabled()
+     * \since QGIS 4.2
+     */
+    void setRhiEngineEnabled( bool enabled ) SIP_SKIP { mRhiEngineEnabled = enabled; }
+
   private:
     QgsCoordinateReferenceSystem mCrs; //!< Destination coordinate system of the world
     //! Coordinate transform context
@@ -187,6 +207,8 @@ class _3D_EXPORT Qgs3DRenderContext
     QgsExpressionContext mExpressionContext;
 
     Qgis::TextureFilterQuality mTextureFilterQuality = Qgis::TextureFilterQuality::Trilinear;
+
+    bool mRhiEngineEnabled = false;
 
     // not owned, currently a pointer to the Qgs3DMapSettings terrain generator.
     // TODO -- fix during implementation of https://github.com/qgis/QGIS-Enhancement-Proposals/issues/301

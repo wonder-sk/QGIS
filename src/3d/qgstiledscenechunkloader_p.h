@@ -27,6 +27,8 @@
 // version without notice, or even be removed.
 //
 
+#include <memory>
+
 #include "qgs3drendercontext.h"
 #include "qgschunkedentity.h"
 #include "qgschunkloader.h"
@@ -40,6 +42,7 @@
 #define SIP_NO_FILE
 
 class Qgs3DMapSettings;
+class QgsSceneObject3D;
 class QgsTiledSceneChunkLoaderFactory;
 
 
@@ -61,6 +64,7 @@ class QgsTiledSceneChunkLoader : public QgsChunkLoader
     ~QgsTiledSceneChunkLoader() override;
 
     Qt3DCore::QEntity *createEntity( Qt3DCore::QEntity *parent ) override;
+    std::unique_ptr<QgsSceneObject3D> createSceneObject() override;
 
   private:
     const QgsTiledSceneChunkLoaderFactory &mFactory;
@@ -68,7 +72,11 @@ class QgsTiledSceneChunkLoader : public QgsChunkLoader
     double mZValueOffset;
     QgsTiledSceneIndex mIndex;
     QFutureWatcher<void> *mFutureWatcher = nullptr;
+
+    // a loaded tile is one payload or the other, never both: which one start() builds
+    // depends on whether the scene is drawn by the QRhi engine
     Qt3DCore::QEntity *mEntity = nullptr;
+    std::unique_ptr<QgsSceneObject3D> mSceneObject;
 };
 
 

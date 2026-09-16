@@ -32,6 +32,13 @@ static_assert( sizeof( QgsMetalRoughUniforms ) == 240, "QgsMetalRoughUniforms mu
 
 QString QgsMetalRoughMaterial3D::shaderVariant( Mode mode, VertexAttributes attributes, Qgis::InstancedMaterialFlags instanceFlags )
 {
+  // which optional attributes the geometry supplies, as CMake names them
+  QString attributeSuffix;
+  if ( attributes.testFlag( VertexAttribute::Tangents ) )
+    attributeSuffix = u"_texcoord_tangent"_s;
+  else if ( attributes.testFlag( VertexAttribute::TextureCoords ) )
+    attributeSuffix = u"_texcoord"_s;
+
   switch ( mode )
   {
     case Mode::DataDefinedColors:
@@ -39,9 +46,10 @@ QString QgsMetalRoughMaterial3D::shaderVariant( Mode mode, VertexAttributes attr
       return u"_datadefined"_s;
 
     case Mode::Instanced:
-      // instanced geometry always carries texture coordinates and tangents, as it did
-      // under Qt3D, so only the per-instance attributes vary
-      return QgsMaterial3DUtils::shaderVariantSuffix( false, true, instanceFlags );
+      // instanced geometry varies in both axes: a glTF tile drawn through
+      // EXT_mesh_gpu_instancing may carry texture coordinates, tangents or neither,
+      // where the primitive generators the point symbols use always carry both
+      return QgsMaterial3DUtils::shaderVariantSuffix( false, true, instanceFlags ) + attributeSuffix;
 
     case Mode::DataDefinedTextureTransform:
       return attributes.testFlag( VertexAttribute::Tangents ) ? u"_ddtexture_tangent"_s : u"_ddtexture"_s;
@@ -50,11 +58,7 @@ QString QgsMetalRoughMaterial3D::shaderVariant( Mode mode, VertexAttributes attr
       break;
   }
 
-  if ( attributes.testFlag( VertexAttribute::Tangents ) )
-    return u"_texcoord_tangent"_s;
-  if ( attributes.testFlag( VertexAttribute::TextureCoords ) )
-    return u"_texcoord"_s;
-  return QString();
+  return attributeSuffix;
 }
 
 std::shared_ptr<QgsRhiShader> QgsMetalRoughMaterial3D::shaderFor( Mode mode, VertexAttributes attributes, Qgis::InstancedMaterialFlags instanceFlags )

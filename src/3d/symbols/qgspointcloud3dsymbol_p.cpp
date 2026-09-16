@@ -25,9 +25,12 @@
 #include "qgspointcloud3dsymbol.h"
 #include "qgspointcloudattribute.h"
 #include "qgspointcloudblockrequest.h"
+#include "qgspointcloudgeometry3d.h"
 #include "qgspointcloudindex.h"
 #include "qgspointcloudlayer3drenderer.h"
+#include "qgspointcloudmaterial3d.h"
 #include "qgspointcloudrequest.h"
+#include "qgssceneobject3d.h"
 
 #include <QPointSize>
 #include <QString>
@@ -272,6 +275,57 @@ void QgsClassificationPointCloud3DGeometry::makeVertexBuffer( const QgsPointClou
 QgsPointCloud3DSymbolHandler::QgsPointCloud3DSymbolHandler()
 {}
 
+
+namespace
+{
+  //! The vertex layout a chunk needs for the given style, which is what each style reads
+  QgsPointCloudGeometry3D::VertexLayout vertexLayoutFor( QgsPointCloudMaterial3D::Style style )
+  {
+    switch ( style )
+    {
+      case QgsPointCloudMaterial3D::Style::SingleColor:
+        return QgsPointCloudGeometry3D::VertexLayout::PositionOnly;
+      case QgsPointCloudMaterial3D::Style::ColorRamp:
+        return QgsPointCloudGeometry3D::VertexLayout::PositionAndParameter;
+      case QgsPointCloudMaterial3D::Style::Rgb:
+        return QgsPointCloudGeometry3D::VertexLayout::PositionAndColor;
+      case QgsPointCloudMaterial3D::Style::Classification:
+        return QgsPointCloudGeometry3D::VertexLayout::PositionParameterAndSize;
+    }
+    return QgsPointCloudGeometry3D::VertexLayout::PositionOnly;
+  }
+} // namespace
+
+std::unique_ptr<QgsSceneObject3D> QgsPointCloud3DSymbolHandler::createSceneObject( const QgsPointCloud3DRenderContext &context )
+{
+  if ( outNormal.positions.empty() )
+    return nullptr;
+
+  // triangulate() only produces indices when the symbol asked for a surface, and even
+  // then a chunk with too few points to triangulate comes back without any
+  const bool triangulated = context.symbol()->renderAsTriangles() && !outNormal.triangles.isEmpty();
+
+  std::unique_ptr<QgsPointCloudMaterial3D> material = makeMaterial3D( context, triangulated );
+
+  auto geometry = std::make_unique<QgsPointCloudGeometry3D>( vertexLayoutFor( material->style() ), static_cast<int>( context.symbol()->byteStride() ) );
+  geometry->setPoints( outNormal.positions, outNormal.parameter, outNormal.colors, outNormal.pointSizes );
+  if ( triangulated )
+    geometry->setTriangles( outNormal.triangles, outNormal.normals );
+
+  auto object = std::make_unique<QgsSceneObject3D>();
+  QgsSceneObject3D::Part *part = object->addPart( std::move( geometry ), std::move( material ) );
+
+  // a cloud drawn as points has nothing meaningful to cast: its footprint is a screen
+  // space size rather than a surface, and Points topology in a depth only pass would put
+  // single texels in the shadow map. A triangulated chunk is a real surface and does cast.
+  part->castsShadows = triangulated;
+
+  // the points are relative to the chunk's own origin, so the transform is where that is
+  QMatrix4x4 transform;
+  transform.translate( ( outNormal.positionsOrigin - context.origin() ).toVector3D() );
+  object->setTransform( transform );
+  return object;
+}
 
 void QgsPointCloud3DSymbolHandler::makeEntity(
   Qt3DCore::QEntity *parent, const QgsPointCloud3DRenderContext &context, const QgsPointCloud3DSymbolHandler::PointData &out, bool selected, const QStringList &shaderDefines
@@ -653,6 +707,19 @@ Qt3DCore::QGeometry *QgsSingleColorPointCloud3DSymbolHandler::makeGeometry( Qt3D
   return new QgsSingleColorPointCloud3DGeometry( parent, data, byteStride );
 }
 
+std::unique_ptr<QgsPointCloudMaterial3D> QgsSingleColorPointCloud3DSymbolHandler::makeMaterial3D( const QgsPointCloud3DRenderContext &context, bool triangulated ) const
+{
+  auto material = std::make_unique<QgsPointCloudMaterial3D>( QgsPointCloudMaterial3D::Style::SingleColor, triangulated );
+
+  const QgsSingleColorPointCloud3DSymbol *symbol = dynamic_cast<const QgsSingleColorPointCloud3DSymbol *>( context.symbol() );
+  if ( symbol )
+  {
+    material->setPointSize( symbol->pointSize() );
+    material->setSingleColor( symbol->singleColor() );
+  }
+  return material;
+}
+
 QgsColorRampPointCloud3DSymbolHandler::QgsColorRampPointCloud3DSymbolHandler()
   : QgsPointCloud3DSymbolHandler()
 {}
@@ -787,6 +854,19 @@ void QgsColorRampPointCloud3DSymbolHandler::finalize( Qt3DCore::QEntity *parent,
 Qt3DCore::QGeometry *QgsColorRampPointCloud3DSymbolHandler::makeGeometry( Qt3DCore::QNode *parent, const QgsPointCloud3DSymbolHandler::PointData &data, unsigned int byteStride )
 {
   return new QgsColorRampPointCloud3DGeometry( parent, data, byteStride );
+}
+
+std::unique_ptr<QgsPointCloudMaterial3D> QgsColorRampPointCloud3DSymbolHandler::makeMaterial3D( const QgsPointCloud3DRenderContext &context, bool triangulated ) const
+{
+  auto material = std::make_unique<QgsPointCloudMaterial3D>( QgsPointCloudMaterial3D::Style::ColorRamp, triangulated );
+
+  const QgsColorRampPointCloud3DSymbol *symbol = dynamic_cast<const QgsColorRampPointCloud3DSymbol *>( context.symbol() );
+  if ( symbol )
+  {
+    material->setPointSize( symbol->pointSize() );
+    material->setColorRamp( symbol->colorRampShader() );
+  }
+  return material;
 }
 
 QgsRGBPointCloud3DSymbolHandler::QgsRGBPointCloud3DSymbolHandler()
@@ -931,6 +1011,15 @@ void QgsRGBPointCloud3DSymbolHandler::finalize( Qt3DCore::QEntity *parent, const
 Qt3DCore::QGeometry *QgsRGBPointCloud3DSymbolHandler::makeGeometry( Qt3DCore::QNode *parent, const QgsPointCloud3DSymbolHandler::PointData &data, unsigned int byteStride )
 {
   return new QgsRGBPointCloud3DGeometry( parent, data, byteStride );
+}
+
+std::unique_ptr<QgsPointCloudMaterial3D> QgsRGBPointCloud3DSymbolHandler::makeMaterial3D( const QgsPointCloud3DRenderContext &context, bool triangulated ) const
+{
+  // the colours come from the point data, so there is nothing but the point size to set
+  auto material = std::make_unique<QgsPointCloudMaterial3D>( QgsPointCloudMaterial3D::Style::Rgb, triangulated );
+  if ( context.symbol() )
+    material->setPointSize( context.symbol()->pointSize() );
+  return material;
 }
 
 QgsClassificationPointCloud3DSymbolHandler::QgsClassificationPointCloud3DSymbolHandler()
@@ -1080,6 +1169,21 @@ void QgsClassificationPointCloud3DSymbolHandler::finalize( Qt3DCore::QEntity *pa
 Qt3DCore::QGeometry *QgsClassificationPointCloud3DSymbolHandler::makeGeometry( Qt3DCore::QNode *parent, const QgsPointCloud3DSymbolHandler::PointData &data, unsigned int byteStride )
 {
   return new QgsClassificationPointCloud3DGeometry( parent, data, byteStride );
+}
+
+std::unique_ptr<QgsPointCloudMaterial3D> QgsClassificationPointCloud3DSymbolHandler::makeMaterial3D( const QgsPointCloud3DRenderContext &context, bool triangulated ) const
+{
+  auto material = std::make_unique<QgsPointCloudMaterial3D>( QgsPointCloudMaterial3D::Style::Classification, triangulated );
+
+  const QgsClassificationPointCloud3DSymbol *symbol = dynamic_cast<const QgsClassificationPointCloud3DSymbol *>( context.symbol() );
+  if ( symbol )
+  {
+    // each point carries its own size here, taken from its category, so the material's
+    // own point size is only a fallback the shader never reads
+    material->setPointSize( symbol->pointSize() );
+    material->setColorRamp( symbol->colorRampShader() );
+  }
+  return material;
 }
 
 /// @endcond

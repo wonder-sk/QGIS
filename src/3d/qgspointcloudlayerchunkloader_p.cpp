@@ -32,6 +32,7 @@
 #include "qgsray3d.h"
 #include "qgsraycastcontext.h"
 #include "qgsraycastingutils.h"
+#include "qgssceneobject3d.h"
 
 #include <QPointSize>
 #include <QString>
@@ -142,6 +143,18 @@ Qt3DCore::QEntity *QgsPointCloudLayerChunkLoader::createEntity( Qt3DCore::QEntit
   Qt3DCore::QEntity *entity = new Qt3DCore::QEntity( parent );
   mHandler->finalize( entity, mContext );
   return entity;
+}
+
+std::unique_ptr<QgsSceneObject3D> QgsPointCloudLayerChunkLoader::createSceneObject()
+{
+  if ( !mFactory->mRenderContext.rhiEngineEnabled() )
+    return nullptr;
+
+  // the handler is only built in start(), and only for a symbol type it recognises
+  if ( !mHandler )
+    return nullptr;
+
+  return mHandler->createSceneObject( mContext );
 }
 
 ///////////////
