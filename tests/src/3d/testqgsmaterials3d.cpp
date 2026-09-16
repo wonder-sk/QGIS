@@ -14,6 +14,7 @@
 
 #include <cmath>
 
+#include "qgsbillboardmaterial3d.h"
 #include "qgscolorrampshader.h"
 #include "qgsgeometry3d.h"
 #include "qgsglobematerial3d.h"
@@ -93,6 +94,11 @@ class TestQgsMaterials3D : public QgsTest
 
     void testGlobeUniformBlockLayout();
     void testGlobeShading();
+
+    void testBillboardVariantsExist();
+    void testBillboardUniformBlockLayout();
+    void testBillboardFixedPixelSize();
+    void testBillboardPerspectiveScale();
 
     void testMeshVariantsExist();
     void testMeshUniformBlockLayout();
@@ -936,6 +942,211 @@ void TestQgsMaterials3D::testGlobeShading()
   // the shader scales the sampled colour as a whole, alpha included, exactly as the Qt3D
   // one did, so the floor shows up in the alpha channel too
   QVERIFY2( colorsClose( centerPixel( engine->readbackImage() ), QColor( 60, 60, 60, 77 ), 2 ), centerPixel( engine->readbackImage() ).name( QColor::HexArgb ).toUtf8() );
+
+  pass.releaseGpuResources();
+  material.releaseGpuResources();
+  texture.releaseGpuResources();
+  cache.clear();
+}
+
+//
+// QgsBillboardMaterial3D
+//
+
+void TestQgsMaterials3D::testBillboardVariantsExist()
+{
+  using Attribute = QgsBillboardMaterial3D::InstanceAttribute;
+  using Attributes = QgsBillboardMaterial3D::InstanceAttributes;
+
+  const QString fragment = u":/shaders/rhi/billboard.frag.qsb"_s;
+
+  // all eight combinations of the three per-instance attributes, because a shader input
+  // the geometry does not supply makes the whole draw fail rather than go unused
+  for ( int bits = 0; bits < 8; ++bits )
+  {
+    const Attributes attributes( bits );
+    const QString variant = QgsBillboardMaterial3D::shaderVariant( attributes );
+    const QString path = u":/shaders/rhi/billboard%1.vert.qsb"_s.arg( variant );
+
+    const std::shared_ptr<QgsRhiShader> shader = QgsRhiShader::load( path, fragment );
+    QVERIFY2( shader, path.toUtf8() );
+
+    QCOMPARE( shader->inputLocation( u"vertexPosition"_s ), 0 );
+    QCOMPARE( shader->inputLocation( u"instancePosition"_s ), 1 );
+    QCOMPARE( shader->inputLocation( u"instanceSize"_s ) >= 0, attributes.testFlag( Attribute::Size ) );
+    QCOMPARE( shader->inputLocation( u"atlasOffset"_s ) >= 0, attributes.testFlag( Attribute::TextureData ) );
+    QCOMPARE( shader->inputLocation( u"atlasSize"_s ) >= 0, attributes.testFlag( Attribute::TextureData ) );
+    QCOMPARE( shader->inputLocation( u"pixelOffset"_s ) >= 0, attributes.testFlag( Attribute::PixelOffsets ) );
+
+    QString error;
+    QVERIFY2( shader->checkStageInterface( &error ), error.toUtf8() );
+  }
+
+  const std::shared_ptr<QgsRhiShader> plain = QgsRhiShader::load( u":/shaders/rhi/billboard.vert.qsb"_s, fragment );
+  const QVector<QShaderDescription::InOutVariable> samplers = plain->samplers();
+  QCOMPARE( samplers.size(), 1 );
+  QCOMPARE( samplers.at( 0 ).binding, QgsBillboardMaterial3D::SpriteTextureBinding );
+}
+
+void TestQgsMaterials3D::testBillboardUniformBlockLayout()
+{
+  const std::shared_ptr<QgsRhiShader> shader = QgsRhiShader::load( u":/shaders/rhi/billboard.vert.qsb"_s, u":/shaders/rhi/billboard.frag.qsb"_s );
+  QVERIFY( shader );
+
+  QCOMPARE( shader->uniformBlockSize( QgsRhiBinding::Material ), int( sizeof( QgsBillboardUniforms ) ) );
+
+  QString error;
+  const QVector<QgsUniformMember> members {
+    { u"billboardSize"_s, offsetof( QgsBillboardUniforms, billboardSize ), 8 },
+    { u"verticalOffset"_s, offsetof( QgsBillboardUniforms, verticalOffset ), 4 },
+    { u"featureFlags"_s, offsetof( QgsBillboardUniforms, featureFlags ), 4 },
+  };
+  QVERIFY2( shader->checkUniformBlockLayout( QgsRhiBinding::Material, members, &error ), error.toUtf8() );
+}
+
+void TestQgsMaterials3D::testBillboardFixedPixelSize()
+{
+  if ( skipIfNoPixels() )
+    QSKIP( "The Null backend draws no pixels" );
+
+  const std::unique_ptr<QgsRhiEngine> engine = makeEngine();
+  QVERIFY( engine );
+  if ( !engine->rhi()->isFeatureSupported( QRhi::Instancing ) )
+    QSKIP( "The device does not support instanced drawing" );
+
+  QgsGraphicsPipelineCache cache;
+
+  // the unit quad every billboard is drawn from, as a triangle strip
+  const float corners[] = { -0.5f, -0.5f, 0.5f, -0.5f, -0.5f, 0.5f, 0.5f, 0.5f };
+  QgsGpuBuffer quadBuffer( QgsGpuBuffer::Role::Vertex );
+  quadBuffer.setData( QByteArray( reinterpret_cast<const char *>( corners ), sizeof( corners ) ) );
+
+  // one billboard, at the point the camera is looking at
+  const float positions[] = { 5.0f, 5.0f, 0.0f };
+  QgsGpuBuffer instanceBuffer( QgsGpuBuffer::Role::Vertex );
+  instanceBuffer.setData( QByteArray( reinterpret_cast<const char *>( positions ), sizeof( positions ) ) );
+
+  QgsGeometry3D geometry;
+  geometry.addAttribute( { u"vertexPosition"_s, &quadBuffer, QRhiVertexInputAttribute::Float2, 0, 0, 0 } );
+  geometry.addAttribute( { u"instancePosition"_s, &instanceBuffer, QRhiVertexInputAttribute::Float3, 0, 0, 1 } );
+  geometry.setVertexCount( 4 );
+
+  QImage sprite( 4, 4, QImage::Format_RGBA8888 );
+  sprite.fill( QColor( 255, 0, 0, 255 ) );
+  QgsGpuTexture texture;
+  texture.setImage( sprite );
+
+  QgsBillboardMaterial3D material;
+  QCOMPARE( material.instanceAttributes(), QgsBillboardMaterial3D::InstanceAttributes() );
+  QCOMPARE( material.topology(), QRhiGraphicsPipeline::TriangleStrip );
+  material.setSpriteTexture( &texture );
+  QCOMPARE( material.spriteTexture(), &texture );
+
+  // twenty pixels across in a sixty four pixel viewport
+  material.setSize( QSizeF( 20, 20 ) );
+
+  QgsRenderPass pass( u"billboard"_s );
+  setTopDownCamera( pass );
+  pass.setClearColor( QColor( 0, 0, 255 ) );
+
+  QgsRenderCommand command;
+  command.geometry = &geometry;
+  command.material = &material;
+  command.instanceCount = 1;
+  pass.addCommand( command );
+
+  engine->setReadbackEnabled( true );
+  QVERIFY( engine->beginFrame() );
+  QVERIFY( pass.execute( engine.get(), &cache ) );
+  engine->endFrame();
+
+  const QImage image = engine->readbackImage();
+  QVERIFY2( colorsClose( centerPixel( image ), QColor( 255, 0, 0 ) ), centerPixel( image ).name().toUtf8() );
+
+  // the quad is twenty pixels wide whatever the geometry's own scale is, so it covers the
+  // middle of the image and nothing near its edge
+  QVERIFY2( colorsClose( image.pixelColor( 40, 32 ), QColor( 255, 0, 0 ) ), "the billboard is narrower than twenty pixels" );
+  QVERIFY2( colorsClose( image.pixelColor( 56, 32 ), QColor( 0, 0, 255 ) ), "the billboard is wider than twenty pixels" );
+
+  // shifting it up by half its height takes it off the centre altogether
+  material.setVerticalOffset( 0.5f );
+  material.setVerticalOffsetEnabled( true );
+
+  QVERIFY( engine->beginFrame() );
+  QVERIFY( pass.execute( engine.get(), &cache ) );
+  engine->endFrame();
+  QVERIFY2( colorsClose( centerPixel( engine->readbackImage() ), QColor( 0, 0, 255 ) ), "the vertical offset did not move the billboard" );
+
+  pass.releaseGpuResources();
+  material.releaseGpuResources();
+  texture.releaseGpuResources();
+  cache.clear();
+}
+
+void TestQgsMaterials3D::testBillboardPerspectiveScale()
+{
+  if ( skipIfNoPixels() )
+    QSKIP( "The Null backend draws no pixels" );
+
+  const std::unique_ptr<QgsRhiEngine> engine = makeEngine();
+  QVERIFY( engine );
+  if ( !engine->rhi()->isFeatureSupported( QRhi::Instancing ) )
+    QSKIP( "The device does not support instanced drawing" );
+
+  QgsGraphicsPipelineCache cache;
+
+  const float corners[] = { -0.5f, -0.5f, 0.5f, -0.5f, -0.5f, 0.5f, 0.5f, 0.5f };
+  QgsGpuBuffer quadBuffer( QgsGpuBuffer::Role::Vertex );
+  quadBuffer.setData( QByteArray( reinterpret_cast<const char *>( corners ), sizeof( corners ) ) );
+
+  // one billboard carrying its own size, which is what the baked variant is for
+  const float instances[] = { 5.0f, 5.0f, 0.0f, 4.0f, 4.0f };
+  QgsGpuBuffer instanceBuffer( QgsGpuBuffer::Role::Vertex );
+  instanceBuffer.setData( QByteArray( reinterpret_cast<const char *>( instances ), sizeof( instances ) ) );
+
+  const quint32 stride = 5 * sizeof( float );
+  QgsGeometry3D geometry;
+  geometry.addAttribute( { u"vertexPosition"_s, &quadBuffer, QRhiVertexInputAttribute::Float2, 0, 0, 0 } );
+  geometry.addAttribute( { u"instancePosition"_s, &instanceBuffer, QRhiVertexInputAttribute::Float3, 0, stride, 1 } );
+  geometry.addAttribute( { u"instanceSize"_s, &instanceBuffer, QRhiVertexInputAttribute::Float2, 3 * sizeof( float ), stride, 1 } );
+  geometry.setVertexCount( 4 );
+
+  QImage sprite( 4, 4, QImage::Format_RGBA8888 );
+  sprite.fill( QColor( 255, 0, 0, 255 ) );
+  QgsGpuTexture texture;
+  texture.setImage( sprite );
+
+  QgsBillboardMaterial3D material( QgsBillboardMaterial3D::InstanceAttribute::Size );
+  material.setSpriteTexture( &texture );
+
+  // sized in world units now, so the four unit quad covers a known part of the view
+  material.setPerspectiveScaleEnabled( true );
+
+  // and the material's own size must be ignored in favour of the instance's
+  material.setSize( QSizeF( 1000, 1000 ) );
+
+  QgsRenderPass pass( u"billboard perspective"_s );
+  setTopDownCamera( pass );
+  pass.setClearColor( QColor( 0, 0, 255 ) );
+
+  QgsRenderCommand command;
+  command.geometry = &geometry;
+  command.material = &material;
+  command.instanceCount = 1;
+  pass.addCommand( command );
+
+  engine->setReadbackEnabled( true );
+  QVERIFY( engine->beginFrame() );
+  QVERIFY( pass.execute( engine.get(), &cache ) );
+  engine->endFrame();
+
+  const QImage image = engine->readbackImage();
+  QVERIFY2( colorsClose( centerPixel( image ), QColor( 255, 0, 0 ) ), centerPixel( image ).name().toUtf8() );
+
+  // the camera is thirty units out with a forty five degree field of view, so it sees
+  // about twenty five units across: a four unit quad is a small part of that and leaves
+  // the edges of the image alone
+  QVERIFY2( colorsClose( image.pixelColor( 2, 32 ), QColor( 0, 0, 255 ) ), "a four unit quad should not reach the edge of the view" );
 
   pass.releaseGpuResources();
   material.releaseGpuResources();
