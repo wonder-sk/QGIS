@@ -129,6 +129,7 @@ set(QGIS_3D_SRCS
   symbols/qgs3dsymbolutils.cpp
   symbols/qgsbillboardgeometry.cpp
   symbols/qgsbillboardgeometry3d.cpp
+  symbols/qgspointcloudgeometry3d.cpp
   symbols/qgsline3dsymbol.cpp
   symbols/qgsline3dsymbol_p.cpp
   symbols/qgslinematerial_p.cpp
@@ -164,6 +165,7 @@ set(QGIS_3D_SRCS
   terrain/qgsterraintileloader.cpp
 
   mesh/qgsmesh3dgeometry_p.cpp
+  mesh/qgsmeshgeometry3d.cpp
   mesh/qgsmesh3dentity_p.cpp
   mesh/qgsmesh3dmaterial_p.cpp
   mesh/qgsmeshterraingenerator.cpp
@@ -306,6 +308,7 @@ set(QGIS_3D_HDRS
   symbols/qgs3dsymbolutils.h
   symbols/qgsbillboardgeometry.h
   symbols/qgsbillboardgeometry3d.h
+  symbols/qgspointcloudgeometry3d.h
   symbols/qgsline3dsymbol.h
   symbols/qgsmesh3dsymbol.h
   symbols/qgspoint3dbillboardmaterial.h
@@ -386,6 +389,7 @@ set(QGIS_3D_PRIVATE_HDRS
   terrain/qgsterraintileentity_p.h
   mesh/qgsmesh3dentity_p.h
   mesh/qgsmesh3dgeometry_p.h
+  mesh/qgsmeshgeometry3d.h
   mesh/qgsmesh3dmaterial_p.h
   mesh/qgsmeshterraintileloader_p.h
   qgscolorramptexture.h

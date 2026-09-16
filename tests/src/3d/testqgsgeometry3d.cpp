@@ -20,11 +20,15 @@
 #include "qgsdemterraintilegeometry3d.h"
 #include "qgsgputexture.h"
 #include "qgsgraphicspipelinecache.h"
+#include "qgsmeshgeometry3d.h"
+#include "qgsmeshmaterial3d.h"
 #include "qgsphongmaterial3d.h"
+#include "qgspointcloudgeometry3d.h"
 #include "qgsray3d.h"
 #include "qgsraycastcontext.h"
 #include "qgsrendercommand.h"
 #include "qgsrenderpass.h"
+#include "qgsrenderuniforms.h"
 #include "qgsrhiengine.h"
 #include "qgsrhishader.h"
 #include "qgstest.h"
@@ -105,6 +109,16 @@ class TestQgsGeometry3D : public QgsTest
     void testBillboardAtlasDataWithPixelOffsets();
     void testBillboardAttributesFollowTheData();
     void testBillboardRenders();
+
+    void testMeshTerrainLayout();
+    void testMeshDatasetLayout();
+    void testMeshWireframeIsNotIndexed();
+    void testMeshRenders();
+
+    void testPointCloudLayouts();
+    void testPointCloudStrideFromSymbol();
+    void testPointCloudTriangulation();
+    void testPointCloudRenders();
 
   private:
     QRhi::Implementation mBackend = QRhi::Null;
@@ -629,6 +643,302 @@ void TestQgsGeometry3D::testBillboardRenders()
   billboards.releaseGpuResources();
   material.releaseGpuResources();
   texture.releaseGpuResources();
+  cache.clear();
+}
+
+void TestQgsGeometry3D::testMeshTerrainLayout()
+{
+  QgsMeshGeometry3D mesh( false );
+
+  QCOMPARE( mesh.stride(), 6 * int( sizeof( float ) ) );
+  QVERIFY( !mesh.hasScalarMagnitude() );
+  QCOMPARE( mesh.geometry()->attributes().size(), 2 );
+
+  const QgsVertexAttribute *position = mesh.geometry()->attribute( u"vertexPosition"_s );
+  const QgsVertexAttribute *normal = mesh.geometry()->attribute( u"vertexNormal"_s );
+  QVERIFY( position && normal );
+  QCOMPARE( position->byteOffset, 0u );
+  QCOMPARE( normal->byteOffset, 3 * sizeof( float ) );
+  QVERIFY( !mesh.geometry()->attribute( u"scalarMagnitude"_s ) );
+
+  // the vertex count follows from the data, since the builder writes one vertex per mesh
+  // vertex rather than reporting a count of its own
+  QByteArray vertexData;
+  vertexData.resize( 4 * mesh.stride() );
+  mesh.setVertexData( vertexData );
+  QCOMPARE( mesh.geometry()->vertexCount(), 4 );
+
+  QByteArray indexData;
+  indexData.resize( 6 * sizeof( quint32 ) );
+  mesh.setIndexData( indexData );
+  QCOMPARE( mesh.geometry()->indexCount(), 6 );
+  QCOMPARE( mesh.geometry()->drawCount(), 6 );
+}
+
+void TestQgsGeometry3D::testMeshDatasetLayout()
+{
+  QgsMeshGeometry3D mesh( true );
+
+  QCOMPARE( mesh.stride(), 7 * int( sizeof( float ) ) );
+  QVERIFY( mesh.hasScalarMagnitude() );
+
+  const QgsVertexAttribute *magnitude = mesh.geometry()->attribute( u"scalarMagnitude"_s );
+  QVERIFY( magnitude );
+  QCOMPARE( magnitude->format, QRhiVertexInputAttribute::Float );
+  QCOMPARE( magnitude->byteOffset, 6 * sizeof( float ) );
+  QCOMPARE( magnitude->byteStride, quint32( mesh.stride() ) );
+
+  // the magnitude attribute is the one thing that differs, so the two layouts must not
+  // collide in the pipeline cache
+  const QgsMeshGeometry3D terrain( false );
+  QVERIFY( mesh.geometry()->layoutKey() != terrain.geometry()->layoutKey() );
+}
+
+void TestQgsGeometry3D::testMeshWireframeIsNotIndexed()
+{
+  // wireframe rendering needs each triangle to own its three vertices, because the
+  // material derives the barycentric coordinates it draws edges from out of them
+  QgsMeshGeometry3D wireframe( false, false );
+  QVERIFY( !wireframe.geometry()->isIndexed() );
+
+  QByteArray vertexData;
+  vertexData.resize( 9 * wireframe.stride() );
+  wireframe.setVertexData( vertexData );
+  QCOMPARE( wireframe.geometry()->vertexCount(), 9 );
+  QCOMPARE( wireframe.geometry()->drawCount(), 9 );
+
+  const QgsMeshGeometry3D indexed( false, true );
+  QVERIFY( indexed.geometry()->isIndexed() );
+}
+
+void TestQgsGeometry3D::testMeshRenders()
+{
+  if ( mBackend == QRhi::Null )
+    QSKIP( "The Null backend draws no pixels" );
+
+  QgsRhiEngine engine;
+  if ( !engine.createOffscreen( QSize( 64, 64 ), mBackend ) )
+    QSKIP( "No usable QRhi device for the default backend" );
+
+  QgsGraphicsPipelineCache cache;
+
+  // two triangles covering a square in the XY plane, with normals pointing up
+  QgsMeshGeometry3D mesh( false );
+  QVector<float> vertices;
+  const float corners[4][3] = { { -5, -5, 0 }, { 5, -5, 0 }, { 5, 5, 0 }, { -5, 5, 0 } };
+  for ( const auto &corner : corners )
+    vertices << corner[0] << corner[1] << corner[2] << 0.0f << 0.0f << 1.0f;
+  mesh.setVertexData( QByteArray( reinterpret_cast<const char *>( vertices.constData() ), vertices.size() * int( sizeof( float ) ) ) );
+
+  const QVector<quint32> indices { 0, 1, 2, 0, 2, 3 };
+  mesh.setIndexData( QByteArray( reinterpret_cast<const char *>( indices.constData() ), indices.size() * int( sizeof( quint32 ) ) ) );
+
+  QgsMeshMaterial3D material( false );
+  material.setStyle( QgsMeshMaterial3D::Style::SingleColor );
+  material.setMeshColor( QColor( 255, 0, 0 ) );
+  material.setCullMode( QRhiGraphicsPipeline::None );
+
+  QgsRenderPass pass( u"mesh"_s );
+  const QVector3D eye( 0.0f, 0.0f, 20.0f );
+  QMatrix4x4 view;
+  view.lookAt( eye, QVector3D(), QVector3D( 0.0f, 1.0f, 0.0f ) );
+  QMatrix4x4 projection;
+  projection.perspective( 45.0f, 1.0f, 1.0f, 100.0f );
+  pass.setCamera( view, projection );
+  pass.setEyePosition( eye );
+  pass.setClearColor( Qt::black );
+
+  // the mesh material is lit, so without a light the surface comes out black
+  QgsLightUniforms lights;
+  lights.addDirectionalLight( QVector3D( 0.0f, 0.0f, -1.0f ), QColor( 255, 255, 255 ), 1.0f );
+  pass.setLights( lights );
+
+  QgsRenderCommand command;
+  command.geometry = mesh.geometry();
+  command.material = &material;
+  pass.addCommand( command );
+
+  engine.setReadbackEnabled( true );
+  QVERIFY( engine.beginFrame() );
+  QVERIFY( pass.execute( &engine, &cache ) );
+  engine.endFrame();
+
+  const int lit = litPixels( engine.readbackImage() );
+  QVERIFY2( lit > 64 * 64 / 8, qPrintable( u"only %1 pixels"_s.arg( lit ) ) );
+
+  pass.releaseGpuResources();
+  mesh.releaseGpuResources();
+  material.releaseGpuResources();
+  cache.clear();
+}
+
+void TestQgsGeometry3D::testPointCloudLayouts()
+{
+  const QVector<QVector3D> positions { QVector3D( 1, 2, 3 ), QVector3D( 4, 5, 6 ) };
+  const QVector<float> parameters { 0.25f, 0.75f };
+  const QVector<QVector3D> colors { QVector3D( 1, 0, 0 ), QVector3D( 0, 1, 0 ) };
+  const QVector<float> sizes { 2.0f, 3.0f };
+
+  // single colour: nothing but the position
+  {
+    QgsPointCloudGeometry3D cloud( QgsPointCloudGeometry3D::VertexLayout::PositionOnly );
+    cloud.setPoints( positions );
+    QCOMPARE( cloud.stride(), 3 * int( sizeof( float ) ) );
+    QCOMPARE( cloud.pointCount(), 2 );
+    QCOMPARE( cloud.geometry()->attributes().size(), 1 );
+    QVERIFY( !cloud.isTriangulated() );
+  }
+
+  // colour ramp: one float the ramp is sampled with
+  {
+    QgsPointCloudGeometry3D cloud( QgsPointCloudGeometry3D::VertexLayout::PositionAndParameter );
+    cloud.setPoints( positions, parameters );
+    QCOMPARE( cloud.stride(), 4 * int( sizeof( float ) ) );
+    const QgsVertexAttribute *parameter = cloud.geometry()->attribute( u"vertexParameter"_s );
+    QVERIFY( parameter );
+    QCOMPARE( parameter->format, QRhiVertexInputAttribute::Float );
+    QCOMPARE( parameter->byteOffset, 3 * sizeof( float ) );
+
+    const float *data = reinterpret_cast<const float *>( parameter->buffer->data().constData() );
+    QCOMPARE( data[3], 0.25f );
+    QCOMPARE( data[7], 0.75f );
+  }
+
+  // RGB: a colour straight out of the cloud
+  {
+    QgsPointCloudGeometry3D cloud( QgsPointCloudGeometry3D::VertexLayout::PositionAndColor );
+    cloud.setPoints( positions, QVector<float>(), colors );
+    QCOMPARE( cloud.stride(), 6 * int( sizeof( float ) ) );
+    const QgsVertexAttribute *color = cloud.geometry()->attribute( u"vertexColor"_s );
+    QVERIFY( color );
+    QCOMPARE( color->format, QRhiVertexInputAttribute::Float3 );
+    QCOMPARE( color->byteOffset, 3 * sizeof( float ) );
+    QVERIFY( !cloud.geometry()->attribute( u"vertexParameter"_s ) );
+  }
+
+  // classification: a parameter and a per-point size
+  {
+    QgsPointCloudGeometry3D cloud( QgsPointCloudGeometry3D::VertexLayout::PositionParameterAndSize );
+    cloud.setPoints( positions, parameters, QVector<QVector3D>(), sizes );
+    QCOMPARE( cloud.stride(), 5 * int( sizeof( float ) ) );
+    const QgsVertexAttribute *size = cloud.geometry()->attribute( u"vertexSize"_s );
+    QVERIFY( size );
+    QCOMPARE( size->byteOffset, 4 * sizeof( float ) );
+
+    const float *data = reinterpret_cast<const float *>( size->buffer->data().constData() );
+    QCOMPARE( data[4], 2.0f );
+    QCOMPARE( data[9], 3.0f );
+  }
+}
+
+void TestQgsGeometry3D::testPointCloudStrideFromSymbol()
+{
+  // the symbol's stride can leave room past the attributes the layout fills, and the
+  // attributes have to be spaced by it rather than by their own packed size
+  QgsPointCloudGeometry3D cloud( QgsPointCloudGeometry3D::VertexLayout::PositionAndParameter, 32 );
+  QCOMPARE( cloud.stride(), 32 );
+
+  const QVector<QVector3D> positions { QVector3D( 1, 2, 3 ), QVector3D( 4, 5, 6 ) };
+  cloud.setPoints( positions, QVector<float> { 0.5f, 0.25f } );
+
+  const QgsVertexAttribute *parameter = cloud.geometry()->attribute( u"vertexParameter"_s );
+  QCOMPARE( parameter->byteStride, 32u );
+  QCOMPARE( parameter->buffer->size(), 2 * 32 );
+
+  const char *raw = parameter->buffer->data().constData();
+  QCOMPARE( *reinterpret_cast<const float *>( raw + parameter->byteOffset ), 0.5f );
+  QCOMPARE( *reinterpret_cast<const float *>( raw + 32 + parameter->byteOffset ), 0.25f );
+  QCOMPARE( *reinterpret_cast<const float *>( raw + 32 ), 4.0f );
+}
+
+void TestQgsGeometry3D::testPointCloudTriangulation()
+{
+  QgsPointCloudGeometry3D cloud( QgsPointCloudGeometry3D::VertexLayout::PositionOnly );
+  cloud.setPoints( QVector<QVector3D> { QVector3D( 0, 0, 0 ), QVector3D( 1, 0, 0 ), QVector3D( 0, 1, 0 ) } );
+  QVERIFY( !cloud.isTriangulated() );
+  QVERIFY( !cloud.geometry()->attribute( u"vertexNormal"_s ) );
+
+  const QVector<quint32> indices { 0, 1, 2 };
+  QVector<float> normals;
+  for ( int i = 0; i < 3; ++i )
+    normals << 0.0f << 0.0f << 1.0f;
+
+  cloud.setTriangles(
+    QByteArray( reinterpret_cast<const char *>( indices.constData() ), indices.size() * int( sizeof( quint32 ) ) ),
+    QByteArray( reinterpret_cast<const char *>( normals.constData() ), normals.size() * int( sizeof( float ) ) )
+  );
+
+  QVERIFY( cloud.isTriangulated() );
+  QCOMPARE( cloud.geometry()->indexCount(), 3 );
+
+  // the normal comes from its own buffer rather than the interleaved one
+  const QgsVertexAttribute *normal = cloud.geometry()->attribute( u"vertexNormal"_s );
+  QVERIFY( normal );
+  QCOMPARE( normal->byteStride, 3 * sizeof( float ) );
+  QVERIFY( normal->buffer != cloud.geometry()->attribute( u"vertexPosition"_s )->buffer );
+
+  // and going back to points has to take the attribute away again, or a shader reading it
+  // would leave the chunk undrawn
+  cloud.setTriangles( QByteArray(), QByteArray() );
+  QVERIFY( !cloud.isTriangulated() );
+  QVERIFY( !cloud.geometry()->attribute( u"vertexNormal"_s ) );
+  QCOMPARE( cloud.geometry()->attributes().size(), 1 );
+}
+
+void TestQgsGeometry3D::testPointCloudRenders()
+{
+  if ( mBackend == QRhi::Null )
+    QSKIP( "The Null backend draws no pixels" );
+
+  QgsRhiEngine engine;
+  if ( !engine.createOffscreen( QSize( 64, 64 ), mBackend ) )
+    QSKIP( "No usable QRhi device for the default backend" );
+
+  QgsGraphicsPipelineCache cache;
+
+  // a triangulated patch, which is the point cloud path that does not wait for P6's
+  // instanced quads
+  QgsPointCloudGeometry3D cloud( QgsPointCloudGeometry3D::VertexLayout::PositionOnly );
+  cloud.setPoints( QVector<QVector3D> { QVector3D( -5, -5, 0 ), QVector3D( 5, -5, 0 ), QVector3D( 5, 5, 0 ), QVector3D( -5, 5, 0 ) } );
+
+  const QVector<quint32> indices { 0, 1, 2, 0, 2, 3 };
+  QVector<float> normals;
+  for ( int i = 0; i < 4; ++i )
+    normals << 0.0f << 0.0f << 1.0f;
+  cloud.setTriangles(
+    QByteArray( reinterpret_cast<const char *>( indices.constData() ), indices.size() * int( sizeof( quint32 ) ) ),
+    QByteArray( reinterpret_cast<const char *>( normals.constData() ), normals.size() * int( sizeof( float ) ) )
+  );
+
+  QgsPhongMaterial3D material;
+  material.setAmbient( QColor( 255, 0, 0 ) );
+  material.setDiffuse( Qt::black );
+  material.setCullMode( QRhiGraphicsPipeline::None );
+
+  QgsRenderPass pass( u"pointcloud"_s );
+  QMatrix4x4 view;
+  view.lookAt( QVector3D( 0.0f, 0.0f, 20.0f ), QVector3D(), QVector3D( 0.0f, 1.0f, 0.0f ) );
+  QMatrix4x4 projection;
+  projection.perspective( 45.0f, 1.0f, 1.0f, 100.0f );
+  pass.setCamera( view, projection );
+  pass.setClearColor( Qt::black );
+
+  QgsRenderCommand command;
+  command.geometry = cloud.geometry();
+  command.material = &material;
+  pass.addCommand( command );
+
+  engine.setReadbackEnabled( true );
+  QVERIFY( engine.beginFrame() );
+  QVERIFY( pass.execute( &engine, &cache ) );
+  engine.endFrame();
+
+  const int lit = litPixels( engine.readbackImage() );
+  QVERIFY2( lit > 64 * 64 / 8, qPrintable( u"only %1 pixels"_s.arg( lit ) ) );
+
+  pass.releaseGpuResources();
+  cloud.releaseGpuResources();
+  material.releaseGpuResources();
   cache.clear();
 }
 
