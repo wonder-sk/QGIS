@@ -44,6 +44,20 @@ class _3D_EXPORT QgsGpuTexture
     QgsGpuTexture( const QgsGpuTexture & ) = delete;
     QgsGpuTexture &operator=( const QgsGpuTexture & ) = delete;
 
+    //! How one texel is stored
+    enum class Format
+    {
+      //! Eight bits per channel, what an ordinary image holds
+      RGBA8,
+
+      /**
+       * A float per channel, for textures that carry values rather than colours, such as
+       * a colour ramp's breakpoints or a grid of vectors. QRhi has no two channel float
+       * format, so a texture that only needs two of the four still uses this one.
+       */
+      RGBA32F,
+    };
+
     /**
      * Sets the image the texture holds, and marks it for re-upload.
      *
@@ -52,14 +66,26 @@ class _3D_EXPORT QgsGpuTexture
      */
     void setImage( const QImage &image );
 
-    //! Returns the image the texture was built from
+    /**
+     * Sets raw texel data of \a size in \a format, and marks it for re-upload.
+     *
+     * \a data has to hold exactly one texel per pixel, tightly packed, row by row from
+     * the top. This is how a texture that is not a picture is built: the mesh layer's
+     * colour ramp, for instance, is a row of floats rather than anything displayable.
+     */
+    void setData( const QByteArray &data, const QSize &size, Format format );
+
+    //! Returns the image the texture was built from, which is null when setData() was used
     QImage image() const { return mImage; }
 
-    //! Returns the size of the texture in pixels
-    QSize size() const { return mImage.size(); }
+    //! Returns how one texel is stored
+    Format format() const { return mFormat; }
 
-    //! Returns TRUE if the texture holds no image
-    bool isEmpty() const { return mImage.isNull(); }
+    //! Returns the size of the texture in pixels
+    QSize size() const { return mSize; }
+
+    //! Returns TRUE if the texture holds nothing to upload
+    bool isEmpty() const { return mSize.isEmpty(); }
 
     /**
      * Sets whether a mip chain should be generated and used.
@@ -85,6 +111,9 @@ class _3D_EXPORT QgsGpuTexture
 
   private:
     QImage mImage;
+    QByteArray mData;
+    QSize mSize;
+    Format mFormat = Format::RGBA8;
     bool mMipmaps = false;
     bool mDirty = true;
     std::unique_ptr<QRhiTexture> mTexture;

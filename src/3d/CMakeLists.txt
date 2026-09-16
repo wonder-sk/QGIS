@@ -181,6 +181,7 @@ set(QGIS_3D_SRCS
   engine/materials/qgsglobematerial3d.cpp
   engine/materials/qgsgoochmaterial3d.cpp
   engine/materials/qgsmaterial3dutils.cpp
+  engine/materials/qgsmeshmaterial3d.cpp
   engine/materials/qgsmetalroughmaterial3d.cpp
   engine/materials/qgsphongmaterial3d.cpp
   engine/materials/qgsphongtexturedmaterial3d.cpp
@@ -347,6 +348,7 @@ set(QGIS_3D_HDRS
   engine/materials/qgsglobematerial3d.h
   engine/materials/qgsgoochmaterial3d.h
   engine/materials/qgsmaterial3dutils.h
+  engine/materials/qgsmeshmaterial3d.h
   engine/materials/qgsmetalroughmaterial3d.h
   engine/materials/qgsphongmaterial3d.h
   engine/materials/qgsphongtexturedmaterial3d.h
@@ -509,6 +511,14 @@ qgis_add_rhi_instanced_shaders(phongtextured)
 # QgsGlobeMaterial3D
 qgis_add_rhi_shader(globe_vert FILE globe.vert)
 qgis_add_rhi_shader(globe_frag FILE globe.frag)
+
+# QgsMeshMaterial3D. Whether the geometry carries a scalar magnitude is the one thing that
+# has to be baked, because it is a vertex attribute rather than a value.
+qgis_add_rhi_shader(mesh_vert FILE mesh.vert)
+qgis_add_rhi_shader(mesh_frag FILE mesh.frag)
+qgis_add_rhi_shader(mesh_scalar_vert
+  FILE mesh.vert DEFINES HAS_SCALAR_MAGNITUDE=1
+  OUTPUT mesh_scalar.vert.qsb)
 
 # QgsMetalRoughMaterial3D. Its eleven feature #defines became run time flags, so what is
 # left to bake is only what changes which vertex attributes are read - a shader input no

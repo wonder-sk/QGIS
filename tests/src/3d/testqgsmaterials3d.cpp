@@ -12,12 +12,16 @@
  *   (at your option) any later version.                                   *
  ***************************************************************************/
 
+#include <cmath>
+
+#include "qgscolorrampshader.h"
 #include "qgsgeometry3d.h"
 #include "qgsglobematerial3d.h"
 #include "qgsgoochmaterial3d.h"
 #include "qgsgpubuffer.h"
 #include "qgsgputexture.h"
 #include "qgsgraphicspipelinecache.h"
+#include "qgsmeshmaterial3d.h"
 #include "qgsmetalroughmaterial3d.h"
 #include "qgsphongtexturedmaterial3d.h"
 #include "qgsrendercommand.h"
@@ -90,6 +94,13 @@ class TestQgsMaterials3D : public QgsTest
     void testGlobeUniformBlockLayout();
     void testGlobeShading();
 
+    void testMeshVariantsExist();
+    void testMeshUniformBlockLayout();
+    void testMeshSingleColor();
+    void testMeshColorRamp();
+    void testMeshWireframe();
+    void testMeshArrows();
+
     void testMetalRoughVariantsExist();
     void testMetalRoughUniformBlockLayout();
     void testMetalRoughFeatureFlags();
@@ -123,6 +134,12 @@ class TestQgsMaterials3D : public QgsTest
      * unless a test wants to see what happens when it is not.
      */
     void makeQuad( QgsGpuBuffer &buffer, const QVector3D &normal = QVector3D( 0.0f, 0.0f, 1.0f ) );
+
+    /**
+     * Builds the mesh geometry the mesh material tests draw: the same flat square, plus
+     * a "scalarMagnitude" attribute holding \a magnitude at every vertex.
+     */
+    void makeMeshGeometry( QgsGpuBuffer &vertexBuffer, QgsGpuBuffer &magnitudeBuffer, QgsGeometry3D &geometry, float magnitude, const QVector3D &normal = QVector3D( 0.0f, 0.0f, 1.0f ) );
 
     //! Adds one white directional light shining straight down, which fully lights the square
     void setOverheadLight( QgsRenderPass &pass );
@@ -172,6 +189,20 @@ void TestQgsMaterials3D::makeQuad( QgsGpuBuffer &buffer, const QVector3D &normal
   }
 
   buffer.setData( QByteArray( reinterpret_cast<const char *>( vertices.constData() ), vertices.size() * int( sizeof( float ) ) ) );
+}
+
+void TestQgsMaterials3D::makeMeshGeometry( QgsGpuBuffer &vertexBuffer, QgsGpuBuffer &magnitudeBuffer, QgsGeometry3D &geometry, float magnitude, const QVector3D &normal )
+{
+  makeQuad( vertexBuffer, normal );
+
+  QVector<float> magnitudes( 6, magnitude );
+  magnitudeBuffer.setData( QByteArray( reinterpret_cast<const char *>( magnitudes.constData() ), magnitudes.size() * int( sizeof( float ) ) ) );
+
+  const quint32 stride = 12 * sizeof( float );
+  geometry.addAttribute( { u"vertexPosition"_s, &vertexBuffer, QRhiVertexInputAttribute::Float3, 0, stride, 0 } );
+  geometry.addAttribute( { u"vertexNormal"_s, &vertexBuffer, QRhiVertexInputAttribute::Float3, 3 * sizeof( float ), stride, 0 } );
+  geometry.addAttribute( { u"scalarMagnitude"_s, &magnitudeBuffer, QRhiVertexInputAttribute::Float, 0, 0, 0 } );
+  geometry.setVertexCount( 6 );
 }
 
 void TestQgsMaterials3D::setOverheadLight( QgsRenderPass &pass )
@@ -909,6 +940,303 @@ void TestQgsMaterials3D::testGlobeShading()
   pass.releaseGpuResources();
   material.releaseGpuResources();
   texture.releaseGpuResources();
+  cache.clear();
+}
+
+//
+// QgsMeshMaterial3D
+//
+
+void TestQgsMaterials3D::testMeshVariantsExist()
+{
+  const QString fragment = u":/shaders/rhi/mesh.frag.qsb"_s;
+  checkVariantsExist( { u"mesh"_s, u"mesh_scalar"_s }, fragment );
+
+  // the magnitude is a vertex attribute in one variant and the vertex height in the other,
+  // which is exactly the kind of difference that cannot be a run time flag
+  const std::shared_ptr<QgsRhiShader> plain = QgsRhiShader::load( u":/shaders/rhi/mesh.vert.qsb"_s, fragment );
+  QCOMPARE( plain->inputNames().size(), 2 );
+  QCOMPARE( plain->inputLocation( u"scalarMagnitude"_s ), -1 );
+
+  const std::shared_ptr<QgsRhiShader> scalar = QgsRhiShader::load( u":/shaders/rhi/mesh_scalar.vert.qsb"_s, fragment );
+  QCOMPARE( scalar->inputLocation( u"scalarMagnitude"_s ), 2 );
+
+  const QVector<QShaderDescription::InOutVariable> samplers = plain->samplers();
+  QCOMPARE( samplers.size(), 3 );
+  QCOMPARE( samplers.at( 0 ).binding, int( QgsMeshMaterial3D::ColorRampTextureBinding ) );
+  QCOMPARE( samplers.at( 1 ).binding, int( QgsMeshMaterial3D::ArrowsGridTextureBinding ) );
+  QCOMPARE( samplers.at( 2 ).binding, int( QgsMeshMaterial3D::ArrowTextureBinding ) );
+}
+
+void TestQgsMaterials3D::testMeshUniformBlockLayout()
+{
+  const std::shared_ptr<QgsRhiShader> shader = QgsRhiShader::load( u":/shaders/rhi/mesh.vert.qsb"_s, u":/shaders/rhi/mesh.frag.qsb"_s );
+  QVERIFY( shader );
+
+  QCOMPARE( shader->uniformBlockSize( QgsRhiBinding::Material ), int( sizeof( QgsMeshUniforms ) ) );
+
+  QString error;
+  const QVector<QgsUniformMember> members {
+    { u"meshColor"_s, offsetof( QgsMeshUniforms, meshColor ), 16 },
+    { u"lineColor"_s, offsetof( QgsMeshUniforms, lineColor ), 16 },
+    { u"arrowsColor"_s, offsetof( QgsMeshUniforms, arrowsColor ), 16 },
+    { u"arrowsMinCorner"_s, offsetof( QgsMeshUniforms, arrowsMinCorner ), 8 },
+    { u"arrowsSpacing"_s, offsetof( QgsMeshUniforms, arrowsSpacing ), 4 },
+    { u"lineWidth"_s, offsetof( QgsMeshUniforms, lineWidth ), 4 },
+    { u"textureType"_s, offsetof( QgsMeshUniforms, textureType ), 4 },
+    { u"colorRampType"_s, offsetof( QgsMeshUniforms, colorRampType ), 4 },
+    { u"colorRampCount"_s, offsetof( QgsMeshUniforms, colorRampCount ), 4 },
+    { u"featureFlags"_s, offsetof( QgsMeshUniforms, featureFlags ), 4 },
+  };
+  QVERIFY2( shader->checkUniformBlockLayout( QgsRhiBinding::Material, members, &error ), error.toUtf8() );
+
+  // the rendering styles and the ramp types are the shader's own copy of two QGIS enums,
+  // so a value that moved would be caught here rather than by a wrongly coloured surface
+  QCOMPARE( static_cast<int>( QgsMeshMaterial3D::Style::SingleColor ), 0 );
+  QCOMPARE( static_cast<int>( Qgis::ShaderInterpolationMethod::Linear ), 0 );
+  QCOMPARE( static_cast<int>( Qgis::ShaderInterpolationMethod::Discrete ), 1 );
+  QCOMPARE( static_cast<int>( Qgis::ShaderInterpolationMethod::Exact ), 2 );
+}
+
+void TestQgsMaterials3D::testMeshSingleColor()
+{
+  if ( skipIfNoPixels() )
+    QSKIP( "The Null backend draws no pixels" );
+
+  const std::unique_ptr<QgsRhiEngine> engine = makeEngine();
+  QVERIFY( engine );
+  QgsGraphicsPipelineCache cache;
+
+  QgsGpuBuffer vertexBuffer( QgsGpuBuffer::Role::Vertex );
+  QgsGpuBuffer magnitudeBuffer( QgsGpuBuffer::Role::Vertex );
+  QgsGeometry3D geometry;
+  makeMeshGeometry( vertexBuffer, magnitudeBuffer, geometry, 0.0f );
+
+  QgsMeshMaterial3D material( true );
+  QVERIFY( material.hasScalarMagnitude() );
+  QCOMPARE( material.features(), QgsMeshMaterial3D::Features() );
+  material.setCullMode( QRhiGraphicsPipeline::None );
+  material.setStyle( QgsMeshMaterial3D::Style::SingleColor );
+  material.setMeshColor( QColor( 255, 255, 255 ) );
+
+  QgsRenderPass pass( u"mesh"_s );
+  setTopDownCamera( pass );
+  pass.setClearColor( QColor( 0, 0, 255 ) );
+
+  QgsRenderCommand command;
+  command.geometry = &geometry;
+  command.material = &material;
+  pass.addCommand( command );
+
+  engine->setReadbackEnabled( true );
+
+  // unlit, the surface keeps only the shader's fixed 15% ambient term
+  QVERIFY( engine->beginFrame() );
+  QVERIFY( pass.execute( engine.get(), &cache ) );
+  engine->endFrame();
+  QVERIFY2( colorsClose( centerPixel( engine->readbackImage() ), QColor( 38, 38, 38 ), 2 ), centerPixel( engine->readbackImage() ).name().toUtf8() );
+
+  // and fully lit it is over saturated by that same term, so white stays white
+  setOverheadLight( pass );
+  QVERIFY( engine->beginFrame() );
+  QVERIFY( pass.execute( engine.get(), &cache ) );
+  engine->endFrame();
+  QVERIFY2( colorsClose( centerPixel( engine->readbackImage() ), QColor( 255, 255, 255 ) ), centerPixel( engine->readbackImage() ).name().toUtf8() );
+
+  // shading the triangle with its own normal instead of the interpolated one is a run
+  // time flag, unlike the magnitude
+  material.setFlatTrianglesEnabled( true );
+  QVERIFY( material.features().testFlag( QgsMeshMaterial3D::Feature::FlatTriangles ) );
+
+  QVERIFY( engine->beginFrame() );
+  QVERIFY( pass.execute( engine.get(), &cache ) );
+  engine->endFrame();
+  QVERIFY2( colorsClose( centerPixel( engine->readbackImage() ), QColor( 255, 255, 255 ) ), "the derived normal should face the light just as the interpolated one does" );
+
+  pass.releaseGpuResources();
+  material.releaseGpuResources();
+  cache.clear();
+}
+
+void TestQgsMaterials3D::testMeshColorRamp()
+{
+  if ( skipIfNoPixels() )
+    QSKIP( "The Null backend draws no pixels" );
+
+  const std::unique_ptr<QgsRhiEngine> engine = makeEngine();
+  QVERIFY( engine );
+  QgsGraphicsPipelineCache cache;
+
+  // every vertex halfway along the ramp, so the interpolated centre is exactly the middle
+  QgsGpuBuffer vertexBuffer( QgsGpuBuffer::Role::Vertex );
+  QgsGpuBuffer magnitudeBuffer( QgsGpuBuffer::Role::Vertex );
+  QgsGeometry3D geometry;
+  makeMeshGeometry( vertexBuffer, magnitudeBuffer, geometry, 5.0f );
+
+  QgsColorRampShader ramp;
+  ramp.setColorRampType( Qgis::ShaderInterpolationMethod::Linear );
+  ramp.setColorRampItemList( { QgsColorRampShader::ColorRampItem( 0.0, QColor( 255, 0, 0 ) ), QgsColorRampShader::ColorRampItem( 10.0, QColor( 0, 0, 255 ) ) } );
+
+  QgsMeshMaterial3D material( true );
+  material.setCullMode( QRhiGraphicsPipeline::None );
+  material.setStyle( QgsMeshMaterial3D::Style::ColorRamp );
+  material.setColorRamp( ramp );
+  QCOMPARE( material.uniforms().colorRampCount, 2 );
+  QCOMPARE( material.uniforms().colorRampType, int( Qgis::ShaderInterpolationMethod::Linear ) );
+
+  QgsRenderPass pass( u"mesh colour ramp"_s );
+  setTopDownCamera( pass );
+  pass.setClearColor( QColor( 0, 255, 0 ) );
+  setOverheadLight( pass );
+
+  QgsRenderCommand command;
+  command.geometry = &geometry;
+  command.material = &material;
+  pass.addCommand( command );
+
+  engine->setReadbackEnabled( true );
+  QVERIFY( engine->beginFrame() );
+  QVERIFY( pass.execute( engine.get(), &cache ) );
+  engine->endFrame();
+
+  // the ramp is mixed in sRGB and only then converted to linear, which is what keeps it
+  // looking evenly spaced: halfway between red and blue is sRGB 0.5, or linear 0.5^2.2,
+  // and the 15% ambient on top of a fully lit surface scales that by 1.15
+  const int expected = static_cast<int>( std::round( std::pow( 0.5, 2.2 ) * 1.15 * 255.0 ) );
+  QVERIFY2( colorsClose( centerPixel( engine->readbackImage() ), QColor( expected, 0, expected ), 3 ), centerPixel( engine->readbackImage() ).name().toUtf8() );
+
+  // an empty ramp falls back to grey rather than to whatever was last in the texture
+  material.setColorRamp( QgsColorRampShader() );
+  QCOMPARE( material.uniforms().colorRampCount, 0 );
+
+  QVERIFY( engine->beginFrame() );
+  QVERIFY( pass.execute( engine.get(), &cache ) );
+  engine->endFrame();
+  const int grey = static_cast<int>( std::round( std::pow( 0.5, 2.2 ) * 1.15 * 255.0 ) );
+  QVERIFY2( colorsClose( centerPixel( engine->readbackImage() ), QColor( grey, grey, grey ), 3 ), centerPixel( engine->readbackImage() ).name().toUtf8() );
+
+  pass.releaseGpuResources();
+  material.releaseGpuResources();
+  cache.clear();
+}
+
+void TestQgsMaterials3D::testMeshWireframe()
+{
+  if ( skipIfNoPixels() )
+    QSKIP( "The Null backend draws no pixels" );
+
+  const std::unique_ptr<QgsRhiEngine> engine = makeEngine();
+  QVERIFY( engine );
+  QgsGraphicsPipelineCache cache;
+
+  QgsGpuBuffer vertexBuffer( QgsGpuBuffer::Role::Vertex );
+  QgsGpuBuffer magnitudeBuffer( QgsGpuBuffer::Role::Vertex );
+  QgsGeometry3D geometry;
+  makeMeshGeometry( vertexBuffer, magnitudeBuffer, geometry, 0.0f );
+
+  QgsMeshMaterial3D material( true );
+  material.setCullMode( QRhiGraphicsPipeline::None );
+  material.setStyle( QgsMeshMaterial3D::Style::SingleColor );
+  material.setMeshColor( QColor( 255, 255, 255 ) );
+  material.setWireframeColor( QColor( 255, 0, 0 ) );
+
+  QgsRenderPass pass( u"mesh wireframe"_s );
+  setTopDownCamera( pass );
+  pass.setClearColor( QColor( 0, 0, 255 ) );
+  setOverheadLight( pass );
+
+  QgsRenderCommand command;
+  command.geometry = &geometry;
+  command.material = &material;
+  pass.addCommand( command );
+
+  engine->setReadbackEnabled( true );
+
+  // a line so wide that every fragment counts as being on an edge, which turns the whole
+  // surface into the wireframe's colour. The line colour is not shaded, so it comes out
+  // exactly as it was set.
+  material.setWireframeEnabled( true );
+  material.setWireframeLineWidth( 1000.0f );
+  QVERIFY( material.features().testFlag( QgsMeshMaterial3D::Feature::Wireframe ) );
+
+  QVERIFY( engine->beginFrame() );
+  QVERIFY( pass.execute( engine.get(), &cache ) );
+  engine->endFrame();
+  QVERIFY2( colorsClose( centerPixel( engine->readbackImage() ), QColor( 255, 0, 0 ) ), centerPixel( engine->readbackImage() ).name().toUtf8() );
+
+  // a hairline leaves the middle of a triangle alone
+  material.setWireframeLineWidth( 0.0f );
+  QVERIFY( engine->beginFrame() );
+  QVERIFY( pass.execute( engine.get(), &cache ) );
+  engine->endFrame();
+  QVERIFY2( colorsClose( centerPixel( engine->readbackImage() ), QColor( 255, 255, 255 ) ), centerPixel( engine->readbackImage() ).name().toUtf8() );
+
+  pass.releaseGpuResources();
+  material.releaseGpuResources();
+  cache.clear();
+}
+
+void TestQgsMaterials3D::testMeshArrows()
+{
+  if ( skipIfNoPixels() )
+    QSKIP( "The Null backend draws no pixels" );
+
+  const std::unique_ptr<QgsRhiEngine> engine = makeEngine();
+  QVERIFY( engine );
+  QgsGraphicsPipelineCache cache;
+
+  QgsGpuBuffer vertexBuffer( QgsGpuBuffer::Role::Vertex );
+  QgsGpuBuffer magnitudeBuffer( QgsGpuBuffer::Role::Vertex );
+  QgsGeometry3D geometry;
+  makeMeshGeometry( vertexBuffer, magnitudeBuffer, geometry, 0.0f );
+
+  // an arrow that covers its whole cell, so that wherever the arrow texture is sampled the
+  // arrow colour wins outright and the plumbing is what is being measured
+  QImage arrow( 4, 4, QImage::Format_RGBA8888 );
+  arrow.fill( QColor( 255, 255, 255, 255 ) );
+  QgsGpuTexture arrowTexture;
+  arrowTexture.setImage( arrow );
+
+  QgsMeshMaterial3D material( true );
+  material.setCullMode( QRhiGraphicsPipeline::None );
+  material.setStyle( QgsMeshMaterial3D::Style::SingleColor );
+  material.setMeshColor( QColor( 255, 255, 255 ) );
+  material.setArrowTexture( &arrowTexture );
+  material.setArrowsColor( QColor( 255, 0, 0 ) );
+
+  // one cell, wide enough that the whole square falls inside it
+  material.setArrowsGrid( { QgsVector( 1.0, 0.0 ) }, QSize( 1, 1 ), true, 1.0 );
+  material.setArrowsPlacement( QPointF( 0.0, 0.0 ), 100.0f );
+
+  QgsRenderPass pass( u"mesh arrows"_s );
+  setTopDownCamera( pass );
+  pass.setClearColor( QColor( 0, 0, 255 ) );
+  setOverheadLight( pass );
+
+  QgsRenderCommand command;
+  command.geometry = &geometry;
+  command.material = &material;
+  pass.addCommand( command );
+
+  engine->setReadbackEnabled( true );
+
+  // switched off, the arrow grid is bound but never read
+  QVERIFY( engine->beginFrame() );
+  QVERIFY( pass.execute( engine.get(), &cache ) );
+  engine->endFrame();
+  QVERIFY2( colorsClose( centerPixel( engine->readbackImage() ), QColor( 255, 255, 255 ) ), centerPixel( engine->readbackImage() ).name().toUtf8() );
+
+  material.setArrowsEnabled( true );
+  QVERIFY( material.features().testFlag( QgsMeshMaterial3D::Feature::Arrows ) );
+
+  QVERIFY( engine->beginFrame() );
+  QVERIFY( pass.execute( engine.get(), &cache ) );
+  engine->endFrame();
+  QVERIFY2( colorsClose( centerPixel( engine->readbackImage() ), QColor( 255, 0, 0 ) ), centerPixel( engine->readbackImage() ).name().toUtf8() );
+
+  pass.releaseGpuResources();
+  material.releaseGpuResources();
+  arrowTexture.releaseGpuResources();
   cache.clear();
 }
 

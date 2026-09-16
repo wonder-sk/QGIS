@@ -90,6 +90,7 @@ class TestQgsRhiEngine : public QgsTest
     void testDrawTriangle();
     void testVertexColors();
     void testMissingAttribute();
+    void testFloatTexture();
     void testTexturedQuad();
     void testInstancedDraw();
     void testDepthTest();
@@ -459,6 +460,43 @@ void TestQgsRhiEngine::testMissingAttribute()
   pass.releaseGpuResources();
   material.releaseGpuResources();
   cache.clear();
+}
+
+void TestQgsRhiEngine::testFloatTexture()
+{
+  const std::unique_ptr<QgsRhiEngine> engine = makeEngine();
+  QVERIFY( engine );
+
+  QgsGpuTexture texture;
+  QVERIFY( texture.isEmpty() );
+  QCOMPARE( texture.format(), QgsGpuTexture::Format::RGBA8 );
+
+  // a row of floats rather than a picture, which is how the mesh layer's colour ramp and
+  // its grid of vectors reach the shader
+  const float texels[8] = { -1.5f, 0.25f, 0.5f, 1.0f, 2048.0f, 0.75f, 0.0f, 1.0f };
+  QgsGpuTexture floats;
+  floats.setData( QByteArray( reinterpret_cast<const char *>( texels ), sizeof( texels ) ), QSize( 2, 1 ), QgsGpuTexture::Format::RGBA32F );
+
+  QCOMPARE( floats.format(), QgsGpuTexture::Format::RGBA32F );
+  QCOMPARE( floats.size(), QSize( 2, 1 ) );
+  QVERIFY( !floats.isEmpty() );
+  QVERIFY( floats.image().isNull() );
+
+  QRhiResourceUpdateBatch *updates = engine->rhi()->nextResourceUpdateBatch();
+  QRhiTexture *rhiTexture = floats.rhiTexture( engine->rhi(), updates );
+  QVERIFY2( rhiTexture, "a float texture could not be created" );
+  QCOMPARE( rhiTexture->format(), QRhiTexture::RGBA32F );
+  QCOMPARE( rhiTexture->pixelSize(), QSize( 2, 1 ) );
+  updates->release();
+
+  // switching a texture back to an image has to rebuild it rather than upload the wrong
+  // number of bytes into the format it already had
+  QImage image( 2, 1, QImage::Format_RGBA8888 );
+  image.fill( Qt::white );
+  floats.setImage( image );
+  QCOMPARE( floats.format(), QgsGpuTexture::Format::RGBA8 );
+
+  floats.releaseGpuResources();
 }
 
 void TestQgsRhiEngine::testTexturedQuad()

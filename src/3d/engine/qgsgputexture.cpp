@@ -26,10 +26,25 @@ void QgsGpuTexture::setImage( const QImage &image )
 {
   const QImage converted = image.format() == QImage::Format_RGBA8888 ? image : image.convertToFormat( QImage::Format_RGBA8888 );
 
-  if ( mTexture && converted.size() != mImage.size() )
+  if ( mTexture && ( converted.size() != mSize || mFormat != Format::RGBA8 ) )
     mTexture.reset();
 
   mImage = converted;
+  mData.clear();
+  mSize = converted.size();
+  mFormat = Format::RGBA8;
+  mDirty = true;
+}
+
+void QgsGpuTexture::setData( const QByteArray &data, const QSize &size, Format format )
+{
+  if ( mTexture && ( size != mSize || format != mFormat ) )
+    mTexture.reset();
+
+  mImage = QImage();
+  mData = data;
+  mSize = size;
+  mFormat = format;
   mDirty = true;
 }
 
@@ -46,19 +61,27 @@ void QgsGpuTexture::setMipmapsEnabled( bool enabled )
 
 QRhiTexture *QgsGpuTexture::rhiTexture( QRhi *rhi, QRhiResourceUpdateBatch *updates )
 {
-  if ( mImage.isNull() )
+  if ( isEmpty() )
     return nullptr;
+
+  const QRhiTexture::Format rhiFormat = mFormat == Format::RGBA32F ? QRhiTexture::RGBA32F : QRhiTexture::RGBA8;
 
   if ( !mTexture )
   {
+    if ( !rhi->isTextureFormatSupported( rhiFormat ) )
+    {
+      QgsDebugError( u"Texture format %1 is not supported by this backend"_s.arg( static_cast<int>( rhiFormat ) ) );
+      return nullptr;
+    }
+
     QRhiTexture::Flags flags;
     if ( mMipmaps )
       flags |= QRhiTexture::MipMapped | QRhiTexture::UsedWithGenerateMips;
 
-    mTexture.reset( rhi->newTexture( QRhiTexture::RGBA8, mImage.size(), 1, flags ) );
+    mTexture.reset( rhi->newTexture( rhiFormat, mSize, 1, flags ) );
     if ( !mTexture->create() )
     {
-      QgsDebugError( u"Failed to create %1x%2 texture"_s.arg( mImage.width() ).arg( mImage.height() ) );
+      QgsDebugError( u"Failed to create %1x%2 texture"_s.arg( mSize.width() ).arg( mSize.height() ) );
       mTexture.reset();
       return nullptr;
     }
@@ -67,7 +90,17 @@ QRhiTexture *QgsGpuTexture::rhiTexture( QRhi *rhi, QRhiResourceUpdateBatch *upda
 
   if ( mDirty )
   {
-    updates->uploadTexture( mTexture.get(), mImage );
+    if ( mImage.isNull() )
+    {
+      QRhiTextureSubresourceUploadDescription subresource( mData.constData(), mData.size() );
+      subresource.setSourceSize( mSize );
+      updates->uploadTexture( mTexture.get(), QRhiTextureUploadDescription( { 0, 0, subresource } ) );
+    }
+    else
+    {
+      updates->uploadTexture( mTexture.get(), mImage );
+    }
+
     if ( mMipmaps )
       updates->generateMips( mTexture.get() );
     mDirty = false;
