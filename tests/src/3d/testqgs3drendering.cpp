@@ -2275,13 +2275,13 @@ void TestQgs3DRendering::testDepthBuffer()
   QVector3D startPos = scene->cameraController()->camera()->position();
   // set cameraController mouse pos to middle screen
   QMouseEvent mouseEvent( QEvent::MouseButtonPress, QPointF( midPos.x(), midPos.y() ), Qt::MiddleButton, Qt::MiddleButton, Qt::NoModifier );
-  scene->cameraController()->onMousePressed( new Qt3DInput::QMouseEvent( mouseEvent ) );
+  scene->cameraController()->handleMousePressEvent( &mouseEvent );
 
   // Check first wheel action
   QWheelEvent wheelEvent( midPos, midPos, QPoint(), QPoint( 0, 120 ), Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false, Qt::MouseEventSynthesizedByApplication );
-  scene->cameraController()->onWheel( new Qt3DInput::QWheelEvent( wheelEvent ) );
+  scene->cameraController()->handleWheelEvent( &wheelEvent );
   QCOMPARE( scene->cameraController()->mCumulatedWheelY, wheelEvent.angleDelta().y() / 120.0 );
-  QCOMPARE( scene->cameraController()->mCameraBefore->viewCenter(), scene->cameraController()->cameraPose().centerPoint().toVector3D() );
+  QCOMPARE( scene->cameraController()->mCameraBefore.viewCenter(), scene->cameraController()->cameraPose().centerPoint().toVector3D() );
 
   depthImage = Qgs3DUtils::captureSceneDepthBuffer( engine, scene );
   grayImage = convertDepthImageToGrayscaleImage( depthImage );
@@ -2297,9 +2297,9 @@ void TestQgs3DRendering::testDepthBuffer()
 
   // Checking second wheel action
   QWheelEvent wheelEvent2( midPos, midPos, QPoint(), QPoint( 0, 120 ), Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false, Qt::MouseEventSynthesizedByApplication );
-  scene->cameraController()->onWheel( new Qt3DInput::QWheelEvent( wheelEvent2 ) );
+  scene->cameraController()->handleWheelEvent( &wheelEvent2 );
   QCOMPARE( scene->cameraController()->mCumulatedWheelY, wheelEvent2.angleDelta().y() / 120.0 );
-  QCOMPARE( scene->cameraController()->mCameraBefore->viewCenter(), scene->cameraController()->cameraPose().centerPoint().toVector3D() );
+  QCOMPARE( scene->cameraController()->mCameraBefore.viewCenter(), scene->cameraController()->cameraPose().centerPoint().toVector3D() );
 
   depthImage = Qgs3DUtils::captureSceneDepthBuffer( engine, scene );
   grayImage = convertDepthImageToGrayscaleImage( depthImage );
@@ -2315,9 +2315,9 @@ void TestQgs3DRendering::testDepthBuffer()
 
   // Checking third wheel action
   QWheelEvent wheelEvent3( midPos, midPos, QPoint(), QPoint( 0, 480 ), Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false, Qt::MouseEventSynthesizedByApplication );
-  scene->cameraController()->onWheel( new Qt3DInput::QWheelEvent( wheelEvent3 ) );
+  scene->cameraController()->handleWheelEvent( &wheelEvent3 );
   QCOMPARE( scene->cameraController()->mCumulatedWheelY, wheelEvent3.angleDelta().y() / 120.0 );
-  QCOMPARE( scene->cameraController()->mCameraBefore->viewCenter(), scene->cameraController()->cameraPose().centerPoint().toVector3D() );
+  QCOMPARE( scene->cameraController()->mCameraBefore.viewCenter(), scene->cameraController()->cameraPose().centerPoint().toVector3D() );
 
   depthImage = Qgs3DUtils::captureSceneDepthBuffer( engine, scene );
   grayImage = convertDepthImageToGrayscaleImage( depthImage );
@@ -2333,9 +2333,9 @@ void TestQgs3DRendering::testDepthBuffer()
 
   // Checking fourth wheel action
   QWheelEvent wheelEvent4( midPos, midPos, QPoint(), QPoint( 0, 120 ), Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false, Qt::MouseEventSynthesizedByApplication );
-  scene->cameraController()->onWheel( new Qt3DInput::QWheelEvent( wheelEvent4 ) );
+  scene->cameraController()->handleWheelEvent( &wheelEvent4 );
   QCOMPARE( scene->cameraController()->mCumulatedWheelY, wheelEvent4.angleDelta().y() / 120.0 );
-  QCOMPARE( scene->cameraController()->mCameraBefore->viewCenter(), scene->cameraController()->cameraPose().centerPoint().toVector3D() );
+  QCOMPARE( scene->cameraController()->mCameraBefore.viewCenter(), scene->cameraController()->cameraPose().centerPoint().toVector3D() );
 
   depthImage = Qgs3DUtils::captureSceneDepthBuffer( engine, scene );
   grayImage = convertDepthImageToGrayscaleImage( depthImage );

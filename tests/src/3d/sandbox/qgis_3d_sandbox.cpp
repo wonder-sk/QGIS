@@ -306,8 +306,7 @@ int main( int argc, char *argv[] )
 
   // Connect the camera to the debug widget.
   QObject::connect( canvas->cameraController(), &QgsCameraController::cameraChanged, debugWidget, &Qgs3DDebugWidget::updateFromCamera );
-  QObject::connect( canvas->cameraController()->camera(), &Qt3DRender::QCamera::nearPlaneChanged, debugWidget, &Qgs3DDebugWidget::updateFromCamera );
-  QObject::connect( canvas->cameraController()->camera(), &Qt3DRender::QCamera::farPlaneChanged, debugWidget, &Qgs3DDebugWidget::updateFromCamera );
+  QObject::connect( canvas->cameraController(), &QgsCameraController::cameraPlanesChanged, debugWidget, &Qgs3DDebugWidget::updateFromCamera );
   QObject::connect( toggleDebugPanel, &QAction::toggled, windowWidget, [debugWidget]( const bool enabled ) { debugWidget->setVisible( enabled ); } );
 
   // construct the layout of sandbox

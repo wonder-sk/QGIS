@@ -11,7 +11,6 @@
 
 
 
-
 class QgsCameraController : QObject
 {
 %Docstring(signature="appended")
@@ -64,6 +63,18 @@ Sets the vertical axis ``inversion`` behavior.
 %Docstring
 Called internally from 3D scene when a new frame is generated. Updates
 camera according to keyboard/mouse input
+%End
+
+    void setNearFarPlanes( float nearPlane, float farPlane );
+%Docstring
+Sets the camera's near and far clipping planes and reports the change.
+
+The 3D scene fits these to what is actually in view each frame, so they
+change without the camera pose changing;
+:py:func:`~QgsCameraController.cameraPlanesChanged` is what tells
+anything watching the camera that they did.
+
+.. versionadded:: 3.46
 %End
 
     void resetView( float distance );
@@ -235,6 +246,39 @@ otherwise ``False``.
 .. versionadded:: 3.44
 %End
 
+    void handleMousePressEvent( QMouseEvent *event );
+%Docstring
+Handles a mouse button press in the 3D view.
+
+Input used to arrive through Qt3DInput's handlers, which needed an
+entity tree and an input aspect to deliver it. The 3D view forwards
+ordinary Qt events instead, so these four are the controller's whole
+input surface.
+
+.. versionadded:: 3.46
+%End
+
+    void handleMouseReleaseEvent( QMouseEvent *event );
+%Docstring
+Handles a mouse button release in the 3D view.
+
+.. versionadded:: 3.46
+%End
+
+    void handleMouseMoveEvent( QMouseEvent *event );
+%Docstring
+Handles the mouse moving over the 3D view.
+
+.. versionadded:: 3.46
+%End
+
+    void handleWheelEvent( QWheelEvent *event );
+%Docstring
+Handles the mouse wheel turning over the 3D view.
+
+.. versionadded:: 3.46
+%End
+
     void setOrigin( const QgsVector3D &origin );
 %Docstring
 Reacts to the shift of origin of the scene, updating camera pose and any
@@ -392,6 +436,13 @@ Returned value 1 means there void around that pixel (no 3D objects).
     void cameraChanged();
 %Docstring
 Emitted when camera has been updated
+%End
+
+    void cameraPlanesChanged();
+%Docstring
+Emitted when the camera's near or far clipping plane has changed.
+
+.. versionadded:: 3.46
 %End
 
     void navigationModeChanged( Qgis::NavigationMode mode );

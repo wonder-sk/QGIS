@@ -114,9 +114,11 @@ void Qgs3DDebugWidget::setMapSettings( Qgs3DMapSettings *mapSettings )
 
   // connect the camera info spin boxes with changing functions
   connect( mNearPlane, qOverload<double>( &QDoubleSpinBox::valueChanged ), this, [this]( const double value ) {
-    m3DMapCanvas->cameraController()->camera()->setNearPlane( static_cast<float>( value ) );
+    m3DMapCanvas->cameraController()->setNearFarPlanes( static_cast<float>( value ), m3DMapCanvas->cameraController()->camera()->farPlane() );
   } );
-  connect( mFarPlane, qOverload<double>( &QDoubleSpinBox::valueChanged ), this, [this]( const double value ) { m3DMapCanvas->cameraController()->camera()->setFarPlane( static_cast<float>( value ) ); } );
+  connect( mFarPlane, qOverload<double>( &QDoubleSpinBox::valueChanged ), this, [this]( const double value ) {
+    m3DMapCanvas->cameraController()->setNearFarPlanes( m3DMapCanvas->cameraController()->camera()->nearPlane(), static_cast<float>( value ) );
+  } );
   connect( mCameraX, qOverload<double>( &QDoubleSpinBox::valueChanged ), this, [this]( const double value ) {
     QVector3D newPosition = m3DMapCanvas->cameraController()->camera()->position();
     newPosition.setX( static_cast<float>( value ) );

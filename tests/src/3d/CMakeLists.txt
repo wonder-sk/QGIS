@@ -34,6 +34,7 @@ set(TESTS
   testqgs3dsymbolutils.cpp
   testqgs3dutils.cpp
   testqgsaabb.cpp
+  testqgscamera3d.cpp
   testqgschunkedentity.cpp
   testqgsgeometry3d.cpp
   testqgsgltf3dutils.cpp

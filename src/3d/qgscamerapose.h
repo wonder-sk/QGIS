@@ -19,13 +19,7 @@
 #include "qgis_3d.h"
 #include "qgsvector3d.h"
 
-#ifndef SIP_RUN
-namespace Qt3DRender
-{
-  class QCamera;
-}
-#endif
-
+class QgsCamera3D;
 class QDomDocument;
 class QDomElement;
 
@@ -66,13 +60,13 @@ class _3D_EXPORT QgsCameraPose
     void setHeadingAngle( float heading ) { mHeadingAngle = heading; }
 
     //! Update Qt3D camera view matrix based on the pose
-    void updateCamera( Qt3DRender::QCamera *camera ) SIP_SKIP;
+    void updateCamera( QgsCamera3D *camera ) SIP_SKIP;
 
     /**
      * Updates camera when using a globe scene
      * \since QGIS 3.44
      */
-    void updateCameraGlobe( Qt3DRender::QCamera *camera, double lat, double lon ) SIP_SKIP;
+    void updateCameraGlobe( QgsCamera3D *camera, double lat, double lon ) SIP_SKIP;
 
     //! Writes configuration to a new DOM element and returns it
     QDomElement writeXml( QDomDocument &doc ) const;

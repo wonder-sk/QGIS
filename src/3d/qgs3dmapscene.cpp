@@ -30,6 +30,7 @@
 #include "qgsannotationlayer.h"
 #include "qgsannotationlayer3drenderer.h"
 #include "qgsapplication.h"
+#include "qgscamera3d.h"
 #include "qgscameracontroller.h"
 #include "qgscategorized3drenderer.h"
 #include "qgschunkedentity.h"
@@ -123,10 +124,6 @@ Qgs3DMapScene::Qgs3DMapScene( Qgs3DMapSettings &map, QgsAbstract3DEngine *engine
 
   // Get the maximum of clip planes available
   mMaxClipPlanes = Qgs3DUtils::openGlMaxClipPlanes( mEngine->surface() );
-
-  // Camera
-  float aspectRatio = ( float ) viewportRect.width() / viewportRect.height();
-  mEngine->camera()->lens()->setPerspectiveProjection( static_cast< float >( mMap.fieldOfView() ), aspectRatio, 10.f, 10000.0f );
 
   mFrameAction = new Qt3DLogic::QFrameAction();
   connect( mFrameAction, &Qt3DLogic::QFrameAction::triggered, this, &Qgs3DMapScene::onFrameTriggered );
@@ -308,7 +305,7 @@ void Qgs3DMapScene::setViewFrom2DExtent( const QgsRectangle &extent )
 
 QVector<QgsPointXY> Qgs3DMapScene::viewFrustum2DExtent() const
 {
-  Qt3DRender::QCamera *camera = mCameraController->camera();
+  QgsCamera3D *camera = mCameraController->camera();
   QVector<QgsPointXY> extent;
 
   const QSize size = mEngine->size();
@@ -359,7 +356,7 @@ int Qgs3DMapScene::totalPendingJobsCount() const
 
 double Qgs3DMapScene::worldSpaceError( double epsilon, double distance ) const
 {
-  Qt3DRender::QCamera *camera = mCameraController->camera();
+  QgsCamera3D *camera = mCameraController->camera();
   const double fov = camera->fieldOfView();
   const QSize size = mEngine->size();
   const int screenSizePx = std::max( size.width(), size.height() ); // TODO: is this correct?
@@ -373,6 +370,9 @@ double Qgs3DMapScene::worldSpaceError( double epsilon, double distance ) const
 
 void Qgs3DMapScene::onCameraChanged()
 {
+  const QSize size = mEngine->size();
+  mCameraController->camera()->setAspectRatio( static_cast<float>( size.width() ) / static_cast<float>( std::max( 1, size.height() ) ) );
+
   if ( mDepthBufferRefreshTimer )
     mDepthBufferRefreshTimer->start();
 
@@ -380,6 +380,10 @@ void Qgs3DMapScene::onCameraChanged()
   updateCameraNearFarPlanes();
 
   onShadowSettingsChanged();
+
+  // Qt3D's frame graph, the 3D axis and the rubber bands still render through a
+  // Qt3DRender::QCamera; keep it a mirror of the camera the controller owns.
+  Qgs3DUtils::applyCameraToQt3D( mCameraController->camera(), mEngine->camera() );
 
   const QVector<QgsPointXY> extent2D = viewFrustum2DExtent();
   emit viewed2DExtentFrom3DChanged( extent2D );
@@ -392,9 +396,9 @@ void Qgs3DMapScene::onCameraChanged()
   // because the scene is far from the camera, we don't care, because those errors
   // end up being tiny when viewed from far away).
   constexpr float ORIGIN_SHIFT_THRESHOLD = 10'000;
-  if ( mSceneOriginShiftEnabled && mEngine->camera()->position().length() > ORIGIN_SHIFT_THRESHOLD )
+  if ( mSceneOriginShiftEnabled && mCameraController->camera()->position().length() > ORIGIN_SHIFT_THRESHOLD )
   {
-    const QgsVector3D newOrigin = mMap.origin() + QgsVector3D( mEngine->camera()->position() );
+    const QgsVector3D newOrigin = mMap.origin() + QgsVector3D( mCameraController->camera()->position() );
     QgsDebugMsgLevel( u"Rebasing scene origin from %1 to %2"_s.arg( mMap.origin().toString( 1 ), newOrigin.toString( 1 ) ), 2 );
     mMap.setOrigin( newOrigin );
   }
@@ -425,7 +429,7 @@ bool Qgs3DMapScene::updateScene( bool forceUpdate )
   QgsScopedEvent traceEvent( u"3D"_s, forceUpdate ? u"Force update scene"_s : u"Update scene"_s );
 
   Qgs3DMapSceneEntity::SceneContext sceneContext;
-  Qt3DRender::QCamera *camera = mEngine->camera();
+  QgsCamera3D *camera = mCameraController->camera();
   sceneContext.cameraFov = camera->fieldOfView();
   sceneContext.cameraPos = camera->position();
   const QSize size = mEngine->size();
@@ -456,13 +460,12 @@ bool Qgs3DMapScene::updateScene( bool forceUpdate )
     }
     case Qgis::Map3DProjectionType::Orthographic:
     {
-      Qt3DRender::QCameraLens *lens = camera->lens();
       // clang-format off
       projMatrix = {
-        2.0f / ( lens->right() - lens->left() ), 0, 0, 0,
-        0, 2.0f / ( lens->top() - lens->bottom() ), 0, 0,
+        2.0f / ( camera->right() - camera->left() ), 0, 0, 0,
+        0, 2.0f / ( camera->top() - camera->bottom() ), 0, 0,
         0, 0, 1, 0,
-        -( lens->left() + lens->right() ) / ( lens->right() - lens->left() ), -( lens->top() + lens->bottom() ) / ( lens->top() - lens->bottom() ), -1.0f, 1.0f
+        -( camera->left() + camera->right() ) / ( camera->right() - camera->left() ), -( camera->top() + camera->bottom() ) / ( camera->top() - camera->bottom() ), -1.0f, 1.0f
       };
       // clang-format on
       break;
@@ -505,7 +508,7 @@ bool Qgs3DMapScene::updateCameraNearFarPlanes()
   // 1. precision errors - if the range is too great
   // 2. unwanted clipping of scene - if the range is too small
 
-  Qt3DRender::QCamera *camera = cameraController()->camera();
+  QgsCamera3D *camera = cameraController()->camera();
   QMatrix4x4 viewMatrix = camera->viewMatrix();
   float fnear = 1e9;
   float ffar = 0;
@@ -543,8 +546,7 @@ bool Qgs3DMapScene::updateCameraNearFarPlanes()
   float newNear = fnear / 2;
   if ( !qgsFloatNear( newFar, camera->farPlane() ) || !qgsFloatNear( newNear, camera->nearPlane() ) )
   {
-    camera->setFarPlane( newFar );
-    camera->setNearPlane( newNear );
+    cameraController()->setNearFarPlanes( newNear, newFar );
     return true;
   }
 
@@ -611,7 +613,7 @@ void Qgs3DMapScene::update2DMapOverlay( const QVector<QgsPointXY> &extent2DAsPoi
   }
 
 
-  Qt3DRender::QCamera *camera = mEngine->camera();
+  QgsCamera3D *camera = mCameraController->camera();
   const QgsVector3D extentCenter3D = mMap.worldToMapCoordinates( camera->position() );
   const QgsPointXY extentCenter2D( extentCenter3D.x(), extentCenter3D.y() );
 
@@ -765,8 +767,17 @@ void Qgs3DMapScene::updateLights()
 
 void Qgs3DMapScene::updateCameraLens()
 {
-  mEngine->camera()->lens()->setFieldOfView( static_cast< float >( mMap.fieldOfView() ) );
-  mEngine->camera()->lens()->setProjectionType( static_cast<Qt3DRender::QCameraLens::ProjectionType>( mMap.projectionType() ) );
+  QgsCamera3D *camera = mCameraController->camera();
+  switch ( mMap.projectionType() )
+  {
+    case Qgis::Map3DProjectionType::Perspective:
+      camera->setPerspectiveProjection( static_cast<float>( mMap.fieldOfView() ), camera->aspectRatio(), camera->nearPlane(), camera->farPlane() );
+      break;
+    case Qgis::Map3DProjectionType::Orthographic:
+      // the box is derived from the distance to the view centre, which the controller owns
+      camera->setFieldOfView( static_cast<float>( mMap.fieldOfView() ) );
+      break;
+  }
   onCameraChanged();
 }
 

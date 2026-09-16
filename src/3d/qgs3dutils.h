@@ -35,6 +35,7 @@
 
 #define SIP_NO_FILE
 
+class QgsCamera3D;
 class QgsCameraPose;
 class QgsLineString;
 class QgsPolygon;
@@ -290,7 +291,7 @@ class _3D_EXPORT Qgs3DUtils
     static QgsPhongMaterialSettings phongMaterialFromQt3DComponent( Qt3DExtras::QPhongMaterial *material );
 
     //! Convert from clicked point on the screen to a ray in world coordinates
-    static QgsRay3D rayFromScreenPoint( const QPoint &point, const QSize &windowSize, Qt3DRender::QCamera *camera );
+    static QgsRay3D rayFromScreenPoint( const QPoint &point, const QSize &windowSize, const QgsCamera3D *camera );
 
     /**
      * Converts the clicked mouse position to the corresponding 3D world coordinates
@@ -300,7 +301,7 @@ class _3D_EXPORT Qgs3DUtils
      * \param camera camera whose view/projection matrices are used
      * \since QGIS 3.24
      */
-    static QVector3D screenPointToWorldPos( const QPoint &screenPoint, double depth, const QSize &screenSize, Qt3DRender::QCamera *camera );
+    static QVector3D screenPointToWorldPos( const QPoint &screenPoint, double depth, const QSize &screenSize, const QgsCamera3D *camera );
 
     /**
      * Function used to extract the pitch and yaw (also known as heading) angles in degrees from the view vector of the camera [cameraViewCenter - cameraPosition]
@@ -539,10 +540,16 @@ class _3D_EXPORT Qgs3DUtils
     static QgsCameraPose lineSegmentToCameraPose( const QgsVector3D &startPoint, const QgsVector3D &endPoint, const QgsDoubleRange &elevationRange, float fieldOfView, const QgsVector3D &worldOrigin );
 
     /**
-     * Returns new camera object with copied properties.
-     * \since QGIS 3.44
+     * Copies the state of \a camera onto the Qt3D camera \a qt3dCamera.
+     *
+     * The Qt3D frame graph, the 3D axis and the material preview still render through a
+     * Qt3DRender::QCamera, while QgsCameraController now owns a QgsCamera3D. This keeps
+     * the Qt3D one a mirror of it, and goes away with the last of Qt3D.
+     *
+     * \note Not available in Python bindings
+     * \since QGIS 3.46
      */
-    static std::unique_ptr<Qt3DRender::QCamera> copyCamera( Qt3DRender::QCamera *cam ) SIP_SKIP;
+    static void applyCameraToQt3D( const QgsCamera3D *camera, Qt3DRender::QCamera *qt3dCamera ) SIP_SKIP;
 
     /**
      * Sets the default filtering options for a \a texture.

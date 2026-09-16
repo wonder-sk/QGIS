@@ -20,12 +20,14 @@
 #include "qgs3dmapsettings.h"
 #include "qgs3dmaptool.h"
 #include "qgs3dutils.h"
+#include "qgscamera3d.h"
 #include "qgscameracontroller.h"
 #include "qgsframegraph.h"
 #include "qgsraycastcontext.h"
 #include "qgstemporalcontroller.h"
 #include "qgswindow3dengine.h"
 
+#include <QMouseEvent>
 #include <QString>
 #include <QTimer>
 #include <Qt3DCore/QAspectEngine>
@@ -184,9 +186,10 @@ QgsCameraController *Qgs3DMapCanvas::cameraController()
 
 QgsRayCastResult Qgs3DMapCanvas::castRay( const QPoint &screenPoint, QgsRayCastContext context )
 {
-  const QgsRay3D ray = Qgs3DUtils::rayFromScreenPoint( screenPoint, size(), camera() );
+  const QgsCamera3D *cam = mScene->cameraController()->camera();
+  const QgsRay3D ray = Qgs3DUtils::rayFromScreenPoint( screenPoint, size(), cam );
   if ( context.maximumDistance() < 0 )
-    context.setMaximumDistance( camera()->farPlane() );
+    context.setMaximumDistance( cam->farPlane() );
   const QgsRayCastResult res = Qgs3DUtils::castRay( mScene, ray, context );
   return res;
 }
@@ -286,7 +289,7 @@ void Qgs3DMapCanvas::setMapTool( Qgs3DMapTool *tool )
   // For Camera Control tool
   if ( mMapTool && !tool )
   {
-    mScene->cameraController()->setEnabled( true );
+    mScene->cameraController()->setInputHandlersEnabled( true );
     setCursor( Qt::OpenHandCursor );
   }
 
@@ -329,7 +332,31 @@ bool Qgs3DMapCanvas::eventFilter( QObject *watched, QEvent *event )
   }
 
   if ( !mMapTool )
+  {
+    // With no map tool active, mouse input drives the camera. Qt3DInput used to deliver
+    // these through the input aspect; now they are ordinary events off this window.
+    if ( QgsCameraController *controller = cameraController() )
+    {
+      switch ( event->type() )
+      {
+        case QEvent::MouseButtonPress:
+          controller->handleMousePressEvent( static_cast<QMouseEvent *>( event ) );
+          break;
+        case QEvent::MouseButtonRelease:
+          controller->handleMouseReleaseEvent( static_cast<QMouseEvent *>( event ) );
+          break;
+        case QEvent::MouseMove:
+          controller->handleMouseMoveEvent( static_cast<QMouseEvent *>( event ) );
+          break;
+        case QEvent::Wheel:
+          controller->handleWheelEvent( static_cast<QWheelEvent *>( event ) );
+          break;
+        default:
+          break;
+      }
+    }
     return false;
+  }
 
   switch ( event->type() )
   {

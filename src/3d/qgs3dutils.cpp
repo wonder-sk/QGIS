@@ -22,6 +22,7 @@
 #include "qgsabstractgeometry.h"
 #include "qgsabstractterrainsettings.h"
 #include "qgsapplication.h"
+#include "qgscamera3d.h"
 #include "qgscameracontroller.h"
 #include "qgschunkedentity.h"
 #include "qgsfeature.h"
@@ -791,7 +792,7 @@ QgsPhongMaterialSettings Qgs3DUtils::phongMaterialFromQt3DComponent( Qt3DExtras:
   return settings;
 }
 
-QgsRay3D Qgs3DUtils::rayFromScreenPoint( const QPoint &point, const QSize &windowSize, Qt3DRender::QCamera *camera )
+QgsRay3D Qgs3DUtils::rayFromScreenPoint( const QPoint &point, const QSize &windowSize, const QgsCamera3D *camera )
 {
   const QVector3D deviceCoords( point.x(), point.y(), 0.0 );
   // normalized device coordinates
@@ -817,7 +818,7 @@ QgsRay3D Qgs3DUtils::rayFromScreenPoint( const QPoint &point, const QSize &windo
   return QgsRay3D( QVector3D( rayOriginWorld ), rayDirWorld );
 }
 
-QVector3D Qgs3DUtils::screenPointToWorldPos( const QPoint &screenPoint, double depth, const QSize &screenSize, Qt3DRender::QCamera *camera )
+QVector3D Qgs3DUtils::screenPointToWorldPos( const QPoint &screenPoint, double depth, const QSize &screenSize, const QgsCamera3D *camera )
 {
   // Transform pixel coordinates and [0.0, 1.0]-range sampled depth to [-1.0, 1.0]
   // normalised device coordinates used by projection matrix.
@@ -1245,6 +1246,23 @@ QList<QVector4D> Qgs3DUtils::lineSegmentToClippingPlanes( const QgsVector3D &sta
   return clippingPlanes;
 }
 
+void Qgs3DUtils::applyCameraToQt3D( const QgsCamera3D *camera, Qt3DRender::QCamera *qt3dCamera )
+{
+  qt3dCamera->setPosition( camera->position() );
+  qt3dCamera->setViewCenter( camera->viewCenter() );
+  qt3dCamera->setUpVector( camera->upVector() );
+
+  switch ( camera->projectionType() )
+  {
+    case Qgis::Map3DProjectionType::Perspective:
+      qt3dCamera->lens()->setPerspectiveProjection( camera->fieldOfView(), camera->aspectRatio(), camera->nearPlane(), camera->farPlane() );
+      break;
+    case Qgis::Map3DProjectionType::Orthographic:
+      qt3dCamera->lens()->setOrthographicProjection( camera->left(), camera->right(), camera->bottom(), camera->top(), camera->nearPlane(), camera->farPlane() );
+      break;
+  }
+}
+
 QgsCameraPose Qgs3DUtils::lineSegmentToCameraPose( const QgsVector3D &startPoint, const QgsVector3D &endPoint, const QgsDoubleRange &elevationRange, const float fieldOfView, const QgsVector3D &worldOrigin )
 {
   QgsCameraPose cameraPose;
@@ -1279,19 +1297,6 @@ QgsCameraPose Qgs3DUtils::lineSegmentToCameraPose( const QgsVector3D &startPoint
   return cameraPose;
 }
 
-std::unique_ptr<Qt3DRender::QCamera> Qgs3DUtils::copyCamera( Qt3DRender::QCamera *cam )
-{
-  auto copy = std::make_unique<Qt3DRender::QCamera>();
-  copy->setPosition( cam->position() );
-  copy->setViewCenter( cam->viewCenter() );
-  copy->setUpVector( cam->upVector() );
-  copy->setProjectionMatrix( cam->projectionMatrix() );
-  copy->setNearPlane( cam->nearPlane() );
-  copy->setFarPlane( cam->farPlane() );
-  copy->setAspectRatio( cam->aspectRatio() );
-  copy->setFieldOfView( cam->fieldOfView() );
-  return copy;
-}
 
 void Qgs3DUtils::setTextureFiltering( Qt3DRender::QAbstractTexture *texture, const QgsMaterialContext &context )
 {

@@ -21,6 +21,7 @@
 #include "qgs3dmapsettings.h"
 #include "qgs3dwiredmesh_p.h"
 #include "qgsaabb.h"
+#include "qgscamera3d.h"
 #include "qgscameracontroller.h"
 #include "qgscoordinatereferencesystemutils.h"
 #include "qgsframegraph.h"
@@ -31,6 +32,7 @@
 #include <QApplication>
 #include <QFontDatabase>
 #include <QMenu>
+#include <QMouseEvent>
 #include <QString>
 #include <Qt3DCore/QEntity>
 #include <Qt3DCore/QTransform>
@@ -914,7 +916,7 @@ void Qgs3DAxis::onViewportScaleFactorChanged( double scaleFactor )
 
 void Qgs3DAxis::onCameraUpdate()
 {
-  Qt3DRender::QCamera *parentCamera = mCameraController->camera();
+  const QgsCamera3D *parentCamera = mCameraController->camera();
 
   if ( parentCamera->viewVector() != mPreviousVector && !std::isnan( parentCamera->viewVector().x() ) && !std::isnan( parentCamera->viewVector().y() ) && !std::isnan( parentCamera->viewVector().z() ) )
   {

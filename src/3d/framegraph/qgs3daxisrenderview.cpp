@@ -18,9 +18,11 @@
 #include "qgs3daxis.h"
 #include "qgs3dmapcanvas.h"
 #include "qgs3dmapsettings.h"
+#include "qgscamera3d.h"
 #include "qgscameracontroller.h"
 #include "qgsmapsettings.h"
 
+#include <QScreen>
 #include <Qt3DRender/QCamera>
 #include <Qt3DRender/QCameraSelector>
 #include <Qt3DRender/QClearBuffers>
@@ -59,8 +61,10 @@ Qgs3DAxisRenderView::Qgs3DAxisRenderView(
 
   mObjectCamera = new Qt3DRender::QCamera;
   mObjectCamera->setObjectName( mViewName + "::ObjectCamera" );
-  mObjectCamera->setProjectionType( cameraCtrl->camera()->projectionType() );
-  mObjectCamera->lens()->setFieldOfView( cameraCtrl->camera()->lens()->fieldOfView() * 0.5f );
+  mObjectCamera->setProjectionType(
+    cameraCtrl->camera()->projectionType() == Qgis::Map3DProjectionType::Orthographic ? Qt3DRender::QCameraLens::OrthographicProjection : Qt3DRender::QCameraLens::PerspectiveProjection
+  );
+  mObjectCamera->lens()->setFieldOfView( cameraCtrl->camera()->fieldOfView() * 0.5f );
 
   Qt3DRender::QCameraSelector *cameraSelector = new Qt3DRender::QCameraSelector( objectFilter );
   cameraSelector->setCamera( mObjectCamera );

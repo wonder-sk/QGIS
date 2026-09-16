@@ -16,10 +16,10 @@
 #include "qgscamerapose.h"
 
 #include "qgs3dutils.h"
+#include "qgscamera3d.h"
 
 #include <QDomDocument>
 #include <QString>
-#include <Qt3DRender/QCamera>
 
 using namespace Qt::StringLiterals;
 
@@ -67,7 +67,7 @@ void QgsCameraPose::setPitchAngle( float pitch )
   mPitchAngle = std::clamp( pitch, 0.0f, 180.0f );
 }
 
-void QgsCameraPose::updateCamera( Qt3DRender::QCamera *camera )
+void QgsCameraPose::updateCamera( QgsCamera3D *camera )
 {
   // first rotate by pitch angle around X axis, then by heading angle around Z axis
   QQuaternion q = Qgs3DUtils::rotationFromPitchHeadingAngles( mPitchAngle, mHeadingAngle );
@@ -77,7 +77,7 @@ void QgsCameraPose::updateCamera( Qt3DRender::QCamera *camera )
   camera->setViewCenter( mCenterPoint.toVector3D() );
 }
 
-void QgsCameraPose::updateCameraGlobe( Qt3DRender::QCamera *camera, double lat, double lon )
+void QgsCameraPose::updateCameraGlobe( QgsCamera3D *camera, double lat, double lon )
 {
   // how the camera setup works:
   // - we are using ECEF coordinates (https://en.wikipedia.org/wiki/Earth-centered,_Earth-fixed_coordinate_system)

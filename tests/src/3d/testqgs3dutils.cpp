@@ -17,6 +17,7 @@
 #include "qgs3dmapscene.h"
 #include "qgs3dutils.h"
 #include "qgsbox3d.h"
+#include "qgscamera3d.h"
 #include "qgscameracontroller.h"
 #include "qgsflatterrainsettings.h"
 #include "qgsoffscreen3dengine.h"
@@ -161,7 +162,7 @@ void TestQgs3DUtils::testTransforms()
 
 void TestQgs3DUtils::testRayFromScreenPoint()
 {
-  Qt3DRender::QCamera camera;
+  QgsCamera3D camera;
   {
     camera.setFieldOfView( 45.0f );
     camera.setNearPlane( 10.0f );
@@ -484,7 +485,7 @@ void TestQgs3DUtils::test3DSceneRay3D()
   // click on a building
   // building and terrain are hit
   // the distance to the building should be smaller than the distance to the terrain
-  Qt3DRender::QCamera *camera = scene->cameraController()->camera();
+  const QgsCamera3D *camera = scene->cameraController()->camera();
   const QPoint clickedPoint1( 115, 374 );
   const QgsRay3D ray1 = Qgs3DUtils::rayFromScreenPoint( clickedPoint1, winSize, camera );
   QgsRayCastContext context;

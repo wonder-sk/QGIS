@@ -173,6 +173,7 @@ set(QGIS_3D_SRCS
   mesh/qgsmesh3dmaterial_p.cpp
   mesh/qgsmeshterraingenerator.cpp
 
+  engine/qgscamera3d.cpp
   engine/qgsgeometry3d.cpp
   engine/qgsgpubuffer.cpp
   engine/qgsgpurendertarget.cpp
@@ -365,6 +366,7 @@ set(QGIS_3D_HDRS
 
   mesh/qgsmeshterraingenerator.h
 
+  engine/qgscamera3d.h
   engine/qgsgeometry3d.h
   engine/qgsgpubuffer.h
   engine/qgsgpurendertarget.h
