@@ -49,6 +49,14 @@ class _3D_EXPORT QgsGeometry3D
     //! Adds a vertex attribute. Attribute names must be unique within a geometry.
     void addAttribute( const QgsVertexAttribute &attribute );
 
+    /**
+     * Removes every vertex attribute.
+     *
+     * Geometries whose attribute set changes with the data they are given, such as
+     * billboards, rebuild the list rather than patching it.
+     */
+    void clearAttributes();
+
     //! Returns all vertex attributes
     const QList<QgsVertexAttribute> &attributes() const { return mAttributes; }
 

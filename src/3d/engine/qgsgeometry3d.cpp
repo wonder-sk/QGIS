@@ -71,6 +71,12 @@ void QgsGeometry3D::addAttribute( const QgsVertexAttribute &attribute )
   mLayoutKey = 0;
 }
 
+void QgsGeometry3D::clearAttributes()
+{
+  mAttributes.clear();
+  mLayoutKey = 0;
+}
+
 const QgsVertexAttribute *QgsGeometry3D::attribute( const QString &name ) const
 {
   for ( const QgsVertexAttribute &attribute : mAttributes )

@@ -128,6 +128,7 @@ set(QGIS_3D_SRCS
 
   symbols/qgs3dsymbolutils.cpp
   symbols/qgsbillboardgeometry.cpp
+  symbols/qgsbillboardgeometry3d.cpp
   symbols/qgsline3dsymbol.cpp
   symbols/qgsline3dsymbol_p.cpp
   symbols/qgslinematerial_p.cpp
@@ -146,6 +147,7 @@ set(QGIS_3D_SRCS
   terrain/qgsdemterraingenerator.cpp
   terrain/qgsdemterrainsettings.cpp
   terrain/qgsdemterraintilegeometry_p.cpp
+  terrain/qgsdemterraintilegeometry3d.cpp
   terrain/qgsdemterraintileloader_p.cpp
   terrain/qgsflatterraingenerator.cpp
   terrain/qgsflatterrainsettings.cpp
@@ -190,6 +192,7 @@ set(QGIS_3D_SRCS
   engine/materials/qgsunlitmaterial3d.cpp
 
   geometry/qgsprimitivegeometry3d.cpp
+  geometry/qgswiredmeshgeometry3d.cpp
 )
 
 set(QGIS_3D_HDRS
@@ -302,6 +305,7 @@ set(QGIS_3D_HDRS
 
   symbols/qgs3dsymbolutils.h
   symbols/qgsbillboardgeometry.h
+  symbols/qgsbillboardgeometry3d.h
   symbols/qgsline3dsymbol.h
   symbols/qgsmesh3dsymbol.h
   symbols/qgspoint3dbillboardmaterial.h
@@ -358,6 +362,7 @@ set(QGIS_3D_HDRS
   engine/materials/qgsunlitmaterial3d.h
 
   geometry/qgsprimitivegeometry3d.h
+  geometry/qgswiredmeshgeometry3d.h
 )
 
 set(QGIS_3D_PRIVATE_HDRS
@@ -374,6 +379,7 @@ set(QGIS_3D_PRIVATE_HDRS
   symbols/qgspolygon3dsymbol_p.h
   symbols/qgspointcloud3dsymbol_p.h
   terrain/qgsdemterraintilegeometry_p.h
+  terrain/qgsdemterraintilegeometry3d.h
   terrain/qgsdemterraintileloader_p.h
   terrain/qgsterraintexturegenerator_p.h
   terrain/qgsterraintextureimage_p.h

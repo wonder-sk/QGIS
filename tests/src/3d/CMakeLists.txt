@@ -35,6 +35,7 @@ set(TESTS
   testqgs3dutils.cpp
   testqgsaabb.cpp
   testqgschunkedentity.cpp
+  testqgsgeometry3d.cpp
   testqgsgltf3dutils.cpp
   testqgslayout3dmap.cpp
   testqgsmaterialregistry.cpp
