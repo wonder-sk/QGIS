@@ -15,6 +15,7 @@
 #include "qgsgputexture.h"
 
 #include "qgslogger.h"
+#include "qgsrhiengine.h"
 
 #include <QString>
 
@@ -73,6 +74,24 @@ void QgsGpuTexture::setMipmapsEnabled( bool enabled )
   mDirty = true;
 }
 
+void QgsGpuTexture::setSrgb( bool srgb )
+{
+  if ( srgb == mSrgb )
+    return;
+
+  mSrgb = srgb;
+  // the format is fixed when the texture is created, so it has to be rebuilt
+  mTexture.reset();
+  mDirty = true;
+}
+
+bool QgsGpuTexture::needsShaderSrgbDecode() const
+{
+  // a material is built on a chunk loading thread, long before it meets a device, so this
+  // asks the backend the engine will be created with rather than the engine itself
+  return mSrgb && mFormat == Format::RGBA8 && !QgsRhiEngine::decodesSrgbTextures( QgsRhiEngine::defaultBackend() );
+}
+
 QRhiTexture *QgsGpuTexture::rhiTexture( QRhi *rhi, QRhiResourceUpdateBatch *updates )
 {
   if ( mExternalTexture )
@@ -85,15 +104,21 @@ QRhiTexture *QgsGpuTexture::rhiTexture( QRhi *rhi, QRhiResourceUpdateBatch *upda
 
   if ( !mTexture )
   {
-    if ( !rhi->isTextureFormatSupported( rhiFormat ) )
+    QRhiTexture::Flags flags;
+    if ( mMipmaps )
+      flags |= QRhiTexture::MipMapped | QRhiTexture::UsedWithGenerateMips;
+    // sRGB only means anything for an eight bit per channel format; a float texture
+    // carries values rather than colours and is always linear. Where the backend ignores
+    // the flag the material decodes in its shader instead, so asking for it anyway would
+    // only make the two disagree about who has already done it.
+    if ( mSrgb && mFormat == Format::RGBA8 && QgsRhiEngine::decodesSrgbTextures( rhi->backend() ) )
+      flags |= QRhiTexture::sRGB;
+
+    if ( !rhi->isTextureFormatSupported( rhiFormat, flags ) )
     {
       QgsDebugError( u"Texture format %1 is not supported by this backend"_s.arg( static_cast<int>( rhiFormat ) ) );
       return nullptr;
     }
-
-    QRhiTexture::Flags flags;
-    if ( mMipmaps )
-      flags |= QRhiTexture::MipMapped | QRhiTexture::UsedWithGenerateMips;
 
     mTexture.reset( rhi->newTexture( rhiFormat, mSize, 1, flags ) );
     if ( !mTexture->create() )

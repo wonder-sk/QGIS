@@ -15,6 +15,7 @@
 
 #include "qgstexturematerial3d.h"
 
+#include "qgsgputexture.h"
 #include "qgslogger.h"
 #include "qgsmaterial3dutils.h"
 #include "qgsrenderuniforms.h"
@@ -43,6 +44,7 @@ QgsTextureMaterial3D::QgsTextureMaterial3D( bool instanced, Qgis::InstancedMater
   // once that they agree rather than let a bad offset corrupt everything after it
   const QVector<QgsUniformMember> members {
     { u"opacity"_s, offsetof( QgsTexturedUniforms, opacity ), 4 },
+    { u"decodeSrgb"_s, offsetof( QgsTexturedUniforms, decodeSrgb ), 4 },
     { u"meshMatrix"_s, offsetof( QgsTexturedUniforms, meshMatrix ), 64 },
     { u"symbolRotation"_s, offsetof( QgsTexturedUniforms, symbolRotation ), 16 },
     { u"symbolScale"_s, offsetof( QgsTexturedUniforms, symbolScale ), 16 },
@@ -63,6 +65,11 @@ void QgsTextureMaterial3D::updateUniforms()
 void QgsTextureMaterial3D::setDiffuseTexture( QgsGpuTexture *texture )
 {
   mDiffuseTexture = texture;
+
+  // a picture is sRGB encoded and shading happens in linear space; the shader only has to
+  // convert on a backend that did not give the texture an sRGB format
+  mUniforms.decodeSrgb = texture && texture->needsShaderSrgbDecode() ? 1.0f : 0.0f;
+  updateUniforms();
 
   TextureBinding binding;
   binding.binding = DiffuseTextureBinding;

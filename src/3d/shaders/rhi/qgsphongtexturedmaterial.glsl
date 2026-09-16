@@ -18,7 +18,10 @@ layout( std140, binding = 3 ) uniform QgsPhongTexturedBlock
   float texCoordScale;
   float texCoordRotation;
   vec2 texCoordOffset;
-  vec2 unused0;
+
+  // 1 when the diffuse texture holds sRGB texels the backend did not decode for us
+  float decodeSrgb;
+  float unused0;
 
   // instancing only: mesh space to object space, often an axis flip or a glTF node
   // transform. Ignored when the material is not instanced.

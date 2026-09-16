@@ -47,7 +47,8 @@ struct _3D_EXPORT QgsPhongTexturedUniforms
     float texCoordScale = 1.0f;                                                                                                // offset 40
     float texCoordRotation = 0.0f;                                                                                             // offset 44
     float texCoordOffset[2] = {};                                                                                              // offset 48
-    float unused0[2] = {};                                                                                                     // offset 56
+    float decodeSrgb = 0.0f;                                                                                                   // offset 56
+    float unused0 = 0.0f;                                                                                                      // offset 60
     float meshMatrix[16] = { 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f }; // offset 64, identity by default
     float meshNormalMatrix[12] = { 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f };                   // offset 128, a mat3 as three padded columns
     float symbolRotation[4] = { 0.0f, 0.0f, 0.0f, 1.0f };                                                                      // offset 176, no rotation

@@ -112,6 +112,31 @@ class _3D_EXPORT QgsGpuTexture
     bool mipmapsEnabled() const { return mMipmaps; }
 
     /**
+     * Sets whether the texels hold sRGB encoded colours rather than linear values.
+     *
+     * Shading is done in linear space, so a texture that carries a picture - a terrain
+     * tile, a glTF base colour map - has to be decoded when it is sampled, which the
+     * hardware does for free given an sRGB format. A texture that carries values rather
+     * than colours, such as a colour ramp read with texelFetch() or a grid of vectors,
+     * must not be, and neither must one that is already linear.
+     */
+    void setSrgb( bool srgb );
+
+    //! Returns whether the texels hold sRGB encoded colours
+    bool isSrgb() const { return mSrgb; }
+
+    /**
+     * Returns TRUE if a material sampling this texture has to convert it to linear itself.
+     *
+     * An sRGB texture is decoded by the hardware on every backend but OpenGL, where
+     * QRhi ignores the flag for uncompressed formats - see
+     * QgsRhiEngine::decodesSrgbTextures(). A material that samples colours asks this and
+     * switches its shader's conversion on, so that the same texture looks the same
+     * whichever backend the view is running on.
+     */
+    bool needsShaderSrgbDecode() const;
+
+    /**
      * Returns the GPU texture, creating and uploading it if needed.
      *
      * Any upload needed is appended to \a updates, which the caller must submit.
@@ -128,6 +153,7 @@ class _3D_EXPORT QgsGpuTexture
     QSize mSize;
     Format mFormat = Format::RGBA8;
     bool mMipmaps = false;
+    bool mSrgb = false;
     bool mDirty = true;
     std::unique_ptr<QRhiTexture> mTexture;
     QRhiTexture *mExternalTexture = nullptr;

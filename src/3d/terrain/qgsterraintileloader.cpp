@@ -128,6 +128,8 @@ std::unique_ptr<QgsMaterial3D> QgsTerrainTileLoader::createTileMaterial( QgsScen
   {
     auto texture = std::make_unique<QgsGpuTexture>();
     texture->setImage( mTextureImage );
+    // the rendered map image is sRGB encoded, and shading happens in linear space
+    texture->setSrgb( true );
     QgsGpuTexture *texturePtr = object->addTexture( std::move( texture ) );
 
     if ( isShadingEnabled )

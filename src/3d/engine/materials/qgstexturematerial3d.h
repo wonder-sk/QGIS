@@ -39,7 +39,7 @@ class QgsGpuTexture;
 struct _3D_EXPORT QgsTexturedUniforms
 {
     float opacity = 1.0f;                                                                                                      // offset 0
-    float unused0 = 0.0f;                                                                                                      // offset 4
+    float decodeSrgb = 0.0f;                                                                                                   // offset 4
     float unused1 = 0.0f;                                                                                                      // offset 8
     float unused2 = 0.0f;                                                                                                      // offset 12
     float meshMatrix[16] = { 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f }; // offset 16, identity by default

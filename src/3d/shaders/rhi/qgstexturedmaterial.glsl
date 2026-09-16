@@ -7,7 +7,10 @@
 layout( std140, binding = 3 ) uniform QgsTexturedBlock
 {
   float opacity;
-  float unused0;
+
+  // 1 when the diffuse texture holds sRGB texels the backend did not decode for us
+  float decodeSrgb;
+
   float unused1;
   float unused2;
 

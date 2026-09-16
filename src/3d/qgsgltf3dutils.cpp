@@ -1106,6 +1106,8 @@ static QgsGpuTexture *gltfImageToTexture( QgsSceneObject3D *object, const tinygl
   texture->setImage( wrapped );
   // a tile is drawn at every distance, so it is worth a mip chain
   texture->setMipmapsEnabled( true );
+  // a glTF base colour texture is sRGB encoded, and shading happens in linear space
+  texture->setSrgb( true );
   return object->addTexture( std::move( texture ) );
 }
 

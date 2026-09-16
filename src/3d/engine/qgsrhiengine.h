@@ -85,6 +85,18 @@ class _3D_EXPORT QgsRhiEngine
     static QRhi::Implementation backendFromName( const QString &name, bool *ok = nullptr );
 
     /**
+     * Returns TRUE if \a backend decodes an sRGB texture to linear when it is sampled.
+     *
+     * QRhi's OpenGL backend only honours QRhiTexture::sRGB for compressed formats: an
+     * RGBA8 texture asking for it silently gets a plain RGBA8 one, and its texels reach
+     * the shader still encoded. Everywhere else the flag maps onto a real sRGB format
+     * and the hardware decodes before filtering, which is both free and more correct.
+     * A material sampling a colour texture has to decode in the shader when this is
+     * FALSE, and must not when it is TRUE.
+     */
+    static bool decodesSrgbTextures( QRhi::Implementation backend );
+
+    /**
      * Returns the window surface type a swapchain for \a backend requires.
      *
      * A QWindow must carry the matching surface type before a swapchain can be created

@@ -2,6 +2,7 @@
 #extension GL_GOOGLE_include_directive : require
 
 #include "qgsview.glsl"
+#include "qgscolor.glsl"
 #include "qgsphongtexturedmaterial.glsl"
 #include "qgsphong.glsl"
 
@@ -16,7 +17,10 @@ layout( binding = 4 ) uniform sampler2D diffuseTexture;
 void main()
 {
   // the texture supplies the diffuse colour, the uniforms everything else
-  vec4 diffuseColor = vec4( texture( diffuseTexture, texCoord ).rgb, material.opacity );
+  vec3 sampled = texture( diffuseTexture, texCoord ).rgb;
+  if ( material.decodeSrgb != 0.0 )
+    sampled = qgsSrgbToLinear( sampled );
+  vec4 diffuseColor = vec4( sampled, material.opacity );
 
   vec3 worldView = normalize( view.eyePosition - worldPosition );
 

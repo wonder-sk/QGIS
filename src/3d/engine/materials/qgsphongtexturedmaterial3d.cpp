@@ -15,6 +15,7 @@
 
 #include "qgsphongtexturedmaterial3d.h"
 
+#include "qgsgputexture.h"
 #include "qgslogger.h"
 #include "qgsmaterial3dutils.h"
 #include "qgsrenderuniforms.h"
@@ -51,6 +52,7 @@ QgsPhongTexturedMaterial3D::QgsPhongTexturedMaterial3D( bool dataDefinedTextureT
     { u"texCoordScale"_s, offsetof( QgsPhongTexturedUniforms, texCoordScale ), 4 },
     { u"texCoordRotation"_s, offsetof( QgsPhongTexturedUniforms, texCoordRotation ), 4 },
     { u"texCoordOffset"_s, offsetof( QgsPhongTexturedUniforms, texCoordOffset ), 8 },
+    { u"decodeSrgb"_s, offsetof( QgsPhongTexturedUniforms, decodeSrgb ), 4 },
     { u"meshMatrix"_s, offsetof( QgsPhongTexturedUniforms, meshMatrix ), 64 },
     { u"meshNormalMatrix"_s, offsetof( QgsPhongTexturedUniforms, meshNormalMatrix ), 48 },
     { u"symbolRotation"_s, offsetof( QgsPhongTexturedUniforms, symbolRotation ), 16 },
@@ -100,6 +102,11 @@ void QgsPhongTexturedMaterial3D::setOpacity( float opacity )
 void QgsPhongTexturedMaterial3D::setDiffuseTexture( QgsGpuTexture *texture )
 {
   mDiffuseTexture = texture;
+
+  // a picture is sRGB encoded and shading happens in linear space; the shader only has to
+  // convert on a backend that did not give the texture an sRGB format
+  mUniforms.decodeSrgb = texture && texture->needsShaderSrgbDecode() ? 1.0f : 0.0f;
+  updateUniforms();
 
   TextureBinding binding;
   binding.binding = DiffuseTextureBinding;

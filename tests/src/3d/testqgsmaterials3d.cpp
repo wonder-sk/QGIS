@@ -105,6 +105,7 @@ class TestQgsMaterials3D : public QgsTest
     void testTexturedUniformBlockLayout();
     void testTexturedQuad();
     void testTexturedOpacity();
+    void testTexturedSrgb();
 
     void testGoochVariantsExist();
     void testGoochUniformBlockLayout();
@@ -645,6 +646,75 @@ void TestQgsMaterials3D::testTexturedQuad()
 
   // the texture is not colour converted on the way in, so its own values come straight out
   QVERIFY2( colorsClose( centerPixel( engine->readbackImage() ), QColor( 20, 180, 90 ) ), centerPixel( engine->readbackImage() ).name().toUtf8() );
+
+  pass.releaseGpuResources();
+  material.releaseGpuResources();
+  texture.releaseGpuResources();
+  cache.clear();
+}
+
+void TestQgsMaterials3D::testTexturedSrgb()
+{
+  if ( skipIfNoPixels() )
+    QSKIP( "The Null backend draws no pixels" );
+
+  const std::unique_ptr<QgsRhiEngine> engine = makeEngine();
+  QVERIFY( engine );
+  QgsGraphicsPipelineCache cache;
+
+  const float vertices[] = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 10.0f, 0.0f,  0.0f, 1.0f, 0.0f, 10.0f, 10.0f, 0.0f, 1.0f, 1.0f,
+                             0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 10.0f, 10.0f, 0.0f, 1.0f, 1.0f, 0.0f,  10.0f, 0.0f, 0.0f, 1.0f };
+  QgsGpuBuffer vertexBuffer( QgsGpuBuffer::Role::Vertex );
+  vertexBuffer.setData( QByteArray( reinterpret_cast<const char *>( vertices ), sizeof( vertices ) ) );
+
+  const quint32 stride = 5 * sizeof( float );
+  QgsGeometry3D geometry;
+  geometry.addAttribute( { u"vertexPosition"_s, &vertexBuffer, QRhiVertexInputAttribute::Float3, 0, stride, 0 } );
+  geometry.addAttribute( { u"vertexTexCoord"_s, &vertexBuffer, QRhiVertexInputAttribute::Float2, 3 * sizeof( float ), stride, 0 } );
+  geometry.setVertexCount( 6 );
+
+  // 188 is what linear 0.5 encodes to in sRGB, so a texture declared sRGB has to reach
+  // the colour buffer at about half way, whichever backend decoded it
+  QImage source( 4, 4, QImage::Format_RGBA8888 );
+  source.fill( QColor( 188, 188, 188 ) );
+  QgsGpuTexture texture;
+  texture.setImage( source );
+  texture.setSrgb( true );
+  QVERIFY( texture.isSrgb() );
+
+  QgsTextureMaterial3D material;
+  material.setCullMode( QRhiGraphicsPipeline::None );
+  material.setDiffuseTexture( &texture );
+  // exactly one of the two paths converts: the hardware, or the shader
+  QCOMPARE( material.uniforms().decodeSrgb != 0.0f, !QgsRhiEngine::decodesSrgbTextures( engine->rhi()->backend() ) );
+
+  QgsRenderPass pass( u"srgb"_s );
+  setTopDownCamera( pass );
+  pass.setClearColor( QColor( 0, 0, 255 ) );
+
+  QgsRenderCommand command;
+  command.geometry = &geometry;
+  command.material = &material;
+  pass.addCommand( command );
+
+  engine->setReadbackEnabled( true );
+  QVERIFY( engine->beginFrame() );
+  QVERIFY( pass.execute( engine.get(), &cache ) );
+  engine->endFrame();
+
+  QVERIFY2( colorsClose( centerPixel( engine->readbackImage() ), QColor( 128, 128, 128 ) ), centerPixel( engine->readbackImage() ).name().toUtf8() );
+
+  // and the same texels left alone when nothing says they are sRGB
+  texture.releaseGpuResources();
+  texture.setSrgb( false );
+  material.setDiffuseTexture( &texture );
+  QCOMPARE( material.uniforms().decodeSrgb, 0.0f );
+
+  QVERIFY( engine->beginFrame() );
+  QVERIFY( pass.execute( engine.get(), &cache ) );
+  engine->endFrame();
+
+  QVERIFY2( colorsClose( centerPixel( engine->readbackImage() ), QColor( 188, 188, 188 ) ), centerPixel( engine->readbackImage() ).name().toUtf8() );
 
   pass.releaseGpuResources();
   material.releaseGpuResources();

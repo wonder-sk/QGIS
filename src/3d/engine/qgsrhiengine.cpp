@@ -123,6 +123,25 @@ QRhi::Implementation QgsRhiEngine::defaultBackend()
 #endif
 }
 
+bool QgsRhiEngine::decodesSrgbTextures( QRhi::Implementation backend )
+{
+  switch ( backend )
+  {
+    case QRhi::OpenGLES2:
+      // qrhigles2.cpp only looks at QRhiTexture::sRGB in toGlCompressedTextureFormat(),
+      // so an uncompressed texture never becomes GL_SRGB8_ALPHA8
+      return false;
+
+    case QRhi::Null:
+    case QRhi::Vulkan:
+    case QRhi::D3D11:
+    case QRhi::D3D12:
+    case QRhi::Metal:
+      return true;
+  }
+  return true;
+}
+
 QSurface::SurfaceType QgsRhiEngine::surfaceTypeForBackend( QRhi::Implementation backend )
 {
   switch ( backend )
