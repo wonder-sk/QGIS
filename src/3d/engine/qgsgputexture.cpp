@@ -48,6 +48,20 @@ void QgsGpuTexture::setData( const QByteArray &data, const QSize &size, Format f
   mDirty = true;
 }
 
+void QgsGpuTexture::setExternalTexture( QRhiTexture *texture )
+{
+  // an external texture and an uploaded one are alternatives, never both at once, so drop
+  // whatever we were keeping for the uploaded form
+  mTexture.reset();
+  mImage = QImage();
+  mData.clear();
+  mDirty = false;
+
+  mExternalTexture = texture;
+  mSize = texture ? texture->pixelSize() : QSize();
+  mFormat = Format::RGBA8;
+}
+
 void QgsGpuTexture::setMipmapsEnabled( bool enabled )
 {
   if ( enabled == mMipmaps )
@@ -61,6 +75,9 @@ void QgsGpuTexture::setMipmapsEnabled( bool enabled )
 
 QRhiTexture *QgsGpuTexture::rhiTexture( QRhi *rhi, QRhiResourceUpdateBatch *updates )
 {
+  if ( mExternalTexture )
+    return mExternalTexture;
+
   if ( isEmpty() )
     return nullptr;
 

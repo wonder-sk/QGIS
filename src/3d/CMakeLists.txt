@@ -175,6 +175,7 @@ set(QGIS_3D_SRCS
 
   engine/qgsgeometry3d.cpp
   engine/qgsgpubuffer.cpp
+  engine/qgsgpurendertarget.cpp
   engine/qgsgputexture.cpp
   engine/qgsgraphicspipelinecache.cpp
   engine/qgsmaterial3d.cpp
@@ -182,19 +183,38 @@ set(QGIS_3D_SRCS
   engine/qgsrenderuniforms.cpp
   engine/qgsrhiengine.cpp
   engine/qgsrhishader.cpp
+  engine/qgsoverlayquads.cpp
+  engine/qgsscenerenderer.cpp
+  engine/qgsscreenquad.cpp
   engine/qgstessellatedpolygongeometry3d.cpp
   engine/qgsuniformring.cpp
 
+  engine/materials/qgsambientocclusionmaterial3d.cpp
+  engine/materials/qgsbackgroundmaterial3d.cpp
   engine/materials/qgsbillboardmaterial3d.cpp
+  engine/materials/qgsbloommaterial3d.cpp
+  engine/materials/qgsdepthrendermaterial3d.cpp
   engine/materials/qgsglobematerial3d.cpp
+  engine/materials/qgshighlightmaterial3d.cpp
   engine/materials/qgsgoochmaterial3d.cpp
   engine/materials/qgsmaterial3dutils.cpp
   engine/materials/qgsmeshmaterial3d.cpp
   engine/materials/qgsmetalroughmaterial3d.cpp
+  engine/materials/qgsoverlaytexturematerial3d.cpp
   engine/materials/qgsphongmaterial3d.cpp
   engine/materials/qgsphongtexturedmaterial3d.cpp
+  engine/materials/qgspostprocessingmaterial3d.cpp
+  engine/materials/qgsshadowcastermaterial3d.cpp
   engine/materials/qgstexturematerial3d.cpp
   engine/materials/qgsunlitmaterial3d.cpp
+
+  engine/passes/qgsambientocclusionrenderpass.cpp
+  engine/passes/qgsbloomrenderpass.cpp
+  engine/passes/qgsdepthrenderpass.cpp
+  engine/passes/qgsforwardrenderpass.cpp
+  engine/passes/qgshighlightsrenderpass.cpp
+  engine/passes/qgspostprocessingrenderpass.cpp
+  engine/passes/qgsshadowrenderpass.cpp
 
   geometry/qgsprimitivegeometry3d.cpp
   geometry/qgswiredmeshgeometry3d.cpp
@@ -347,6 +367,7 @@ set(QGIS_3D_HDRS
 
   engine/qgsgeometry3d.h
   engine/qgsgpubuffer.h
+  engine/qgsgpurendertarget.h
   engine/qgsgputexture.h
   engine/qgsgraphicspipelinecache.h
   engine/qgsmaterial3d.h
@@ -355,20 +376,39 @@ set(QGIS_3D_HDRS
   engine/qgsrenderuniforms.h
   engine/qgsrhiengine.h
   engine/qgsrhishader.h
+  engine/qgsoverlayquads.h
+  engine/qgsscenerenderer.h
+  engine/qgsscreenquad.h
   engine/qgstessellatedpolygongeometry3d.h
   engine/qgsuniformring.h
   engine/qgsvertexattribute.h
 
+  engine/materials/qgsambientocclusionmaterial3d.h
+  engine/materials/qgsbackgroundmaterial3d.h
   engine/materials/qgsbillboardmaterial3d.h
+  engine/materials/qgsbloommaterial3d.h
+  engine/materials/qgsdepthrendermaterial3d.h
   engine/materials/qgsglobematerial3d.h
+  engine/materials/qgshighlightmaterial3d.h
   engine/materials/qgsgoochmaterial3d.h
   engine/materials/qgsmaterial3dutils.h
   engine/materials/qgsmeshmaterial3d.h
   engine/materials/qgsmetalroughmaterial3d.h
+  engine/materials/qgsoverlaytexturematerial3d.h
   engine/materials/qgsphongmaterial3d.h
   engine/materials/qgsphongtexturedmaterial3d.h
+  engine/materials/qgspostprocessingmaterial3d.h
+  engine/materials/qgsshadowcastermaterial3d.h
   engine/materials/qgstexturematerial3d.h
   engine/materials/qgsunlitmaterial3d.h
+
+  engine/passes/qgsambientocclusionrenderpass.h
+  engine/passes/qgsbloomrenderpass.h
+  engine/passes/qgsdepthrenderpass.h
+  engine/passes/qgsforwardrenderpass.h
+  engine/passes/qgshighlightsrenderpass.h
+  engine/passes/qgspostprocessingrenderpass.h
+  engine/passes/qgsshadowrenderpass.h
 
   geometry/qgsprimitivegeometry3d.h
   geometry/qgswiredmeshgeometry3d.h
@@ -589,6 +629,33 @@ qgis_add_rhi_shader(metalrough_ddtexture_tangent_vert
   OUTPUT metalrough_ddtexture_tangent.vert.qsb)
 qgis_add_rhi_instanced_shaders(metalrough DEFINES HAS_TEXCOORD=1 HAS_TANGENT=1)
 
+# QgsShadowCasterMaterial3D. Position only, so the only thing to vary is instancing.
+qgis_add_rhi_shader(shadowcaster_vert FILE shadowcaster.vert)
+qgis_add_rhi_shader(shadowcaster_frag FILE shadowcaster.frag)
+qgis_add_rhi_instanced_shaders(shadowcaster)
+
+# QgsBackgroundMaterial3D, the gradient drawn behind the scene
+qgis_add_rhi_shader(background_vert FILE background.vert)
+qgis_add_rhi_shader(background_frag FILE background.frag)
+
+# The full screen passes. They all share screen.vert, which needs no variants because its
+# only input is a position already in clip space.
+qgis_add_rhi_shader(screen_vert FILE screen.vert)
+qgis_add_rhi_shader(depthrender_frag FILE depthrender.frag)
+qgis_add_rhi_shader(ambientocclusion_vert FILE ambientocclusion.vert)
+qgis_add_rhi_shader(ambientocclusion_frag FILE ambientocclusion.frag)
+qgis_add_rhi_shader(ambientocclusionblur_frag FILE ambientocclusionblur.frag)
+qgis_add_rhi_shader(bloomdownsample_frag FILE bloomdownsample.frag)
+qgis_add_rhi_shader(bloomupsample_frag FILE bloomupsample.frag)
+qgis_add_rhi_shader(postprocessing_frag FILE postprocessing.frag)
+qgis_add_rhi_shader(overlaytexture_vert FILE overlaytexture.vert)
+qgis_add_rhi_shader(overlaytexture_frag FILE overlaytexture.frag)
+
+# QgsHighlightsRenderPass. The mask shares the shadow caster's vertex stages, because both
+# want a vertex's position and nothing else.
+qgis_add_rhi_shader(highlightmask_frag FILE highlightmask.frag)
+qgis_add_rhi_shader(highlightoutline_frag FILE highlightoutline.frag)
+
 if (USE_PRECOMPILED_HEADERS)
   target_precompile_headers(qgis_3d PRIVATE $<$<COMPILE_LANGUAGE:CXX>:${CMAKE_SOURCE_DIR}/src/core/qgis.h>)
 endif()
@@ -604,6 +671,7 @@ target_include_directories(qgis_3d PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/chunks
   ${CMAKE_CURRENT_SOURCE_DIR}/engine
   ${CMAKE_CURRENT_SOURCE_DIR}/engine/materials
+  ${CMAKE_CURRENT_SOURCE_DIR}/engine/passes
   ${CMAKE_CURRENT_SOURCE_DIR}/geometry
   ${CMAKE_CURRENT_SOURCE_DIR}/framegraph
   ${CMAKE_CURRENT_SOURCE_DIR}/lights

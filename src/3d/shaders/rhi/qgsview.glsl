@@ -22,6 +22,11 @@ layout( std140, binding = 0 ) uniform QgsViewBlock
   // framebuffer's rows run bottom up on OpenGL and top down everywhere else, so the same
   // derivative comes out with the opposite sign depending on the backend
   float framebufferYSign;
+
+  // clip space z to stored depth: depth = z * clipDepthScale + clipDepthOffset.
+  // ( 1.0, 0.0 ) where clip depth already runs [0, 1], ( 0.5, 0.5 ) where it runs [-1, 1]
+  float clipDepthScale;
+  float clipDepthOffset;
 } view;
 
 #endif // QGS_VIEW_GLSL

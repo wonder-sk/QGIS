@@ -220,6 +220,15 @@ class _3D_EXPORT QgsRhiEngine
     //! Writes the graphics pipeline cache to \a path so that the next session can reuse it
     void savePipelineCache( const QString &path ) const;
 
+    /**
+     * Converts a finished texture readback into a QImage, right way up and in a sane format.
+     *
+     * Passes that read their own output back, such as the depth pass feeding camera
+     * navigation, queue their readback themselves and then come here to make sense of it,
+     * rather than each repeating the format mapping and the framebuffer flip.
+     */
+    QImage imageFromReadback( const QRhiReadbackResult &result ) const;
+
   private:
     enum class Mode
     {
@@ -239,7 +248,6 @@ class _3D_EXPORT QgsRhiEngine
     bool createRhi( QRhi::Implementation backend );
     bool createOffscreenTarget();
     void releaseOffscreenTarget();
-    QImage readbackToImage( const QRhiReadbackResult &result ) const;
 
     Mode mMode = Mode::Offscreen;
     std::unique_ptr<QRhi> mRhi;

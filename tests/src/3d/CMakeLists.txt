@@ -44,6 +44,7 @@ set(TESTS
   testqgsmaterials3d.cpp
   testqgsphongmaterial3d.cpp
   testqgsprimitivegeometry3d.cpp
+  testqgsrenderpasses3d.cpp
   testqgsrhiengine.cpp
   testqgsrubberband3drendering.cpp
   testqgstessellator.cpp

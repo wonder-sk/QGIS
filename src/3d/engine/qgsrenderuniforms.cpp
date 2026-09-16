@@ -18,10 +18,11 @@
 
 #include <QSize>
 
-static_assert( sizeof( QgsViewUniforms ) == 356, "QgsViewUniforms must match its std140 layout" );
+static_assert( sizeof( QgsViewUniforms ) == 364, "QgsViewUniforms must match its std140 layout" );
 static_assert( sizeof( QgsDrawUniforms ) == 176, "QgsDrawUniforms must match its std140 layout" );
 static_assert( sizeof( QgsLightUniforms ) == 528, "QgsLightUniforms must match its std140 layout" );
 static_assert( sizeof( QgsLightUniforms::Light ) == 64, "a light must be exactly four vec4s" );
+static_assert( sizeof( QgsShadowUniforms ) == 544, "QgsShadowUniforms must match its std140 layout" );
 
 namespace
 {
@@ -143,4 +144,18 @@ bool QgsLightUniforms::addSpotLight(
   light.attenuation[2] = quadraticAttenuation;
   light.attenuation[3] = 0.0f;
   return true;
+}
+
+void QgsShadowUniforms::setCascadeMatrix( int cascade, const QMatrix4x4 &matrix )
+{
+  if ( cascade < 0 || cascade >= NUM_CASCADES )
+    return;
+  memcpy( csmMatrices[cascade], matrix.constData(), 16 * sizeof( float ) );
+}
+
+void QgsShadowUniforms::setCascadeBoundsMatrix( int cascade, const QMatrix4x4 &matrix )
+{
+  if ( cascade < 0 || cascade >= NUM_CASCADES )
+    return;
+  memcpy( csmBoundsMatrices[cascade], matrix.constData(), 16 * sizeof( float ) );
 }

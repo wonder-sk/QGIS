@@ -51,6 +51,24 @@ namespace
   {
     return std::abs( a.red() - b.red() ) <= tolerance && std::abs( a.green() - b.green() ) <= tolerance && std::abs( a.blue() - b.blue() ) <= tolerance && std::abs( a.alpha() - b.alpha() ) <= tolerance;
   }
+
+  /**
+   * The samplers a material binds itself, leaving out the ones the pass owns.
+   *
+   * Every lit shader declares the shadow map, because qgslights.glsl pulls in
+   * qgsshadows.glsl, but that is bound by the render pass rather than by the material.
+   */
+  QVector<QShaderDescription::InOutVariable> materialSamplers( const QgsRhiShader *shader )
+  {
+    QVector<QShaderDescription::InOutVariable> result;
+    const QVector<QShaderDescription::InOutVariable> all = shader->samplers();
+    for ( const QShaderDescription::InOutVariable &sampler : all )
+    {
+      if ( sampler.binding <= QgsRhiBinding::LastSampler )
+        result.append( sampler );
+    }
+    return result;
+  }
 } // namespace
 
 /**
@@ -483,7 +501,7 @@ void TestQgsMaterials3D::testTexturedVariantsExist()
   QCOMPARE( instanced->inputLocation( u"instanceRotation"_s ), 4 );
 
   // the sampler has to sit where the material binds it
-  const QVector<QShaderDescription::InOutVariable> samplers = plain->samplers();
+  const QVector<QShaderDescription::InOutVariable> samplers = materialSamplers( plain.get() );
   QCOMPARE( samplers.size(), 1 );
   QCOMPARE( samplers.at( 0 ).binding, QgsTextureMaterial3D::DiffuseTextureBinding );
 }
@@ -844,7 +862,7 @@ void TestQgsMaterials3D::testGlobeUniformBlockLayout()
   QVERIFY2( shader->checkUniformBlockLayout( QgsRhiBinding::Material, members, &error ), error.toUtf8() );
   QVERIFY2( shader->checkStageInterface( &error ), error.toUtf8() );
 
-  const QVector<QShaderDescription::InOutVariable> samplers = shader->samplers();
+  const QVector<QShaderDescription::InOutVariable> samplers = materialSamplers( shader.get() );
   QCOMPARE( samplers.size(), 1 );
   QCOMPARE( samplers.at( 0 ).binding, QgsGlobeMaterial3D::DiffuseTextureBinding );
 }
@@ -983,7 +1001,7 @@ void TestQgsMaterials3D::testBillboardVariantsExist()
   }
 
   const std::shared_ptr<QgsRhiShader> plain = QgsRhiShader::load( u":/shaders/rhi/billboard.vert.qsb"_s, fragment );
-  const QVector<QShaderDescription::InOutVariable> samplers = plain->samplers();
+  const QVector<QShaderDescription::InOutVariable> samplers = materialSamplers( plain.get() );
   QCOMPARE( samplers.size(), 1 );
   QCOMPARE( samplers.at( 0 ).binding, QgsBillboardMaterial3D::SpriteTextureBinding );
 }
@@ -1172,7 +1190,7 @@ void TestQgsMaterials3D::testMeshVariantsExist()
   const std::shared_ptr<QgsRhiShader> scalar = QgsRhiShader::load( u":/shaders/rhi/mesh_scalar.vert.qsb"_s, fragment );
   QCOMPARE( scalar->inputLocation( u"scalarMagnitude"_s ), 2 );
 
-  const QVector<QShaderDescription::InOutVariable> samplers = plain->samplers();
+  const QVector<QShaderDescription::InOutVariable> samplers = materialSamplers( plain.get() );
   QCOMPARE( samplers.size(), 3 );
   QCOMPARE( samplers.at( 0 ).binding, int( QgsMeshMaterial3D::ColorRampTextureBinding ) );
   QCOMPARE( samplers.at( 1 ).binding, int( QgsMeshMaterial3D::ArrowsGridTextureBinding ) );
@@ -1521,7 +1539,7 @@ void TestQgsMaterials3D::testMetalRoughVariantsExist()
   QCOMPARE( instanced->inputLocation( u"instanceRotation"_s ), 9 );
 
   // all seven maps are declared unconditionally, which is what the placeholder texture is for
-  const QVector<QShaderDescription::InOutVariable> samplers = plain->samplers();
+  const QVector<QShaderDescription::InOutVariable> samplers = materialSamplers( plain.get() );
   QCOMPARE( samplers.size(), 7 );
   QCOMPARE( samplers.at( 0 ).binding, int( QgsMetalRoughMaterial3D::BaseColorMapBinding ) );
   QCOMPARE( samplers.at( 6 ).binding, int( QgsMetalRoughMaterial3D::EmissionMapBinding ) );
@@ -1940,7 +1958,7 @@ void TestQgsMaterials3D::testPhongTexturedVariantsExist()
   QCOMPARE( instanced->inputLocation( u"instanceScale"_s ), 5 );
   QCOMPARE( instanced->inputLocation( u"instanceRotation"_s ), 6 );
 
-  const QVector<QShaderDescription::InOutVariable> samplers = plain->samplers();
+  const QVector<QShaderDescription::InOutVariable> samplers = materialSamplers( plain.get() );
   QCOMPARE( samplers.size(), 1 );
   QCOMPARE( samplers.at( 0 ).binding, QgsPhongTexturedMaterial3D::DiffuseTextureBinding );
 }

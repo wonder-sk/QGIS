@@ -539,7 +539,7 @@ void QgsRhiEngine::endFrame()
 
       // an offscreen frame finishes synchronously, so the readback data is ready afterwards
       mRhi->endOffscreenFrame();
-      mReadbackImage = readbackToImage( readback );
+      mReadbackImage = imageFromReadback( readback );
     }
     else
     {
@@ -555,7 +555,7 @@ void QgsRhiEngine::endFrame()
   mInFrame = false;
 }
 
-QImage QgsRhiEngine::readbackToImage( const QRhiReadbackResult &result ) const
+QImage QgsRhiEngine::imageFromReadback( const QRhiReadbackResult &result ) const
 {
   if ( result.data.isEmpty() )
     return QImage();

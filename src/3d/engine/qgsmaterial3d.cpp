@@ -82,6 +82,13 @@ void QgsMaterial3D::setPolygonMode( QRhiGraphicsPipeline::PolygonMode mode )
   mStateKey = 0;
 }
 
+void QgsMaterial3D::setDepthBias( int constant, float slopeScaled )
+{
+  mDepthBias = constant;
+  mSlopeScaledDepthBias = slopeScaled;
+  mStateKey = 0;
+}
+
 void QgsMaterial3D::setUniformData( const void *data, int size )
 {
   mUniformBuffer.setData( QByteArray( static_cast<const char *>( data ), size ) );
@@ -129,7 +136,9 @@ size_t QgsMaterial3D::stateKey() const
     static_cast<int>( mBlend.opColor ),
     static_cast<int>( mBlend.srcAlpha ),
     static_cast<int>( mBlend.dstAlpha ),
-    static_cast<int>( mBlend.opAlpha )
+    static_cast<int>( mBlend.opAlpha ),
+    mDepthBias,
+    mSlopeScaledDepthBias
   );
 
   mStateKey = key ? key : 1;

@@ -84,8 +84,21 @@ class _3D_EXPORT QgsGpuTexture
     //! Returns the size of the texture in pixels
     QSize size() const { return mSize; }
 
-    //! Returns TRUE if the texture holds nothing to upload
-    bool isEmpty() const { return mSize.isEmpty(); }
+    //! Returns TRUE if the texture holds nothing to upload and stands for nothing external
+    bool isEmpty() const { return !mExternalTexture && mSize.isEmpty(); }
+
+    /**
+     * Makes this stand for \a texture, which somebody else owns and keeps alive.
+     *
+     * This is how a material samples the output of an earlier pass: the post processing
+     * chain binds render target attachments, which live on the GPU only and have no CPU
+     * side image to upload. Everything about the CPU side is ignored while an external
+     * texture is set; passing NULLPTR goes back to the ordinary uploaded form.
+     */
+    void setExternalTexture( QRhiTexture *texture );
+
+    //! Returns the texture set by setExternalTexture(), or NULLPTR if there is none
+    QRhiTexture *externalTexture() const { return mExternalTexture; }
 
     /**
      * Sets whether a mip chain should be generated and used.
@@ -117,6 +130,7 @@ class _3D_EXPORT QgsGpuTexture
     bool mMipmaps = false;
     bool mDirty = true;
     std::unique_ptr<QRhiTexture> mTexture;
+    QRhiTexture *mExternalTexture = nullptr;
 };
 
 #endif // QGSGPUTEXTURE_H

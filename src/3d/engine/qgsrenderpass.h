@@ -26,6 +26,7 @@
 
 #include <QColor>
 #include <QMatrix4x4>
+#include <QRect>
 #include <QString>
 
 #define SIP_NO_FILE
@@ -73,6 +74,15 @@ class _3D_EXPORT QgsRenderPass
     void setEyePosition( const QVector3D &position );
 
     /**
+     * Sets the camera's near and far planes.
+     *
+     * These are in the view block because shaders that turn a depth buffer value back into
+     * a distance need them as numbers, and digging them back out of the projection matrix
+     * would be both fiddly and wrong for an orthographic camera.
+     */
+    void setClipPlanes( float nearPlane, float farPlane );
+
+    /**
      * Sets the light sources every lit material in this pass shades with.
      *
      * Qt3D gathered these from QAbstractLight components in the entity tree; here the
@@ -82,6 +92,22 @@ class _3D_EXPORT QgsRenderPass
 
     //! Returns the light sources the pass shades with
     const QgsLightUniforms &lights() const { return mLights; }
+
+    /**
+     * Sets the shadow map lit materials sample, and the matrices that address it.
+     *
+     * Shadows are resolved in the lighting shaders rather than as a post process, so the
+     * shadow map is pass state that every draw in the pass sees, exactly like the lights.
+     * Passing NULLPTR for \a shadowMap leaves shadowing off; a one texel placeholder is
+     * bound in its place so that the binding set stays the same shape either way.
+     */
+    void setShadowMap( QRhiTexture *shadowMap, const QgsShadowUniforms &uniforms );
+
+    //! Returns the shadow map set by setShadowMap(), or NULLPTR if the pass has no shadows
+    QRhiTexture *shadowMap() const { return mShadowMap; }
+
+    //! Returns the shadow matrices and settings set by setShadowMap()
+    const QgsShadowUniforms &shadowUniforms() const { return mShadowUniforms; }
 
     //! Returns the view matrix set by setCamera()
     QMatrix4x4 viewMatrix() const { return mView; }
@@ -97,6 +123,18 @@ class _3D_EXPORT QgsRenderPass
 
     //! Sets the value the depth buffer is cleared to at the start of the pass
     void setDepthClearValue( float depth ) { mDepthClearValue = depth; }
+
+    /**
+     * Restricts drawing to \a viewport, in pixels from the top left of the target.
+     *
+     * An empty rectangle, the default, draws to the whole target. The highlights pass
+     * uses this to draw the same geometry four times a few pixels apart, which is how the
+     * silhouette around an identified feature is built.
+     */
+    void setViewport( const QRect &viewport ) { mViewport = viewport; }
+
+    //! Returns the viewport set by setViewport()
+    QRect viewport() const { return mViewport; }
 
     //! Appends a command to draw this frame
     void addCommand( const QgsRenderCommand &command ) { mCommands.push_back( command ); }
@@ -143,13 +181,21 @@ class _3D_EXPORT QgsRenderPass
         quint32 firstElement = 0;
     };
 
+    //! Returns the shadow map to bind, creating the one texel placeholder if there is none
+    QRhiTexture *shadowMapToBind( QRhi *rhi );
+
     QString mName;
     QMatrix4x4 mView;
     QMatrix4x4 mProjection;
     QVector3D mEyePosition;
+    float mNearPlane = 0.0f;
+    float mFarPlane = 0.0f;
     QgsLightUniforms mLights;
+    QgsShadowUniforms mShadowUniforms;
+    QRhiTexture *mShadowMap = nullptr;
     QColor mClearColor = Qt::black;
     float mDepthClearValue = 1.0f;
+    QRect mViewport;
     bool mSortEnabled = true;
 
     std::vector<QgsRenderCommand> mCommands;
@@ -157,7 +203,12 @@ class _3D_EXPORT QgsRenderPass
 
     QgsGpuBuffer mViewBuffer { QgsGpuBuffer::Role::Uniform, QgsGpuBuffer::Usage::Dynamic };
     QgsGpuBuffer mLightBuffer { QgsGpuBuffer::Role::Uniform, QgsGpuBuffer::Usage::Dynamic };
+    QgsGpuBuffer mShadowBuffer { QgsGpuBuffer::Role::Uniform, QgsGpuBuffer::Usage::Dynamic };
     QgsUniformRing mDrawUniforms;
+
+    // bound at QgsRhiBinding::ShadowMap when the pass has no shadow map of its own, so
+    // that a shader declaring the sampler still has something to sample
+    std::unique_ptr<QRhiTexture> mPlaceholderShadowMap;
 };
 
 #endif // QGSRENDERPASS_H

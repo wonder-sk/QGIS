@@ -128,6 +128,8 @@ const QgsGraphicsPipelineCache::Pipeline *QgsGraphicsPipelineCache::pipeline(
   pipeline->setDepthWrite( material->hasDepthWrite() );
   pipeline->setDepthOp( material->depthOp() );
   pipeline->setTargetBlends( { material->blend() } );
+  pipeline->setDepthBias( material->depthBias() );
+  pipeline->setSlopeScaledDepthBias( material->slopeScaledDepthBias() );
 
   if ( material->polygonMode() != QRhiGraphicsPipeline::Fill && !rhi->isFeatureSupported( QRhi::NonFillPolygonMode ) )
     QgsDebugMsgLevel( u"Wireframe polygon mode is not supported by this backend, drawing filled"_s, 2 );

@@ -9,6 +9,8 @@
 #ifndef QGS_LIGHTS_GLSL
 #define QGS_LIGHTS_GLSL
 
+#include "qgsshadows.glsl"
+
 const int MAX_LIGHTS = 8;
 const int TYPE_POINT = 0;
 const int TYPE_DIRECTIONAL = 1;
@@ -67,9 +69,6 @@ LightParams calculateLightParams( const in int lightIndex,
   res.s = vec3( 0.0 );
   res.att = 1.0;
   res.sDotN = 0.0;
-
-  // shadowing is applied by the pass that owns the shadow map, see QgsShadowRenderPass.
-  // Until that lands everything is fully lit.
   res.visibilityFactor = 1.0;
 
   if ( type != TYPE_DIRECTIONAL )
@@ -100,6 +99,11 @@ LightParams calculateLightParams( const in int lightIndex,
     // directional lights. The direction is already in world space.
     res.s = normalize( -light.directionAndCutOff.xyz );
     res.sDotN = dot( res.s, n );
+
+    // only the one light the shadow pass rendered from casts shadows, which is what keeps
+    // a scene to a single shadow map however many lights it has
+    if ( shadows.renderShadows != 0 && lightIndex == shadows.shadowLightIndex )
+      res.visibilityFactor = calcVisibilityAfterShadowing( wPosition );
   }
 
   res.h = normalize( res.s + wView );

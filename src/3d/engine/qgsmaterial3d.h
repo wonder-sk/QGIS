@@ -117,6 +117,20 @@ class _3D_EXPORT QgsMaterial3D
     //! Sets whether polygons are filled or drawn as lines
     void setPolygonMode( QRhiGraphicsPipeline::PolygonMode mode );
 
+    //! Returns the constant depth offset applied to fragments, in depth buffer units
+    int depthBias() const { return mDepthBias; }
+
+    /**
+     * Sets a constant and a slope scaled offset added to every fragment's depth.
+     *
+     * This is what Qt3D's QPolygonOffset was. The shadow pass uses it to push shadow
+     * casters away from the light, so that a surface does not shadow itself.
+     */
+    void setDepthBias( int constant, float slopeScaled );
+
+    //! Returns the depth offset applied in proportion to the polygon's slope
+    float slopeScaledDepthBias() const { return mSlopeScaledDepthBias; }
+
     /**
      * Replaces the content of the material's uniform block.
      *
@@ -174,6 +188,8 @@ class _3D_EXPORT QgsMaterial3D
     QRhiGraphicsPipeline::CompareOp mDepthOp = QRhiGraphicsPipeline::Less;
     QRhiGraphicsPipeline::TargetBlend mBlend;
     QRhiGraphicsPipeline::PolygonMode mPolygonMode = QRhiGraphicsPipeline::Fill;
+    int mDepthBias = 0;
+    float mSlopeScaledDepthBias = 0.0f;
 
     QgsGpuBuffer mUniformBuffer { QgsGpuBuffer::Role::Uniform, QgsGpuBuffer::Usage::Dynamic };
     QVector<TextureBinding> mTextures;

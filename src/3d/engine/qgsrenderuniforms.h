@@ -51,6 +51,20 @@ namespace QgsRhiBinding
 
   //! First binding a material may use for a texture sampler.
   constexpr int FirstSampler = 4;
+
+  /**
+   * Last binding a material may use for a texture sampler.
+   *
+   * Materials are given a generous range because the metal rough material alone binds
+   * seven maps; the pass owned bindings below start well clear of it.
+   */
+  constexpr int LastSampler = 11;
+
+  //! The pass's cascaded shadow map matrices and settings. Constant for a whole pass.
+  constexpr int Shadow = 12;
+
+  //! The pass's shadow map, a depth-per-cascade 2D texture array.
+  constexpr int ShadowMap = 13;
 } // namespace QgsRhiBinding
 
 /**
@@ -87,6 +101,19 @@ struct _3D_EXPORT QgsViewUniforms
     float framebufferYSign = 1.0f; // offset 352
 
     /**
+   * Maps a clip space z to the depth value the depth buffer holds, as
+   * \c depth = \c z * clipDepthScale + clipDepthOffset.
+   *
+   * Backends disagree about the range of clip space z: Vulkan, Metal and Direct3D put it
+   * in [0, 1], desktop OpenGL in [-1, 1], while gl_FragCoord.z is [0, 1] everywhere.
+   * Anything that compares a clip space z against a stored depth, or reconstructs a
+   * position from one, needs the conversion, so it is carried here rather than worked out
+   * again per shader.
+   */
+    float clipDepthScale = 1.0f;  // offset 356
+    float clipDepthOffset = 0.0f; // offset 360
+
+    /**
    * Fills the block from a view and a projection matrix.
    *
    * \a projectionMatrix must already include the backend's clip space correction, see
@@ -102,6 +129,13 @@ struct _3D_EXPORT QgsViewUniforms
 
     //! Sets framebufferYSign from whether the backend's framebuffer rows run bottom up
     void setFramebufferYUp( bool yUp ) { framebufferYSign = yUp ? 1.0f : -1.0f; }
+
+    //! Sets clipDepthScale and clipDepthOffset from whether clip space z runs [0, 1] or [-1, 1]
+    void setClipDepthZeroToOne( bool zeroToOne )
+    {
+      clipDepthScale = zeroToOne ? 1.0f : 0.5f;
+      clipDepthOffset = zeroToOne ? 0.0f : 0.5f;
+    }
 };
 
 /**
@@ -173,6 +207,53 @@ struct _3D_EXPORT QgsLightUniforms
     bool addSpotLight(
       const QVector3D &position, const QVector3D &direction, float cutOffAngle, const QColor &color, float intensity, float constantAttenuation, float linearAttenuation, float quadraticAttenuation
     );
+};
+
+/**
+ * \ingroup qgis_3d
+ * \brief The cascaded shadow map block, laid out for std140.
+ *
+ * Shadows are resolved in the lighting shaders rather than as a post process, so every
+ * lit material needs these matrices and the shadow map itself. They are per-pass state
+ * rather than per-material state, which is why they live here next to the light block
+ * instead of in any one material's uniforms.
+ *
+ * QgsShadowRenderPass fills this in while it renders the cascades; a pass with no shadows
+ * binds a default constructed block, whose renderShadows is 0.
+ *
+ * \note Not available in Python bindings
+ * \since QGIS 3.46
+ */
+struct _3D_EXPORT QgsShadowUniforms
+{
+    //! Number of cascades, matching Qgs3D::NUM_SHADOW_CASCADES and NUMBER_CASCADES in qgsshadows.glsl
+    static constexpr int NUM_CASCADES = 4;
+
+    //! World space to each cascade's light clip space, as the shadow map was rendered
+    float csmMatrices[NUM_CASCADES][16] = {}; // offset 0
+
+    /**
+   * World space to each cascade's exact bounds, which is what picks a cascade for a
+   * fragment. This differs from csmMatrices because the rendering camera's near plane is
+   * pulled back to catch casters behind the cascade slice.
+   */
+    float csmBoundsMatrices[NUM_CASCADES][16] = {}; // offset 256
+
+    float shadowBias = 0.00001f;    // offset 512
+    float maxShadowDistance = 0.0f; // offset 516
+    int renderShadows = 0;          // offset 520, 0 when the pass has no shadow map
+    int shadowLightIndex = 0;       // offset 524, index into QgsLightUniforms::lights
+
+    //! For testing only: shade each cascade in its own colour, to make the splits visible
+    int showCascadeSplits = 0; // offset 528
+
+    int padding[3] = {}; // the block has to be a whole number of vec4s
+
+    //! Sets the light space matrix of one cascade
+    void setCascadeMatrix( int cascade, const QMatrix4x4 &matrix );
+
+    //! Sets the cascade selection matrix of one cascade
+    void setCascadeBoundsMatrix( int cascade, const QMatrix4x4 &matrix );
 };
 
 /**

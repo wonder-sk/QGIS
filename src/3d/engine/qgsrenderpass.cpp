@@ -44,6 +44,40 @@ void QgsRenderPass::setEyePosition( const QVector3D &position )
   mEyePosition = position;
 }
 
+void QgsRenderPass::setClipPlanes( float nearPlane, float farPlane )
+{
+  mNearPlane = nearPlane;
+  mFarPlane = farPlane;
+}
+
+void QgsRenderPass::setShadowMap( QRhiTexture *shadowMap, const QgsShadowUniforms &uniforms )
+{
+  mShadowMap = shadowMap;
+  mShadowUniforms = uniforms;
+  if ( !shadowMap )
+    mShadowUniforms.renderShadows = 0;
+}
+
+QRhiTexture *QgsRenderPass::shadowMapToBind( QRhi *rhi )
+{
+  if ( mShadowMap )
+    return mShadowMap;
+
+  // Every lit shader declares the shadow sampler, because whether a scene casts shadows is
+  // not known when the shader is baked. A binding set that changed shape with the setting
+  // would mean two pipelines per material, so a one texel array stands in instead.
+  if ( !mPlaceholderShadowMap )
+  {
+    mPlaceholderShadowMap.reset( rhi->newTextureArray( QRhiTexture::R32F, QgsShadowUniforms::NUM_CASCADES, QSize( 1, 1 ) ) );
+    if ( !mPlaceholderShadowMap->create() )
+    {
+      QgsDebugError( u"Failed to create the placeholder shadow map"_s );
+      mPlaceholderShadowMap.reset();
+    }
+  }
+  return mPlaceholderShadowMap.get();
+}
+
 bool QgsRenderPass::execute( QgsRhiEngine *engine, QgsGraphicsPipelineCache *cache, QRhiRenderTarget *target )
 {
   QRhi *rhi = engine->rhi();
@@ -72,8 +106,11 @@ bool QgsRenderPass::execute( QgsRhiEngine *engine, QgsGraphicsPipelineCache *cac
   QgsViewUniforms viewUniforms;
   viewUniforms.setCamera( mView, correctedProjection );
   viewUniforms.setEyePosition( mEyePosition );
+  viewUniforms.nearPlane = mNearPlane;
+  viewUniforms.farPlane = mFarPlane;
   viewUniforms.setViewportSize( targetSize );
   viewUniforms.setFramebufferYUp( rhi->isYUpInFramebuffer() );
+  viewUniforms.setClipDepthZeroToOne( rhi->isClipDepthZeroToOne() );
   mViewBuffer.setData( QByteArray( reinterpret_cast<const char *>( &viewUniforms ), sizeof( QgsViewUniforms ) ) );
 
   QRhiBuffer *viewBuffer = mViewBuffer.rhiBuffer( rhi, updates );
@@ -83,6 +120,16 @@ bool QgsRenderPass::execute( QgsRhiEngine *engine, QgsGraphicsPipelineCache *cac
   mLightBuffer.setData( QByteArray( reinterpret_cast<const char *>( &mLights ), sizeof( QgsLightUniforms ) ) );
   QRhiBuffer *lightBuffer = mLightBuffer.rhiBuffer( rhi, updates );
   if ( !lightBuffer )
+    return false;
+
+  mShadowBuffer.setData( QByteArray( reinterpret_cast<const char *>( &mShadowUniforms ), sizeof( QgsShadowUniforms ) ) );
+  QRhiBuffer *shadowBuffer = mShadowBuffer.rhiBuffer( rhi, updates );
+  if ( !shadowBuffer )
+    return false;
+
+  QRhiTexture *shadowMap = shadowMapToBind( rhi );
+  QRhiSampler *shadowSampler = cache->sampler( rhi, QRhiSampler::Linear, QRhiSampler::Linear, QRhiSampler::None, QRhiSampler::ClampToEdge, QRhiSampler::ClampToEdge );
+  if ( !shadowMap || !shadowSampler )
     return false;
 
   // Phase one: stage the per draw uniforms for every command. Nothing is recorded yet, so
@@ -135,6 +182,8 @@ bool QgsRenderPass::execute( QgsRhiEngine *engine, QgsGraphicsPipelineCache *cac
       QRhiShaderResourceBinding::uniformBufferWithDynamicOffset( QgsRhiBinding::Draw, QRhiShaderResourceBinding::VertexStage | QRhiShaderResourceBinding::FragmentStage, drawBuffer, sizeof( QgsDrawUniforms ) )
     );
     bindings.append( QRhiShaderResourceBinding::uniformBuffer( QgsRhiBinding::Lights, QRhiShaderResourceBinding::VertexStage | QRhiShaderResourceBinding::FragmentStage, lightBuffer ) );
+    bindings.append( QRhiShaderResourceBinding::uniformBuffer( QgsRhiBinding::Shadow, QRhiShaderResourceBinding::VertexStage | QRhiShaderResourceBinding::FragmentStage, shadowBuffer ) );
+    bindings.append( QRhiShaderResourceBinding::sampledTexture( QgsRhiBinding::ShadowMap, QRhiShaderResourceBinding::FragmentStage, shadowMap, shadowSampler ) );
 
     if ( !command.material->appendResourceBindings( rhi, updates, cache, &bindings ) )
       return false;
@@ -175,7 +224,13 @@ bool QgsRenderPass::execute( QgsRhiEngine *engine, QgsGraphicsPipelineCache *cac
     cb->debugMarkBegin( mName.toUtf8() );
 
   cb->beginPass( target, mClearColor, { mDepthClearValue, 0 }, updates );
-  cb->setViewport( QRhiViewport( 0, 0, targetSize.width(), targetSize.height() ) );
+
+  // QRhi viewports are in the framebuffer's own coordinates, whose origin is at the bottom
+  // left; the rectangle callers give is in the usual top left based screen coordinates
+  if ( mViewport.isEmpty() )
+    cb->setViewport( QRhiViewport( 0, 0, targetSize.width(), targetSize.height() ) );
+  else
+    cb->setViewport( QRhiViewport( mViewport.x(), targetSize.height() - mViewport.y() - mViewport.height(), mViewport.width(), mViewport.height() ) );
 
   QRhiGraphicsPipeline *boundPipeline = nullptr;
   for ( const ResolvedCommand &resolved : mResolved )
@@ -212,6 +267,8 @@ void QgsRenderPass::releaseGpuResources()
 {
   mViewBuffer.releaseGpuResources();
   mLightBuffer.releaseGpuResources();
+  mShadowBuffer.releaseGpuResources();
   mDrawUniforms.releaseGpuResources();
+  mPlaceholderShadowMap.reset();
   mResolved.clear();
 }
