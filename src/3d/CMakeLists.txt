@@ -36,12 +36,14 @@ set(QGIS_3D_SRCS
   qgsgeotransform.cpp
   qgsglobechunkedentity.cpp
   qgsgltf3dutils.cpp
+  qgsgltfgeometry3d.cpp
   qgsimagetexture.cpp
   qgslayoutitem3dmap.cpp
   qgslayerstylewatcher.cpp
   qgsmapoverlayentity.cpp
   qgsmapoverlaytexturegenerator_p.cpp
   qgsobj3dutils.cpp
+  qgsobjgeometry3d.cpp
   qgsoffscreen3dengine.cpp
   qgsraycastingutils.cpp
   qgsraycastcontext.cpp
@@ -232,12 +234,14 @@ set(QGIS_3D_HDRS
   qgsgeotransform.h
   qgsglobechunkedentity.h
   qgsgltf3dutils.h
+  qgsgltfgeometry3d.h
   qgslayoutitem3dmap.h
   qgslayerstylewatcher.h
   qgsmapoverlayentity.h
   qgsmapoverlaytexturegenerator_p.h
   qgsmeshlayer3drenderer.h
   qgsobj3dutils.h
+  qgsobjgeometry3d.h
   qgsoffscreen3dengine.h
   qgsraycastingutils.h
   qgsraycastcontext.h

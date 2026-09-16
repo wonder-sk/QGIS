@@ -18,10 +18,12 @@
 #include "qgsbillboardgeometry3d.h"
 #include "qgsbillboardmaterial3d.h"
 #include "qgsdemterraintilegeometry3d.h"
+#include "qgsgltfgeometry3d.h"
 #include "qgsgputexture.h"
 #include "qgsgraphicspipelinecache.h"
 #include "qgsmeshgeometry3d.h"
 #include "qgsmeshmaterial3d.h"
+#include "qgsobjgeometry3d.h"
 #include "qgsphongmaterial3d.h"
 #include "qgspointcloudgeometry3d.h"
 #include "qgsray3d.h"
@@ -34,6 +36,12 @@
 #include "qgstest.h"
 #include "qgsunlitmaterial3d.h"
 #include "qgswiredmeshgeometry3d.h"
+
+#include <QString>
+
+#define TINYGLTF_NO_STB_IMAGE       // we use QImage-based reading of images
+#define TINYGLTF_NO_STB_IMAGE_WRITE // we don't need writing of images
+#include "tiny_gltf.h"
 
 #include <QImage>
 #include <QString>
@@ -119,6 +127,15 @@ class TestQgsGeometry3D : public QgsTest
     void testPointCloudStrideFromSymbol();
     void testPointCloudTriangulation();
     void testPointCloudRenders();
+
+    void testGltfFloatAttribute();
+    void testGltfSharesModelBuffers();
+    void testGltfUnpacksFormatsQRhiLacks();
+    void testGltfIndices();
+    void testGltfInstances();
+    void testGltfRenders();
+
+    void testObjLayouts();
 
   private:
     QRhi::Implementation mBackend = QRhi::Null;
@@ -940,6 +957,310 @@ void TestQgsGeometry3D::testPointCloudRenders()
   cloud.releaseGpuResources();
   material.releaseGpuResources();
   cache.clear();
+}
+
+namespace
+{
+  //! Appends \a data to the model as a buffer, and returns its index
+  int addBuffer( tinygltf::Model &model, const QByteArray &data )
+  {
+    tinygltf::Buffer buffer;
+    buffer.data.assign( data.constBegin(), data.constEnd() );
+    model.buffers.push_back( buffer );
+    return static_cast<int>( model.buffers.size() ) - 1;
+  }
+
+  //! Adds an accessor over the whole of buffer \a bufferIndex, and returns its index
+  int addAccessor( tinygltf::Model &model, int bufferIndex, int componentType, int type, size_t count, bool normalized = false, int byteStride = 0 )
+  {
+    tinygltf::BufferView view;
+    view.buffer = bufferIndex;
+    view.byteOffset = 0;
+    view.byteLength = model.buffers[bufferIndex].data.size();
+    view.byteStride = byteStride;
+    model.bufferViews.push_back( view );
+
+    tinygltf::Accessor accessor;
+    accessor.bufferView = static_cast<int>( model.bufferViews.size() ) - 1;
+    accessor.byteOffset = 0;
+    accessor.componentType = componentType;
+    accessor.type = type;
+    accessor.count = count;
+    accessor.normalized = normalized;
+    model.accessors.push_back( accessor );
+    return static_cast<int>( model.accessors.size() ) - 1;
+  }
+
+  //! Packs \a values as a byte array
+  template<typename T> QByteArray packed( const QVector<T> &values )
+  {
+    return QByteArray( reinterpret_cast<const char *>( values.constData() ), values.size() * qsizetype( sizeof( T ) ) );
+  }
+} // namespace
+
+void TestQgsGeometry3D::testGltfFloatAttribute()
+{
+  tinygltf::Model model;
+  const int buffer = addBuffer( model, packed( QVector<float> { 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f } ) );
+  const int accessor = addAccessor( model, buffer, TINYGLTF_COMPONENT_TYPE_FLOAT, TINYGLTF_TYPE_VEC3, 2 );
+
+  QgsGltfGeometry3D geometry;
+  QString error;
+  QVERIFY2( geometry.addAttribute( u"vertexNormal"_s, model, accessor, &error ), qPrintable( error ) );
+
+  const QgsVertexAttribute *normal = geometry.geometry()->attribute( u"vertexNormal"_s );
+  QVERIFY( normal );
+  QCOMPARE( normal->format, QRhiVertexInputAttribute::Float3 );
+  // float vec3 needs no conversion, so the stride is the packed one and the data is the
+  // model's own bytes
+  QCOMPARE( normal->byteStride, 3 * sizeof( float ) );
+  QCOMPARE( normal->byteOffset, 0u );
+  QCOMPARE( normal->buffer->size(), 6 * int( sizeof( float ) ) );
+
+  // an accessor that does not exist is refused rather than silently ignored
+  QVERIFY( !geometry.addAttribute( u"vertexTexCoord"_s, model, 42, &error ) );
+  QVERIFY( !error.isEmpty() );
+}
+
+void TestQgsGeometry3D::testGltfSharesModelBuffers()
+{
+  // one interleaved buffer read by two accessors, which is the common glTF shape. The
+  // Qt3D version deep copied the whole buffer once per attribute; this must not.
+  QVector<float> interleaved;
+  for ( int i = 0; i < 3; ++i )
+    interleaved << float( i ) << 0.0f << 0.0f << 0.0f << 0.0f << 1.0f;
+
+  tinygltf::Model model;
+  const int buffer = addBuffer( model, packed( interleaved ) );
+
+  const int positions = addAccessor( model, buffer, TINYGLTF_COMPONENT_TYPE_FLOAT, TINYGLTF_TYPE_VEC3, 3, false, 6 * sizeof( float ) );
+  const int normals = addAccessor( model, buffer, TINYGLTF_COMPONENT_TYPE_FLOAT, TINYGLTF_TYPE_VEC3, 3, false, 6 * sizeof( float ) );
+  model.accessors[normals].byteOffset = 3 * sizeof( float );
+
+  QgsGltfGeometry3D geometry;
+  QVERIFY( geometry.addAttribute( u"a"_s, model, positions ) );
+  QVERIFY( geometry.addAttribute( u"b"_s, model, normals ) );
+
+  const QgsVertexAttribute *a = geometry.geometry()->attribute( u"a"_s );
+  const QgsVertexAttribute *b = geometry.geometry()->attribute( u"b"_s );
+  QCOMPARE( a->buffer, b->buffer );
+  QCOMPARE( a->byteStride, 6 * sizeof( float ) );
+  QCOMPARE( a->byteOffset, 0u );
+  QCOMPARE( b->byteOffset, 3 * sizeof( float ) );
+  QCOMPARE( a->buffer->size(), interleaved.size() * int( sizeof( float ) ) );
+}
+
+void TestQgsGeometry3D::testGltfUnpacksFormatsQRhiLacks()
+{
+  // normalised unsigned shorts are valid glTF texture coordinates and QRhi has no vertex
+  // format for them, so they have to be unpacked to floats rather than rejected
+  tinygltf::Model model;
+  const int buffer = addBuffer( model, packed( QVector<quint16> { 0, 65535, 32767, 0 } ) );
+  const int accessor = addAccessor( model, buffer, TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT, TINYGLTF_TYPE_VEC2, 2, true );
+
+  QgsGltfGeometry3D geometry;
+  QString error;
+  QVERIFY2( geometry.addAttribute( u"vertexTexCoord"_s, model, accessor, &error ), qPrintable( error ) );
+
+  const QgsVertexAttribute *texCoord = geometry.geometry()->attribute( u"vertexTexCoord"_s );
+  QVERIFY( texCoord );
+  QCOMPARE( texCoord->format, QRhiVertexInputAttribute::Float2 );
+  QCOMPARE( texCoord->byteStride, 2 * sizeof( float ) );
+  QCOMPARE( texCoord->buffer->size(), 4 * int( sizeof( float ) ) );
+
+  const float *data = reinterpret_cast<const float *>( texCoord->buffer->data().constData() );
+  QCOMPARE( data[0], 0.0f );
+  QCOMPARE( data[1], 1.0f );
+  QVERIFY( std::abs( data[2] - 0.5f ) < 1e-4f );
+
+  // a normalised unsigned byte vec2 is a format QRhi does have, so it stays packed
+  tinygltf::Model byteModel;
+  const int byteBuffer = addBuffer( byteModel, QByteArray( "\x00\xff\x80\x00", 4 ) );
+  const int byteAccessor = addAccessor( byteModel, byteBuffer, TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE, TINYGLTF_TYPE_VEC2, 2, true );
+
+  QgsGltfGeometry3D byteGeometry;
+  QVERIFY( byteGeometry.addAttribute( u"vertexTexCoord"_s, byteModel, byteAccessor ) );
+  QCOMPARE( byteGeometry.geometry()->attribute( u"vertexTexCoord"_s )->format, QRhiVertexInputAttribute::UNormByte2 );
+}
+
+void TestQgsGeometry3D::testGltfIndices()
+{
+  // 16 bit indices pass through unchanged
+  {
+    tinygltf::Model model;
+    const int buffer = addBuffer( model, packed( QVector<quint16> { 0, 1, 2 } ) );
+    const int accessor = addAccessor( model, buffer, TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT, TINYGLTF_TYPE_SCALAR, 3 );
+
+    QgsGltfGeometry3D geometry;
+    QVERIFY( geometry.setIndices( model, accessor ) );
+    QVERIFY( geometry.geometry()->isIndexed() );
+    QCOMPARE( geometry.geometry()->indexFormat(), QRhiCommandBuffer::IndexUInt16 );
+    QCOMPARE( geometry.geometry()->indexCount(), 3 );
+  }
+
+  // byte indices are legal glTF but QRhi draws 16 or 32 bit only, so they are widened
+  {
+    tinygltf::Model model;
+    const int buffer = addBuffer( model, QByteArray( "\x00\x01\x02", 3 ) );
+    const int accessor = addAccessor( model, buffer, TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE, TINYGLTF_TYPE_SCALAR, 3 );
+
+    QgsGltfGeometry3D geometry;
+    QVERIFY( geometry.setIndices( model, accessor ) );
+    QCOMPARE( geometry.geometry()->indexFormat(), QRhiCommandBuffer::IndexUInt16 );
+    QCOMPARE( geometry.geometry()->indexCount(), 3 );
+
+    const quint16 *indices = reinterpret_cast<const quint16 *>( geometry.geometry()->indexBuffer()->data().constData() );
+    QCOMPARE( indices[0], quint16( 0 ) );
+    QCOMPARE( indices[2], quint16( 2 ) );
+  }
+
+  // and a float index accessor is malformed, so it is refused
+  {
+    tinygltf::Model model;
+    const int buffer = addBuffer( model, packed( QVector<float> { 0.0f, 1.0f, 2.0f } ) );
+    const int accessor = addAccessor( model, buffer, TINYGLTF_COMPONENT_TYPE_FLOAT, TINYGLTF_TYPE_SCALAR, 3 );
+
+    QgsGltfGeometry3D geometry;
+    QString error;
+    QVERIFY( !geometry.setIndices( model, accessor, &error ) );
+    QVERIFY( !error.isEmpty() );
+    QVERIFY( !geometry.geometry()->isIndexed() );
+  }
+}
+
+void TestQgsGeometry3D::testGltfInstances()
+{
+  QgsGltfGeometry3D geometry;
+  QCOMPARE( geometry.instanceCount(), 1 );
+
+  QVector<QgsGltfGeometry3D::InstanceTransform> instances;
+  instances.append( { QVector3D( 1, 2, 3 ), QQuaternion( 1, 0, 0, 0 ), QVector3D( 2, 2, 2 ) } );
+  instances.append( { QVector3D( 4, 5, 6 ), QQuaternion::fromAxisAndAngle( 0, 0, 1, 90 ), QVector3D( 1, 1, 1 ) } );
+  geometry.setInstances( instances );
+
+  QCOMPARE( geometry.instanceCount(), 2 );
+
+  const QgsVertexAttribute *translation = geometry.geometry()->attribute( u"instanceTranslation"_s );
+  const QgsVertexAttribute *rotation = geometry.geometry()->attribute( u"instanceRotation"_s );
+  const QgsVertexAttribute *scale = geometry.geometry()->attribute( u"instanceScale"_s );
+  QVERIFY( translation && rotation && scale );
+
+  for ( const QgsVertexAttribute *attribute : { translation, rotation, scale } )
+  {
+    QCOMPARE( attribute->instanceDivisor, 1u );
+    QCOMPARE( attribute->byteStride, 10 * sizeof( float ) );
+  }
+  QCOMPARE( rotation->format, QRhiVertexInputAttribute::Float4 );
+  QCOMPARE( rotation->byteOffset, 3 * sizeof( float ) );
+  QCOMPARE( scale->byteOffset, 7 * sizeof( float ) );
+
+  // the quaternion is written xyzw, which is the order the shader's vec4 expects
+  const float *data = reinterpret_cast<const float *>( translation->buffer->data().constData() );
+  QCOMPARE( data[0], 1.0f );
+  QCOMPARE( data[3], 0.0f );
+  QCOMPARE( data[6], 1.0f );
+  QCOMPARE( data[7], 2.0f );
+}
+
+void TestQgsGeometry3D::testGltfRenders()
+{
+  if ( mBackend == QRhi::Null )
+    QSKIP( "The Null backend draws no pixels" );
+
+  QgsRhiEngine engine;
+  if ( !engine.createOffscreen( QSize( 64, 64 ), mBackend ) )
+    QSKIP( "No usable QRhi device for the default backend" );
+
+  QgsGraphicsPipelineCache cache;
+
+  // a quad whose normals come from the model as normalised shorts, so the unpacking path
+  // has to have produced something a pipeline will actually accept
+  tinygltf::Model model;
+  QVector<qint16> shortNormals;
+  for ( int i = 0; i < 4; ++i )
+    shortNormals << 0 << 0 << 32767;
+  const int normalBuffer = addBuffer( model, packed( shortNormals ) );
+  const int normalAccessor = addAccessor( model, normalBuffer, TINYGLTF_COMPONENT_TYPE_SHORT, TINYGLTF_TYPE_VEC3, 4, true );
+
+  const int indexBuffer = addBuffer( model, packed( QVector<quint16> { 0, 1, 2, 0, 2, 3 } ) );
+  const int indexAccessor = addAccessor( model, indexBuffer, TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT, TINYGLTF_TYPE_SCALAR, 6 );
+
+  QgsGltfGeometry3D geometry;
+  geometry.setPositions( packed( QVector<float> { -5, -5, 0, 5, -5, 0, 5, 5, 0, -5, 5, 0 } ), 4 );
+  QVERIFY( geometry.addAttribute( u"vertexNormal"_s, model, normalAccessor ) );
+  QVERIFY( geometry.setIndices( model, indexAccessor ) );
+
+  QgsPhongMaterial3D material;
+  material.setAmbient( QColor( 255, 0, 0 ) );
+  material.setDiffuse( Qt::black );
+  material.setCullMode( QRhiGraphicsPipeline::None );
+
+  QgsRenderPass pass( u"gltf"_s );
+  QMatrix4x4 view;
+  view.lookAt( QVector3D( 0.0f, 0.0f, 20.0f ), QVector3D(), QVector3D( 0.0f, 1.0f, 0.0f ) );
+  QMatrix4x4 projection;
+  projection.perspective( 45.0f, 1.0f, 1.0f, 100.0f );
+  pass.setCamera( view, projection );
+  pass.setClearColor( Qt::black );
+
+  QgsRenderCommand command;
+  command.geometry = geometry.geometry();
+  command.material = &material;
+  pass.addCommand( command );
+
+  engine.setReadbackEnabled( true );
+  QVERIFY( engine.beginFrame() );
+  QVERIFY( pass.execute( &engine, &cache ) );
+  engine.endFrame();
+
+  const int lit = litPixels( engine.readbackImage() );
+  QVERIFY2( lit > 64 * 64 / 8, qPrintable( u"only %1 pixels"_s.arg( lit ) ) );
+
+  pass.releaseGpuResources();
+  geometry.releaseGpuResources();
+  material.releaseGpuResources();
+  cache.clear();
+}
+
+void TestQgsGeometry3D::testObjLayouts()
+{
+  // positions only
+  {
+    QgsObjGeometry3D obj( false, false );
+    QCOMPARE( obj.stride(), 3 * int( sizeof( float ) ) );
+    QCOMPARE( obj.geometry()->attributes().size(), 1 );
+
+    QByteArray data;
+    data.resize( 6 * obj.stride() );
+    obj.setVertexData( data );
+    QCOMPARE( obj.geometry()->vertexCount(), 6 );
+
+    // tinyobj gives back separate triangles, so an OBJ mesh is never indexed
+    QVERIFY( !obj.geometry()->isIndexed() );
+  }
+
+  // positions and normals
+  {
+    QgsObjGeometry3D obj( true, false );
+    QCOMPARE( obj.stride(), 6 * int( sizeof( float ) ) );
+    QCOMPARE( obj.geometry()->attribute( u"vertexNormal"_s )->byteOffset, 3 * sizeof( float ) );
+    QVERIFY( !obj.geometry()->attribute( u"vertexTexCoord"_s ) );
+  }
+
+  // positions, normals and texture coordinates
+  {
+    QgsObjGeometry3D obj( true, true );
+    QCOMPARE( obj.stride(), 8 * int( sizeof( float ) ) );
+    QCOMPARE( obj.geometry()->attribute( u"vertexTexCoord"_s )->byteOffset, 6 * sizeof( float ) );
+    QCOMPARE( obj.geometry()->attribute( u"vertexTexCoord"_s )->format, QRhiVertexInputAttribute::Float2 );
+  }
+
+  // texture coordinates without normals still start right after the position
+  {
+    QgsObjGeometry3D obj( false, true );
+    QCOMPARE( obj.stride(), 5 * int( sizeof( float ) ) );
+    QCOMPARE( obj.geometry()->attribute( u"vertexTexCoord"_s )->byteOffset, 3 * sizeof( float ) );
+  }
 }
 
 QGSTEST_MAIN( TestQgsGeometry3D )
