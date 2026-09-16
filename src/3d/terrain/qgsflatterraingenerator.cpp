@@ -44,14 +44,14 @@ void FlatTerrainChunkLoader::start()
 }
 
 
-QMatrix4x4 FlatTerrainChunkLoader::tileTransform()
+QgsBox3D FlatTerrainChunkLoader::tileCommonExtent()
 {
   const Qgs3DMapSettings *map = terrain()->mapSettings();
 
   const QgsBox3D box3D = mNode->box3D();
   const QgsBox3D mapFullBox3D( map->extent(), box3D.zMinimum(), box3D.zMaximum() );
 
-  const QgsBox3D commonExtent(
+  return QgsBox3D(
     std::max( box3D.xMinimum(), mapFullBox3D.xMinimum() ),
     std::max( box3D.yMinimum(), mapFullBox3D.yMinimum() ),
     box3D.zMinimum(),
@@ -59,16 +59,16 @@ QMatrix4x4 FlatTerrainChunkLoader::tileTransform()
     std::min( box3D.yMaximum(), mapFullBox3D.yMaximum() ),
     box3D.zMaximum()
   );
+}
 
-  const double xSide = commonExtent.width();
-  const double ySide = commonExtent.height();
-  const QgsVector3D centre = QgsVector3D( commonExtent.xMinimum() + xSide / 2, commonExtent.yMinimum() + ySide / 2, 0 ) - map->origin();
+QMatrix4x4 FlatTerrainChunkLoader::tileTransform()
+{
+  const QgsBox3D commonExtent = tileCommonExtent();
 
   QMatrix4x4 transform;
-  transform.translate( centre.toVector3D() );
   // the unit quad lies in the XZ plane, so stand it up before stretching it over the tile
   transform.rotate( 90, QVector3D( 1, 0, 0 ) );
-  transform.scale( static_cast<float>( xSide ), 1.0f, static_cast<float>( ySide ) );
+  transform.scale( static_cast<float>( commonExtent.width() ), 1.0f, static_cast<float>( commonExtent.height() ) );
   return transform;
 }
 
@@ -83,6 +83,11 @@ std::unique_ptr<QgsSceneObject3D> FlatTerrainChunkLoader::createSceneObject()
   std::unique_ptr<QgsMaterial3D> material = createTileMaterial( object.get(), map->isTerrainShadingEnabled(), map->terrainShadingMaterial(), !map->layers().empty() );
 
   object->addPart( QgsPrimitiveGeometry3D::plane(), std::move( material ), tileTransform() );
+
+  // where the tile sits is a map coordinate, so the scene origin is subtracted at draw
+  // time rather than baked in here - see QgsSceneObject3D::setGeoTranslation()
+  const QgsBox3D commonExtent = tileCommonExtent();
+  object->setGeoTranslation( QgsVector3D( commonExtent.xMinimum() + commonExtent.width() / 2, commonExtent.yMinimum() + commonExtent.height() / 2, 0 ) );
   return object;
 }
 

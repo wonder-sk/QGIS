@@ -320,10 +320,10 @@ std::unique_ptr<QgsSceneObject3D> QgsPointCloud3DSymbolHandler::createSceneObjec
   // single texels in the shadow map. A triangulated chunk is a real surface and does cast.
   part->castsShadows = triangulated;
 
-  // the points are relative to the chunk's own origin, so the transform is where that is
-  QMatrix4x4 transform;
-  transform.translate( ( outNormal.positionsOrigin - context.origin() ).toVector3D() );
-  object->setTransform( transform );
+  // the points are relative to the chunk's own origin, which is a map coordinate; where
+  // that lands in world coordinates depends on the scene origin of the moment, so it is
+  // left to the object rather than baked in here
+  object->setGeoTranslation( outNormal.positionsOrigin );
   return object;
 }
 

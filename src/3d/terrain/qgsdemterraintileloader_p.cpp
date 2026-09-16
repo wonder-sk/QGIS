@@ -124,10 +124,9 @@ std::unique_ptr<QgsSceneObject3D> QgsDemTerrainTileLoader::createSceneObject()
   auto geometry = std::make_unique<QgsDemTerrainTileGeometry3D>( mResolution, static_cast<float>( side ), verticalScale, mSkirtHeight, mHeightMap );
   object->addPart( std::move( geometry ), std::move( material ) );
 
-  // the tile's vertices start at its own corner, so the transform is where that corner is
-  QMatrix4x4 transform;
-  transform.translate( ( QgsVector3D( extent.xMinimum(), extent.yMinimum(), 0 ) - map->origin() ).toVector3D() );
-  object->setTransform( transform );
+  // the tile's vertices start at its own corner, and that corner is a map coordinate: it
+  // stays put when the scene origin is rebased, so the object subtracts the origin itself
+  object->setGeoTranslation( QgsVector3D( extent.xMinimum(), extent.yMinimum(), 0 ) );
 
   // clang-format off
   mNode->setExactBox3D(

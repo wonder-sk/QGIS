@@ -40,10 +40,27 @@ QgsGpuTexture *QgsSceneObject3D::addTexture( std::unique_ptr<QgsGpuTexture> text
   return mTextures.back().get();
 }
 
-void QgsSceneObject3D::buildCommands( bool shadowPass, quint32 baseSortKey, std::vector<QgsRenderCommand> &commands ) const
+QMatrix4x4 QgsSceneObject3D::worldTransform( const QgsVector3D &origin ) const
+{
+  // an object that was never placed in map coordinates is positioned by its transform
+  // alone, in world coordinates, and the origin does not enter into where it is drawn
+  if ( !mHasGeoTranslation )
+    return mTransform;
+
+  // the subtraction happens here, on every frame, rather than once when the object was
+  // built: the scene's origin moves as the camera travels, and an object that had baked
+  // the old one in would be drawn a whole origin shift away from where it belongs
+  QMatrix4x4 world;
+  world.translate( ( mGeoTranslation - origin ).toVector3D() );
+  return world * mTransform;
+}
+
+void QgsSceneObject3D::buildCommands( bool shadowPass, const QgsVector3D &origin, quint32 baseSortKey, std::vector<QgsRenderCommand> &commands ) const
 {
   if ( !mEnabled )
     return;
+
+  const QMatrix4x4 world = worldTransform( origin );
 
   for ( const std::unique_ptr<Part> &part : mParts )
   {
@@ -53,25 +70,25 @@ void QgsSceneObject3D::buildCommands( bool shadowPass, quint32 baseSortKey, std:
     QgsRenderCommand command;
     command.geometry = part->geometry;
     command.material = part->material.get();
-    command.worldTransform = mTransform * part->transform;
+    command.worldTransform = world * part->transform;
     command.instanceCount = part->instanceCount;
     command.sortKey = baseSortKey;
     commands.push_back( command );
   }
 }
 
-void QgsSceneObject3D::collectCommands( QgsRenderPass &pass, quint32 baseSortKey ) const
+void QgsSceneObject3D::collectCommands( QgsRenderPass &pass, const QgsVector3D &origin, quint32 baseSortKey ) const
 {
   std::vector<QgsRenderCommand> commands;
-  buildCommands( false, baseSortKey, commands );
+  buildCommands( false, origin, baseSortKey, commands );
   for ( const QgsRenderCommand &command : commands )
     pass.addCommand( command );
 }
 
-void QgsSceneObject3D::collectShadowCommands( QgsShadowRenderPass &pass ) const
+void QgsSceneObject3D::collectShadowCommands( QgsShadowRenderPass &pass, const QgsVector3D &origin ) const
 {
   std::vector<QgsRenderCommand> commands;
-  buildCommands( true, 0, commands );
+  buildCommands( true, origin, 0, commands );
   for ( const QgsRenderCommand &command : commands )
     pass.addCommand( command );
 }

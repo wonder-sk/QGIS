@@ -40,6 +40,7 @@ class TestQgsSceneObject3D : public QgsTest
     void testEmptyObject();
     void testAddPart();
     void testCommandsCarryTheTransform();
+    void testGeoTranslationFollowsTheOrigin();
     void testDisabledObjectDrawsNothing();
     void testShadowPassSkipsNonCasters();
     void testGeometrySourceIsOwned();
@@ -91,7 +92,7 @@ void TestQgsSceneObject3D::testCommandsCarryTheTransform()
   object.addPart( QgsPrimitiveGeometry3D::sphere(), std::make_unique<QgsUnlitMaterial3D>() );
 
   QgsRenderPass pass;
-  object.collectCommands( pass, 7 );
+  object.collectCommands( pass, QgsVector3D(), 7 );
 
   QCOMPARE( pass.commands().size(), size_t( 2 ) );
 
@@ -102,6 +103,41 @@ void TestQgsSceneObject3D::testCommandsCarryTheTransform()
   QCOMPARE( pass.commands()[0].sortKey, quint32( 7 ) );
   QCOMPARE( pass.commands()[0].geometry, object.parts()[0]->geometry );
   QCOMPARE( pass.commands()[0].material, object.parts()[0]->material.get() );
+}
+
+void TestQgsSceneObject3D::testGeoTranslationFollowsTheOrigin()
+{
+  QgsSceneObject3D object;
+  QVERIFY( !object.hasGeoTranslation() );
+
+  // an object that was never placed in map coordinates is positioned by its transform
+  // alone, and a scene origin it knows nothing about must not move it
+  QMatrix4x4 objectTransform;
+  objectTransform.scale( 3 );
+  object.setTransform( objectTransform );
+  QCOMPARE( object.worldTransform( QgsVector3D( 1000, 2000, 30 ) ), objectTransform );
+
+  // one that was placed in map coordinates stays where the map says, however the scene
+  // origin is rebased under it
+  object.setGeoTranslation( QgsVector3D( 1500, 2500, 50 ) );
+  QVERIFY( object.hasGeoTranslation() );
+  QCOMPARE( object.geoTranslation(), QgsVector3D( 1500, 2500, 50 ) );
+
+  QMatrix4x4 expectedNearOrigin;
+  expectedNearOrigin.translate( 1500, 2500, 50 );
+  QCOMPARE( object.worldTransform( QgsVector3D() ), expectedNearOrigin * objectTransform );
+
+  QMatrix4x4 expectedShifted;
+  expectedShifted.translate( 500, 500, 20 );
+  QCOMPARE( object.worldTransform( QgsVector3D( 1000, 2000, 30 ) ), expectedShifted * objectTransform );
+
+  // and the commands a pass collects carry whichever origin it was given
+  object.addPart( QgsPrimitiveGeometry3D::plane(), std::make_unique<QgsUnlitMaterial3D>() );
+
+  QgsRenderPass pass;
+  object.collectCommands( pass, QgsVector3D( 1000, 2000, 30 ) );
+  QCOMPARE( pass.commands().size(), size_t( 1 ) );
+  QCOMPARE( pass.commands()[0].worldTransform, expectedShifted * objectTransform );
 }
 
 void TestQgsSceneObject3D::testDisabledObjectDrawsNothing()

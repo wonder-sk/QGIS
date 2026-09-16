@@ -266,11 +266,10 @@ void QgsTiledSceneChunkLoader::start()
 
     if ( mSceneObject )
     {
-      // the tile's vertices are relative to the chunk origin, so the transform is where
-      // that origin is in world coordinates
-      QMatrix4x4 transform;
-      transform.translate( ( chunkOrigin - mFactory.mRenderContext.origin() ).toVector3D() );
-      mSceneObject->setTransform( transform );
+      // the tile's vertices are relative to the chunk origin, which is a map coordinate;
+      // where that lands in world coordinates depends on the scene origin of the moment,
+      // so it is left to the object rather than baked in here
+      mSceneObject->setGeoTranslation( chunkOrigin );
 
       if ( mSceneObject->parts().empty() )
       {

@@ -1622,6 +1622,10 @@ void Qgs3DMapScene::collectRenderCommands( QgsSceneRenderer &renderer )
 {
   const bool shadowsEnabled = renderer.shadowsEnabled();
 
+  // scene objects hold their position in map coordinates, so where they are drawn follows
+  // whatever the origin is now rather than whatever it was when their chunk was loaded
+  const QgsVector3D origin = mMap.origin();
+
   for ( Qgs3DMapSceneEntity *entity : std::as_const( mSceneEntities ) )
   {
     QgsChunkedEntity *chunkedEntity = qobject_cast<QgsChunkedEntity *>( entity );
@@ -1635,9 +1639,9 @@ void Qgs3DMapScene::collectRenderCommands( QgsSceneRenderer &renderer )
       if ( !object )
         continue;
 
-      object->collectCommands( renderer.forwardPass().renderPass() );
+      object->collectCommands( renderer.forwardPass().renderPass(), origin );
       if ( shadowsEnabled )
-        object->collectShadowCommands( renderer.shadowPass() );
+        object->collectShadowCommands( renderer.shadowPass(), origin );
     }
   }
 }

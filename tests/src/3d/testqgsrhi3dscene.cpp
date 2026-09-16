@@ -70,6 +70,7 @@ class TestQgsRhi3DScene : public QgsTest
     void testFlatTerrainProducesSceneObjects();
     void testRendersTerrain();
     void testCameraMovesWhatIsDrawn();
+    void testOriginShiftDoesNotMoveTheScene();
     void testRendersDemTerrain();
 
     void testPointCloudProducesSceneObjects();
@@ -322,6 +323,60 @@ void TestQgsRhi3DScene::testCameraMovesWhatIsDrawn()
   // and the camera the passes rendered with is the one the controller owns
   QCOMPARE( controller->pitch(), 85.0f );
   QCOMPARE( controller->yaw(), 30.0f );
+}
+
+void TestQgsRhi3DScene::testOriginShiftDoesNotMoveTheScene()
+{
+  // the scene origin is rebased whenever the camera wanders more than ten kilometres from
+  // it, and a chunk that had subtracted the old origin when it was loaded would be drawn a
+  // whole shift away afterwards. Nothing about the picture may change when it moves.
+  std::unique_ptr<Qgs3DMapSettings> map = createMapSettings();
+
+  QgsRhi3DEngine engine( QSize( 400, 300 ) );
+  QVERIFY( engine.initialize() );
+
+  auto scene = std::make_unique<Qgs3DMapScene>( *map, &engine );
+  engine.setRootEntity( scene.get() );
+  engine.setScene( scene.get() );
+
+  // the automatic rebase would undo the shift this test makes, by moving the origin back
+  // onto the camera, so the two would cancel and nothing would be proven
+  scene->setSceneOriginShiftEnabled( false );
+
+  scene->viewZoomFull();
+  QVERIFY( renderUntilLoaded( engine, scene.get() ) );
+
+  const QImage before = engine.renderedImage();
+  QVERIFY( !before.isNull() );
+  QVERIFY( countLitPixels( before ) > before.width() * before.height() / 10 );
+
+  // a chunk that bakes the origin into its transform is what the shift below leaves
+  // behind, so check first that none of them did
+  QgsTerrainEntity *terrain = scene->terrainEntity();
+  QVERIFY( terrain );
+  const QList<QgsChunkNode *> nodes = terrain->activeNodes();
+  QVERIFY( !nodes.isEmpty() );
+  for ( QgsChunkNode *node : nodes )
+  {
+    QgsSceneObject3D *object = node->sceneObject();
+    QVERIFY( object );
+    QVERIFY2( object->hasGeoTranslation(), "a terrain chunk is positioned in world coordinates, so an origin shift will strand it" );
+    // and the position it holds is a map coordinate, far from the origin relative one
+    QVERIFY( object->geoTranslation().distance( map->origin() ) < map->extent().width() );
+    QVERIFY( object->geoTranslation().length() > map->extent().width() );
+  }
+
+  // the chunks are all loaded by now, so this is exactly the case that used to break:
+  // everything on screen was positioned against the origin that is about to go
+  const QgsVector3D oldOrigin = map->origin();
+  map->setOrigin( oldOrigin + QgsVector3D( 12'000, -8'000, 0 ) );
+  QVERIFY( map->origin() != oldOrigin );
+
+  QVERIFY( renderUntilLoaded( engine, scene.get() ) );
+  const QImage after = engine.renderedImage();
+  QVERIFY( !after.isNull() );
+
+  QCOMPARE( after, before );
 }
 
 void TestQgsRhi3DScene::testRendersDemTerrain()

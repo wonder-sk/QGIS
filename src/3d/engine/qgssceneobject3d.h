@@ -24,6 +24,7 @@
 #include "qgsgputexture.h"
 #include "qgsmaterial3d.h"
 #include "qgsrendercommand.h"
+#include "qgsvector3d.h"
 
 #include <QMatrix4x4>
 
@@ -110,11 +111,47 @@ class _3D_EXPORT QgsSceneObject3D
      */
     QgsGpuTexture *addTexture( std::unique_ptr<QgsGpuTexture> texture );
 
-    //! Sets the transform from the object's coordinates to world coordinates
+    /**
+     * Sets the transform from the object's own coordinates to scene coordinates.
+     *
+     * This is whatever the object needs beyond where it sits: an axis flip, a scale. Where
+     * it sits belongs in setGeoTranslation(), because that is what an origin shift moves.
+     */
     void setTransform( const QMatrix4x4 &transform ) { mTransform = transform; }
 
-    //! Returns the transform from the object's coordinates to world coordinates
+    //! Returns the transform from the object's own coordinates to scene coordinates
     QMatrix4x4 transform() const { return mTransform; }
+
+    /**
+     * Sets where the object sits, in map coordinates.
+     *
+     * A chunk's vertices are relative to its own origin, and that origin is a map
+     * coordinate: it does not move when the scene's origin does. The scene's origin is
+     * rebased whenever the camera wanders more than ten kilometres from it, so an object
+     * that had the subtraction baked into its transform would be left behind by the shift.
+     * worldTransform() does the subtraction instead, against the origin of the moment.
+     *
+     * This is what QgsGeoTransform is for a Qt3D entity.
+     */
+    void setGeoTranslation( const QgsVector3D &translation )
+    {
+      mGeoTranslation = translation;
+      mHasGeoTranslation = true;
+    }
+
+    //! Returns where the object sits, in map coordinates
+    QgsVector3D geoTranslation() const { return mGeoTranslation; }
+
+    /**
+     * Returns TRUE if setGeoTranslation() placed the object in map coordinates.
+     *
+     * An object that was not placed that way is positioned by its transform alone, in
+     * world coordinates, and the scene's origin does not enter into where it is drawn.
+     */
+    bool hasGeoTranslation() const { return mHasGeoTranslation; }
+
+    //! Returns the transform from the object's own coordinates to world coordinates, given the scene's \a origin
+    QMatrix4x4 worldTransform( const QgsVector3D &origin ) const;
 
     //! Sets whether the object is drawn at all
     void setEnabled( bool enabled ) { mEnabled = enabled; }
@@ -128,7 +165,7 @@ class _3D_EXPORT QgsSceneObject3D
      * \a baseSortKey is or-ed into each command's sort key, which is how a pass keeps
      * transparent geometry behind opaque geometry.
      */
-    void collectCommands( QgsRenderPass &pass, quint32 baseSortKey = 0 ) const;
+    void collectCommands( QgsRenderPass &pass, const QgsVector3D &origin = QgsVector3D(), quint32 baseSortKey = 0 ) const;
 
     /**
      * Appends a command to \a pass for each part that casts a shadow.
@@ -136,19 +173,21 @@ class _3D_EXPORT QgsSceneObject3D
      * The shadow pass draws every caster with its own position only material, so the
      * part's material is not carried over; what matters is the geometry and where it is.
      */
-    void collectShadowCommands( QgsShadowRenderPass &pass ) const;
+    void collectShadowCommands( QgsShadowRenderPass &pass, const QgsVector3D &origin = QgsVector3D() ) const;
 
     //! Returns roughly how much GPU memory the object's geometries take, in bytes
     qint64 gpuMemorySize() const;
 
   private:
     //! Builds one command per part, leaving out non-casters when \a shadowPass is TRUE
-    void buildCommands( bool shadowPass, quint32 baseSortKey, std::vector<QgsRenderCommand> &commands ) const;
+    void buildCommands( bool shadowPass, const QgsVector3D &origin, quint32 baseSortKey, std::vector<QgsRenderCommand> &commands ) const;
 
     std::vector<std::unique_ptr<Part>> mParts;
     std::vector<std::unique_ptr<QgsGpuTexture>> mTextures;
     std::vector<std::shared_ptr<void>> mGeometrySources;
     QMatrix4x4 mTransform;
+    QgsVector3D mGeoTranslation;
+    bool mHasGeoTranslation = false;
     bool mEnabled = true;
 };
 

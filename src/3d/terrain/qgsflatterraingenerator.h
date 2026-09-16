@@ -42,7 +42,10 @@ class FlatTerrainChunkLoader : public QgsTerrainTileLoader
     std::unique_ptr<QgsSceneObject3D> createSceneObject() override;
 
   private:
-    //! Returns the transform that stretches a unit quad over the tile's extent
+    //! Returns the part of the map's extent this tile covers
+    QgsBox3D tileCommonExtent();
+
+    //! Returns the transform that stretches a unit quad over the tile's extent, without placing it
     QMatrix4x4 tileTransform();
 
     Qt3DExtras::QPlaneGeometry *mTileGeometry = nullptr;
