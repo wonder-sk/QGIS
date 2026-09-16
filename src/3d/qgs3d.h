@@ -112,6 +112,20 @@ class _3D_EXPORT Qgs3D
     //! Number of shadow map cascades
     static constexpr int NUM_SHADOW_CASCADES = 4;
 
+    /**
+     * Default value of the map3d/gpuMemoryLimit setting, in megabytes.
+     *
+     * The budget a chunked entity unloads its least recently used chunks to stay within.
+     * It was 500 while the Qt3D engine measured a texture loaded from an image as one
+     * texel - QAbstractTexture::width() and height() default to 1 and are never written
+     * back from the backend - so in practice it only ever bounded geometry. The QRhi
+     * engine measures textures properly, and on a textured scene they are the larger
+     * half, so the equivalent budget is several times the old number.
+     *
+     * \since QGIS 4.2
+     */
+    static constexpr double DEFAULT_GPU_MEMORY_LIMIT_MB = 2000.0;
+
 #endif
 
   private:

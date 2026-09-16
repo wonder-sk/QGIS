@@ -16,6 +16,7 @@
 #include "qgs3dmapcanvaswidget.h"
 
 #include "qgisapp.h"
+#include "qgs3d.h"
 #include "qgs3danimationsettings.h"
 #include "qgs3danimationwidget.h"
 #include "qgs3dcameracontrolswidget.h"
@@ -1169,7 +1170,7 @@ void Qgs3DMapCanvasWidget::onGpuMemoryLimitReached()
     return;
 
   const QgsSettings settings;
-  double memLimit = settings.value( u"map3d/gpuMemoryLimit"_s, 500.0, QgsSettings::App ).toDouble();
+  double memLimit = settings.value( u"map3d/gpuMemoryLimit"_s, Qgs3D::DEFAULT_GPU_MEMORY_LIMIT_MB, QgsSettings::App ).toDouble();
   mMessageBar->pushMessage(
     tr(
       "A map layer has used all graphics memory allowed (%1 MB). "

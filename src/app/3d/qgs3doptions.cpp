@@ -84,7 +84,7 @@ Qgs3DOptionsWidget::Qgs3DOptionsWidget( QWidget *parent )
   spinCameraFieldOfView->setValue( settings.value( u"map3d/defaultFieldOfView"_s, 45, QgsSettings::App ).toInt() );
 
   mGpuMemoryLimit->setClearValue( 500 );
-  mGpuMemoryLimit->setValue( settings.value( u"map3d/gpuMemoryLimit"_s, 500.0, QgsSettings::App ).toDouble() );
+  mGpuMemoryLimit->setValue( settings.value( u"map3d/gpuMemoryLimit"_s, Qgs3D::DEFAULT_GPU_MEMORY_LIMIT_MB, QgsSettings::App ).toDouble() );
 
   mMSAA->setChecked( Qgs3D::settingMsaaEnabled->value() );
 

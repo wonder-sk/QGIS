@@ -27,6 +27,7 @@
 // version without notice, or even be removed.
 //
 
+#include "qgs3d.h"
 #include "qgsrange.h"
 #include "qgssettings.h"
 
@@ -57,7 +58,7 @@ class Qgs3DMapSceneEntity : public Qt3DCore::QEntity
       , mMapSettings( mapSettings )
     {
       const QgsSettings settings;
-      mGpuMemoryLimit = settings.value( u"map3d/gpuMemoryLimit"_s, 500.0, QgsSettings::App ).toDouble();
+      mGpuMemoryLimit = settings.value( u"map3d/gpuMemoryLimit"_s, Qgs3D::DEFAULT_GPU_MEMORY_LIMIT_MB, QgsSettings::App ).toDouble();
     }
 
     //! Records some bits about the scene (context for handleSceneUpdate() method)
@@ -116,7 +117,7 @@ class Qgs3DMapSceneEntity : public Qt3DCore::QEntity
     Qgs3DMapSettings *mMapSettings = nullptr;
 
     //! Limit how much GPU memory this entity can use
-    double mGpuMemoryLimit = 500.0; // in megabytes
+    double mGpuMemoryLimit = Qgs3D::DEFAULT_GPU_MEMORY_LIMIT_MB; // in megabytes
     //! Whether the entity is currently over the GPU memory limit (used to report a warning to the user)
     bool mHasReachedGpuMemoryLimit = false;
 };
