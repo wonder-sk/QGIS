@@ -24,7 +24,7 @@ vec3 worldPosFromDepth( float depth )
 {
   float z = ( depth - view.clipDepthOffset ) / view.clipDepthScale;
 
-  vec4 clipSpacePosition = vec4( texCoord * 2.0 - 1.0, z, 1.0 );
+  vec4 clipSpacePosition = vec4( qgsScreenUvToClip( texCoord ), z, 1.0 );
   vec4 viewSpacePosition = view.inverseProjectionMatrix * clipSpacePosition;
   viewSpacePosition /= viewSpacePosition.w;
 

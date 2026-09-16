@@ -45,7 +45,7 @@ float ssao( vec3 originPos, vec3 noise )
     // project the sample position into the depth texture
     vec4 offset = view.projectionMatrix * vec4( samplePos, 1.0 );
     offset.xy /= offset.w;
-    offset.xy = offset.xy * 0.5 + 0.5;
+    offset.xy = qgsClipToScreenUv( offset.xy );
 
     float sampleDepth = linearizeDepth( texture( depthTexture, offset.xy ).r );
 

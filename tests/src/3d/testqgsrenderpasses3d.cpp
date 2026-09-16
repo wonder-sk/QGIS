@@ -113,6 +113,7 @@ class TestQgsRenderPasses3D : public QgsTest
 
     void testDepthPassReadback();
     void testDepthReadbackSwitchedOnAfterPrepare();
+    void testOutputOrientation();
     void testAmbientOcclusionOpenSurface();
     void testBloomChainSizes();
     void testBloomDisabledHoldsNoTextures();
@@ -125,6 +126,7 @@ class TestQgsRenderPasses3D : public QgsTest
     void testHighlightOutlineUniformBlockLayout();
 
     void testShadowMapRecordsCaster();
+    void testShadowedSurfaceIsDarker_data();
     void testShadowedSurfaceIsDarker();
 
     void testSceneRendererFrame();
@@ -829,6 +831,59 @@ void TestQgsRenderPasses3D::testDepthReadbackSwitchedOnAfterPrepare()
   renderer.finishFrame( engine.get() );
 }
 
+void TestQgsRenderPasses3D::testOutputOrientation()
+{
+  if ( skipIfNoPixels() )
+    QSKIP( "The Null backend draws no pixels" );
+
+  auto engine = makeEngine();
+  QVERIFY( engine );
+
+  QgsSceneRenderer renderer;
+  QVERIFY( renderer.prepare( engine.get(), QSize( 64, 64 ) ) );
+
+  // The camera looks straight down the -Z axis with +Y as up, so something at a greater Y
+  // than the view centre has to come out in the upper half of the image.
+  QMatrix4x4 view;
+  const QVector3D eye( 5.0f, 5.0f, 30.0f );
+  view.lookAt( eye, QVector3D( 5.0f, 5.0f, 0.0f ), QVector3D( 0.0f, 1.0f, 0.0f ) );
+  QMatrix4x4 projection;
+  projection.perspective( 45.0f, 1.0f, 1.0f, 100.0f );
+  renderer.setCamera( view, projection, eye, 45.0f, 1.0f, 100.0f );
+  renderer.setClearColor( QColor( 0, 0, 0 ) );
+
+  QgsGpuBuffer buffer;
+  QgsGeometry3D geometry;
+  makeQuad( buffer, geometry, 0.0f, 3.0f );
+
+  QgsUnlitMaterial3D material;
+  material.setColor( QColor( 255, 0, 0 ) );
+
+  QgsRenderCommand command;
+  command.geometry = &geometry;
+  command.material = &material;
+  command.worldTransform.translate( 0.0f, 5.0f, 0.0f );
+
+  renderer.clearCommands();
+  renderer.forwardPass().addCommand( command, QgsForwardRenderPass::Group::Opaque );
+
+  engine->setReadbackEnabled( true );
+  QVERIFY( engine->beginFrame() );
+  QVERIFY( renderer.renderFrame( engine.get() ) );
+  engine->endFrame();
+
+  const QImage image = engine->readbackImage();
+  QVERIFY( !image.isNull() );
+
+  // QImage row 0 is the top of the picture, so the square belongs there and the lower half
+  // is the cleared background. Getting this the wrong way round mirrors the whole view,
+  // which leaves the picture plausible but every vertical camera gesture inverted.
+  const QColor upper = image.pixelColor( 32, 16 );
+  const QColor lower = image.pixelColor( 32, 48 );
+  QVERIFY2( colorsClose( upper, QColor( 255, 0, 0 ), 6 ), upper.name().toUtf8() );
+  QVERIFY2( colorsClose( lower, QColor( 0, 0, 0 ), 6 ), lower.name().toUtf8() );
+}
+
 void TestQgsRenderPasses3D::testAmbientOcclusionOpenSurface()
 {
   if ( skipIfNoPixels() )
@@ -1162,8 +1217,30 @@ void TestQgsRenderPasses3D::testShadowMapRecordsCaster()
   QVERIFY( !image.isNull() );
 }
 
+void TestQgsRenderPasses3D::testShadowedSurfaceIsDarker_data()
+{
+  QTest::addColumn<QVector3D>( "lightDirection" );
+  QTest::addColumn<QVector3D>( "blockerOffset" );
+  QTest::addColumn<QPoint>( "samplePoint" );
+
+  // The camera looks straight down with world +y as screen up, and the floor spans about
+  // 2.6 pixels per world unit around the centre of the image.
+  QTest::newRow( "light along x" ) << QVector3D( 0.4f, 0.0f, -1.0f ).normalized() << QVector3D() << QPoint( 41, 32 );
+  QTest::newRow( "light along y" ) << QVector3D( 0.0f, 0.4f, -1.0f ).normalized() << QVector3D() << QPoint( 32, 23 );
+
+  // A caster in the middle of the shadow map is symmetric about both of its axes, so it
+  // casts the same shadow whether the map is read the right way up or mirrored. Moving it
+  // off centre is what makes the lookup's orientation observable: read mirrored, this
+  // caster is found at -y and the floor at +y comes out lit.
+  QTest::newRow( "caster off centre" ) << QVector3D( 0.4f, 0.0f, -1.0f ).normalized() << QVector3D( 0.0f, 3.0f, 0.0f ) << QPoint( 40, 24 );
+}
+
 void TestQgsRenderPasses3D::testShadowedSurfaceIsDarker()
 {
+  QFETCH( QVector3D, lightDirection );
+  QFETCH( QVector3D, blockerOffset );
+  QFETCH( QPoint, samplePoint );
+
   if ( skipIfNoPixels() )
     QSKIP( "The Null backend draws no pixels" );
 
@@ -1180,8 +1257,6 @@ void TestQgsRenderPasses3D::testShadowedSurfaceIsDarker()
   QgsGpuBuffer blockerBuffer;
   QgsGeometry3D blockerGeometry;
   makeQuad( blockerBuffer, blockerGeometry, 8.0f, 3.0f );
-
-  const QVector3D lightDirection = QVector3D( 0.4f, 0.0f, -1.0f ).normalized();
 
   QgsSceneRenderer renderer;
   QVERIFY( renderer.prepare( engine.get(), QSize( 64, 64 ) ) );
@@ -1225,11 +1300,13 @@ void TestQgsRenderPasses3D::testShadowedSurfaceIsDarker()
     QgsRenderCommand blockerCommand;
     blockerCommand.geometry = &blockerGeometry;
     blockerCommand.material = &floorMaterial;
+    blockerCommand.worldTransform.translate( blockerOffset );
     renderer.forwardPass().addCommand( blockerCommand, QgsForwardRenderPass::Group::Opaque );
 
     QgsRenderCommand casterCommand;
     casterCommand.geometry = &blockerGeometry;
     casterCommand.material = &caster;
+    casterCommand.worldTransform.translate( blockerOffset );
     renderer.shadowPass().addCommand( casterCommand );
 
     engine->setReadbackEnabled( true );
@@ -1247,12 +1324,10 @@ void TestQgsRenderPasses3D::testShadowedSurfaceIsDarker()
   QVERIFY( !withShadows.isNull() );
 
   // A point on the floor inside the blocker's shadow but not behind the blocker itself.
-  // The blocker is three units across at height eight, and the light leans far enough
-  // along +x that its shadow lands clear of it.
-  const int x = 41;
-  const int y = 64 / 2;
-  const int lit = withoutShadows.pixelColor( x, y ).red();
-  const int shadowed = withShadows.pixelColor( x, y ).red();
+  // The blocker is three units across at height eight, and the light leans far enough for
+  // its shadow to land clear of it.
+  const int lit = withoutShadows.pixelColor( samplePoint ).red();
+  const int shadowed = withShadows.pixelColor( samplePoint ).red();
 
   // the blocker itself is lit in both, so it is only the floor around it that changes
   QVERIFY2( lit > 0, QByteArray::number( lit ) );

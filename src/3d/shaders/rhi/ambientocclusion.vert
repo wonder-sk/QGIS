@@ -13,7 +13,7 @@ layout( location = 1 ) noperspective out vec3 viewRay;
 
 void main()
 {
-  texCoord = vertexPosition.xy * 0.5 + 0.5;
+  texCoord = qgsClipToScreenUv( vertexPosition.xy );
 
   viewRay = vec3(
     -vertexPosition.x * material.tanHalfFov * view.aspectRatio,

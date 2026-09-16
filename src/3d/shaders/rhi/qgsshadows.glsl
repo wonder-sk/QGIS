@@ -126,7 +126,7 @@ float calcSingleCascadeShadowFactor( int cascadeIndex, vec3 worldPosition )
   vec4 lightSpacePos = lightMatrix * vec4( worldPosition, 1.0 );
   vec3 projCoords = lightSpacePos.xyz / lightSpacePos.w;
 
-  vec2 uvCoords = 0.5 * projCoords.xy + 0.5;
+  vec2 uvCoords = qgsClipToScreenUv( projCoords.xy );
   float z = projCoords.z * view.clipDepthScale + view.clipDepthOffset;
 
   if ( uvCoords.x < texelSize.x || uvCoords.x > 1.0 - texelSize.x ||
