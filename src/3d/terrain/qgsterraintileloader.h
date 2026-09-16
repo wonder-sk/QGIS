@@ -28,6 +28,8 @@
 //
 
 
+#include <memory>
+
 #include "qgschunkloader.h"
 #include "qgsrectangle.h"
 
@@ -35,7 +37,9 @@
 
 #define SIP_NO_FILE
 
+class QgsMaterial3D;
 class QgsPhongMaterialSettings;
+class QgsSceneObject3D;
 class QgsTerrainEntity;
 class QgsTerrainTileEntity;
 class QgsMaterialContext;
@@ -69,6 +73,16 @@ class QgsTerrainTileLoader : public QgsChunkLoader
     Qt3DRender::QTexture2D *createTexture( QgsTerrainTileEntity *entity, const QgsMaterialContext &context );
     //! Creates material component for the entity with the rendered map as a texture
     void createTextureComponent( QgsTerrainTileEntity *entity, bool isShadingEnabled, const QgsPhongMaterialSettings &shadingMaterial, bool useTexture, const Qgs3DRenderContext &context );
+
+    /**
+     * Builds the material a terrain tile is drawn with in the QRhi engine, taking the
+     * rendered map image as its texture where there is one.
+     *
+     * The texture is added to \a object, which owns it, so that it is released together
+     * with the rest of the chunk. Terrain is drawn with no backface culling, so that it
+     * can be looked at from underground.
+     */
+    std::unique_ptr<QgsMaterial3D> createTileMaterial( QgsSceneObject3D *object, bool isShadingEnabled, const QgsPhongMaterialSettings &shadingMaterial, bool useTexture );
     //! Gives access to the terain entity
     QgsTerrainEntity *terrain() { return mTerrain; }
     // Emit finished by default when texture is loaded.

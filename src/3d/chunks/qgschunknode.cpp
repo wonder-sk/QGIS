@@ -18,6 +18,7 @@
 #include "qgschunkedentity.h"
 #include "qgschunklist_p.h"
 #include "qgschunkloader.h"
+#include "qgssceneobject3d.h"
 
 #include <Qt3DCore/QEntity>
 
@@ -35,8 +36,8 @@ QgsChunkNode::~QgsChunkNode()
   Q_ASSERT( mState == Skeleton );
   Q_ASSERT( !mLoaderQueueEntry );
   Q_ASSERT( !mReplacementQueueEntry );
-  Q_ASSERT( !mLoader ); // should be deleted when removed from loader queue
-  Q_ASSERT( !mEntity ); // should be deleted when removed from replacement queue
+  Q_ASSERT( !mLoader );      // should be deleted when removed from loader queue
+  Q_ASSERT( !hasPayload() ); // should be deleted when removed from replacement queue
   Q_ASSERT( !mUpdater );
   Q_ASSERT( !mUpdaterFactory );
 
@@ -48,7 +49,7 @@ bool QgsChunkNode::allChildChunksResident( QTime currentTime ) const
   Q_ASSERT( mChildrenPopulated );
   for ( int i = 0; i < childCount(); ++i )
   {
-    if ( mChildren[i]->mHasData && !mChildren[i]->mEntity )
+    if ( mChildren[i]->mHasData && !mChildren[i]->hasPayload() )
       return false;         // no there yet
     Q_UNUSED( currentTime ) // seems we do not need this extra time (it just brings extra problems)
     //if (children[i]->entityCreatedTime.msecsTo(currentTime) < 100)
@@ -126,7 +127,7 @@ void QgsChunkNode::cancelLoading()
   Q_ASSERT( mState == QgsChunkNode::Loading );
   Q_ASSERT( mLoader );
   Q_ASSERT( !mLoaderQueueEntry );
-  Q_ASSERT( !mEntity );
+  Q_ASSERT( !hasPayload() );
   Q_ASSERT( !mReplacementQueueEntry );
 
   mLoader = nullptr; // not owned by chunk node
@@ -150,14 +151,31 @@ void QgsChunkNode::setLoaded( Qt3DCore::QEntity *newEntity )
   mReplacementQueueEntry = new QgsChunkListEntry( this );
 }
 
+void QgsChunkNode::setLoaded( std::unique_ptr<QgsSceneObject3D> sceneObject )
+{
+  Q_ASSERT( mState == QgsChunkNode::Loading );
+  Q_ASSERT( mLoader );
+  Q_ASSERT( !mLoaderQueueEntry );
+  Q_ASSERT( !mReplacementQueueEntry );
+
+  mSceneObject = std::move( sceneObject );
+  mEntityCreatedTime = QTime::currentTime();
+
+  mLoader = nullptr; // not owned by chunk node
+
+  mState = QgsChunkNode::Loaded;
+  mReplacementQueueEntry = new QgsChunkListEntry( this );
+}
+
 void QgsChunkNode::unloadChunk()
 {
   Q_ASSERT( mState == QgsChunkNode::Loaded );
-  Q_ASSERT( mEntity );
+  Q_ASSERT( hasPayload() );
   Q_ASSERT( mReplacementQueueEntry );
 
   delete mEntity;
   mEntity = nullptr;
+  mSceneObject.reset();
 
   delete mReplacementQueueEntry;
   mReplacementQueueEntry = nullptr;
@@ -167,7 +185,7 @@ void QgsChunkNode::unloadChunk()
 void QgsChunkNode::setQueuedForUpdate( QgsChunkListEntry *entry, QgsChunkQueueJobFactory *updateJobFactory )
 {
   Q_ASSERT( mState == QgsChunkNode::Loaded );
-  Q_ASSERT( mEntity );
+  Q_ASSERT( hasPayload() );
   Q_ASSERT( mReplacementQueueEntry );
   Q_ASSERT( !mLoaderQueueEntry );
   Q_ASSERT( !mUpdater );
@@ -181,7 +199,7 @@ void QgsChunkNode::setQueuedForUpdate( QgsChunkListEntry *entry, QgsChunkQueueJo
 void QgsChunkNode::cancelQueuedForUpdate()
 {
   Q_ASSERT( mState == QueuedForUpdate );
-  Q_ASSERT( mEntity );
+  Q_ASSERT( hasPayload() );
   Q_ASSERT( mLoaderQueueEntry );
   Q_ASSERT( mUpdaterFactory );
   Q_ASSERT( !mUpdater );
@@ -196,7 +214,7 @@ void QgsChunkNode::cancelQueuedForUpdate()
 void QgsChunkNode::setUpdating()
 {
   Q_ASSERT( mState == QgsChunkNode::QueuedForUpdate );
-  Q_ASSERT( mEntity );
+  Q_ASSERT( hasPayload() );
   Q_ASSERT( mReplacementQueueEntry );
   Q_ASSERT( mLoaderQueueEntry );
   Q_ASSERT( !mUpdater );
@@ -240,6 +258,16 @@ void QgsChunkNode::replaceEntity( Qt3DCore::QEntity *newEntity )
 
   mEntity->deleteLater();
   mEntity = newEntity;
+}
+
+void QgsChunkNode::replaceSceneObject( std::unique_ptr<QgsSceneObject3D> newSceneObject )
+{
+  Q_ASSERT( mState == QgsChunkNode::Updating );
+  Q_ASSERT( mUpdater );
+  Q_ASSERT( mSceneObject );
+  Q_ASSERT( newSceneObject );
+
+  mSceneObject = std::move( newSceneObject );
 }
 
 void QgsChunkNode::setExactBox3D( const QgsBox3D &box3D )

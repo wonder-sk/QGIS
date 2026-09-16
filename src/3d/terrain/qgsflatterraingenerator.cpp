@@ -19,6 +19,8 @@
 #include "qgs3drendercontext.h"
 #include "qgschunknode.h"
 #include "qgsgeotransform.h"
+#include "qgsprimitivegeometry3d.h"
+#include "qgssceneobject3d.h"
 #include "qgsterrainentity.h"
 #include "qgsterraintileentity_p.h"
 
@@ -41,6 +43,48 @@ void FlatTerrainChunkLoader::start()
   loadTexture();
 }
 
+
+QMatrix4x4 FlatTerrainChunkLoader::tileTransform()
+{
+  const Qgs3DMapSettings *map = terrain()->mapSettings();
+
+  const QgsBox3D box3D = mNode->box3D();
+  const QgsBox3D mapFullBox3D( map->extent(), box3D.zMinimum(), box3D.zMaximum() );
+
+  const QgsBox3D commonExtent(
+    std::max( box3D.xMinimum(), mapFullBox3D.xMinimum() ),
+    std::max( box3D.yMinimum(), mapFullBox3D.yMinimum() ),
+    box3D.zMinimum(),
+    std::min( box3D.xMaximum(), mapFullBox3D.xMaximum() ),
+    std::min( box3D.yMaximum(), mapFullBox3D.yMaximum() ),
+    box3D.zMaximum()
+  );
+
+  const double xSide = commonExtent.width();
+  const double ySide = commonExtent.height();
+  const QgsVector3D centre = QgsVector3D( commonExtent.xMinimum() + xSide / 2, commonExtent.yMinimum() + ySide / 2, 0 ) - map->origin();
+
+  QMatrix4x4 transform;
+  transform.translate( centre.toVector3D() );
+  // the unit quad lies in the XZ plane, so stand it up before stretching it over the tile
+  transform.rotate( 90, QVector3D( 1, 0, 0 ) );
+  transform.scale( static_cast<float>( xSide ), 1.0f, static_cast<float>( ySide ) );
+  return transform;
+}
+
+std::unique_ptr<QgsSceneObject3D> FlatTerrainChunkLoader::createSceneObject()
+{
+  const Qgs3DMapSettings *map = terrain()->mapSettings();
+  if ( !map->rhiEngineEnabled() )
+    return nullptr;
+
+  auto object = std::make_unique<QgsSceneObject3D>();
+
+  std::unique_ptr<QgsMaterial3D> material = createTileMaterial( object.get(), map->isTerrainShadingEnabled(), map->terrainShadingMaterial(), !map->layers().empty() );
+
+  object->addPart( QgsPrimitiveGeometry3D::plane(), std::move( material ), tileTransform() );
+  return object;
+}
 
 Qt3DCore::QEntity *FlatTerrainChunkLoader::createEntity( Qt3DCore::QEntity *parent )
 {

@@ -24,6 +24,7 @@
 #include "qgseventtracing.h"
 #include "qgsgeotransform.h"
 #include "qgsmaplayer.h"
+#include "qgssceneobject3d.h"
 
 #include <QElapsedTimer>
 #include <QString>
@@ -55,12 +56,22 @@ static bool hasAnyActiveChildren( QgsChunkNode *node, QList<QgsChunkNode *> &act
   for ( int i = 0; i < node->childCount(); ++i )
   {
     QgsChunkNode *child = node->children()[i];
-    if ( child->entity() && activeNodes.contains( child ) )
+    if ( child->hasPayload() && activeNodes.contains( child ) )
       return true;
     if ( hasAnyActiveChildren( child, activeNodes ) )
       return true;
   }
   return false;
+}
+
+//! Returns how much GPU memory one chunk holds, in megabytes, whichever payload it carries
+static double chunkGpuMemorySize( QgsChunkNode *node )
+{
+  if ( QgsSceneObject3D *sceneObject = node->sceneObject() )
+    return static_cast<double>( sceneObject->gpuMemorySize() ) / 1024.0 / 1024.0;
+  if ( Qt3DCore::QEntity *entity = node->entity() )
+    return Qgs3DUtils::calculateEntityGpuMemorySize( entity );
+  return 0.0;
 }
 
 static void addTileTraceEvent( QObject &self, QgsChunkNode &node, QgsEventTracing::EventType eventType, QString name )
@@ -159,18 +170,26 @@ void QgsChunkedEntity::handleSceneUpdate( const SceneContext &sceneContext )
     }
     else
     {
-      if ( !node->entity() )
+      if ( !node->hasPayload() )
       {
         QgsDebugError( "Active node has null entity - this should never happen!" );
         continue;
       }
-      node->entity()->setEnabled( true );
 
-      // let's make sure that any entity we're about to show has the right scene origin set
-      const QList<QgsGeoTransform *> transforms = node->entity()->findChildren<QgsGeoTransform *>();
-      for ( QgsGeoTransform *transform : transforms )
+      if ( QgsSceneObject3D *sceneObject = node->sceneObject() )
       {
-        transform->setOrigin( mMapSettings->origin() );
+        sceneObject->setEnabled( true );
+      }
+      else
+      {
+        node->entity()->setEnabled( true );
+
+        // let's make sure that any entity we're about to show has the right scene origin set
+        const QList<QgsGeoTransform *> transforms = node->entity()->findChildren<QgsGeoTransform *>();
+        for ( QgsGeoTransform *transform : transforms )
+        {
+          transform->setOrigin( mMapSettings->origin() );
+        }
       }
 
 #ifdef QGISDEBUG
@@ -182,12 +201,15 @@ void QgsChunkedEntity::handleSceneUpdate( const SceneContext &sceneContext )
   // disable those that were active but will not be anymore
   for ( QgsChunkNode *node : activeBefore )
   {
-    if ( !node->entity() )
+    if ( !node->hasPayload() )
     {
       QgsDebugError( "Active node has null entity - this should never happen!" );
       continue;
     }
-    node->entity()->setEnabled( false );
+    if ( QgsSceneObject3D *sceneObject = node->sceneObject() )
+      sceneObject->setEnabled( false );
+    else
+      node->entity()->setEnabled( false );
 #ifdef QGISDEBUG
     ++disabled;
 #endif
@@ -235,7 +257,14 @@ void QgsChunkedEntity::handleSceneUpdate( const SceneContext &sceneContext )
 
 int QgsChunkedEntity::unloadNodes()
 {
+  // the Qt3D entity tree hanging off this entity, plus what the ported chunks hold
   double usedGpuMemory = Qgs3DUtils::calculateEntityGpuMemorySize( this );
+  for ( QgsChunkListEntry *entry = mReplacementQueue->first(); entry; entry = entry->next )
+  {
+    if ( QgsSceneObject3D *sceneObject = entry->chunk->sceneObject() )
+      usedGpuMemory += static_cast<double>( sceneObject->gpuMemorySize() ) / 1024.0 / 1024.0;
+  }
+
   if ( usedGpuMemory <= mGpuMemoryLimit )
   {
     setHasReachedGpuMemoryLimit( false );
@@ -259,7 +288,7 @@ int QgsChunkedEntity::unloadNodes()
     {
       QgsChunkListEntry *entryPrev = entry->prev;
       mReplacementQueue->takeEntry( entry );
-      usedGpuMemory -= Qgs3DUtils::calculateEntityGpuMemorySize( entry->chunk->entity() );
+      usedGpuMemory -= chunkGpuMemorySize( entry->chunk );
       mActiveNodes.removeOne( entry->chunk );
       entry->chunk->unloadChunk(); // also deletes the entry
       ++unloaded;
@@ -481,7 +510,7 @@ void QgsChunkedEntity::update( QgsChunkNode *root, const SceneContext &sceneCont
     double dist = bbox.center().distanceToPoint( sceneContext.cameraPos );
     residencyRequests.push_back( ResidencyRequest( node, dist, node->level() ) );
 
-    if ( !node->entity() && node->hasData() )
+    if ( !node->hasPayload() && node->hasData() )
     {
       // this happens initially when root node is not ready yet
       continue;
@@ -518,7 +547,7 @@ void QgsChunkedEntity::update( QgsChunkNode *root, const SceneContext &sceneCont
         for ( int i = 0; i < node->childCount(); ++i )
         {
           const QgsAABB childBbox = Qgs3DUtils::mapToWorldExtent( children[i]->box3D(), mMapSettings->origin() );
-          if ( children[i]->entity() || !children[i]->hasData() )
+          if ( children[i]->hasPayload() || !children[i]->hasData() )
           {
             // chunk is resident - let's visit it recursively
             pq.push( std::make_pair( children[i], screenSpaceError( childBbox, children[i]->error(), sceneContext ) ) );
@@ -563,7 +592,7 @@ void QgsChunkedEntity::update( QgsChunkNode *root, const SceneContext &sceneCont
       }
     }
 
-    if ( becomesActive && node->entity() )
+    if ( becomesActive && node->hasPayload() )
     {
       mActiveNodes << node;
       // if we are not using additive strategy we need to make sure the parent primitives are not counted
@@ -588,7 +617,7 @@ void QgsChunkedEntity::requestResidency( QgsChunkNode *node )
   if ( node->state() == QgsChunkNode::Loaded || node->state() == QgsChunkNode::QueuedForUpdate || node->state() == QgsChunkNode::Updating )
   {
     Q_ASSERT( node->replacementQueueEntry() );
-    Q_ASSERT( node->entity() );
+    Q_ASSERT( node->hasPayload() );
     mReplacementQueue->takeEntry( node->replacementQueueEntry() );
     mReplacementQueue->insertFirst( node->replacementQueueEntry() );
   }
@@ -641,6 +670,22 @@ void QgsChunkedEntity::onActiveJobFinished()
     addTileTraceEvent( *this, *node, QgsEventTracing::AsyncEnd, u"Load"_s );
 
     QgsScopedEvent e( "3D", QString( "create" ) );
+
+    // a loader ported to the QRhi engine produces a scene object rather than an entity
+    if ( std::unique_ptr<QgsSceneObject3D> sceneObject = node->loader()->createSceneObject() )
+    {
+      mActiveNodes << node;
+      node->setLoaded( std::move( sceneObject ) );
+      mReplacementQueue->insertFirst( node->replacementQueueEntry() );
+      mNeedsUpdate = true;
+      mActiveJobs.removeOne( job );
+      job->deleteLater();
+      startJobs();
+      if ( pendingJobsCount() != oldJobsCount )
+        emit pendingJobsCountChanged();
+      return;
+    }
+
     // mark as loaded + create entity
     Qt3DCore::QEntity *entity = node->loader()->createEntity( this );
 
@@ -680,9 +725,16 @@ void QgsChunkedEntity::onActiveJobFinished()
     // new QEntity, so we just delete the old one and use the new one
     if ( QgsChunkLoader *nodeUpdater = qobject_cast<QgsChunkLoader *>( node->updater() ) )
     {
-      Qt3DCore::QEntity *newEntity = nodeUpdater->createEntity( this );
-      node->replaceEntity( newEntity );
-      emit newEntityCreated( newEntity );
+      if ( std::unique_ptr<QgsSceneObject3D> newSceneObject = nodeUpdater->createSceneObject() )
+      {
+        node->replaceSceneObject( std::move( newSceneObject ) );
+      }
+      else
+      {
+        Qt3DCore::QEntity *newEntity = nodeUpdater->createEntity( this );
+        node->replaceEntity( newEntity );
+        emit newEntityCreated( newEntity );
+      }
     }
 
     addTileTraceEvent( *this, *node, QgsEventTracing::AsyncEnd, u"Update"_s );

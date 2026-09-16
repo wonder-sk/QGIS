@@ -27,6 +27,8 @@
 // version without notice, or even be removed.
 //
 
+#include <memory>
+
 #include "qgis.h"
 #include "qgsbox3d.h"
 
@@ -47,6 +49,7 @@ struct QgsChunkListEntry;
 class QgsChunkLoader;
 class QgsChunkQueueJob;
 class QgsChunkQueueJobFactory;
+class QgsSceneObject3D;
 
 
 /**
@@ -184,6 +187,18 @@ class QgsChunkNode
     QgsChunkLoader *loader() const { return mLoader; }
     //! Returns associated entity (3D object). Not NULLPTR only when Loaded / QueuedForUpdate / Updating state
     Qt3DCore::QEntity *entity() const { return mEntity; }
+
+    /**
+     * Returns associated scene object, for a loader that produces one instead of a Qt3D
+     * entity. Not NULLPTR only when Loaded / QueuedForUpdate / Updating state.
+     *
+     * A node carries one payload or the other, never both: which one depends on whether
+     * its loader has been ported to the QRhi engine yet.
+     */
+    QgsSceneObject3D *sceneObject() const { return mSceneObject.get(); }
+
+    //! Returns whether the node holds loaded data, in whichever form its loader produces
+    bool hasPayload() const { return mEntity || mSceneObject; }
     //! Returns updater job. Not NULLPTR only when in Updating state
     QgsChunkQueueJob *updater() const { return mUpdater; }
 
@@ -224,6 +239,9 @@ class QgsChunkNode
     //! mark a chunk as loaded, using the loaded entity
     void setLoaded( Qt3DCore::QEntity *mEntity );
 
+    //! mark a chunk as loaded, using the loaded scene object. Takes ownership.
+    void setLoaded( std::unique_ptr<QgsSceneObject3D> sceneObject );
+
     //! turn a loaded chunk into skeleton
     void unloadChunk();
 
@@ -244,6 +262,9 @@ class QgsChunkNode
 
     //! replaces an existing entity with a newly created one (only allowed when updating the node)
     void replaceEntity( Qt3DCore::QEntity *newEntity );
+
+    //! replaces an existing scene object with a newly created one (only allowed when updating the node). Takes ownership.
+    void replaceSceneObject( std::unique_ptr<QgsSceneObject3D> newSceneObject );
 
     //! called when the true bounding box is known so that we can use tighter bounding box
     void setExactBox3D( const QgsBox3D &box3D );
@@ -279,8 +300,9 @@ class QgsChunkNode
     QgsChunkListEntry *mLoaderQueueEntry = nullptr;      //!< Not null <=> QueuedForLoad or QueuedForUpdate state
     QgsChunkListEntry *mReplacementQueueEntry = nullptr; //!< Not null <=> has non-null entity (Loaded or QueuedForUpdate or Updating state)
 
-    QgsChunkLoader *mLoader = nullptr;    //!< Contains extra data necessary for entity creation (not null <=> Loading state)
-    Qt3DCore::QEntity *mEntity = nullptr; //!< Contains everything to display chunk as 3D object (not null <=> Loaded or QueuedForUpdate or Updating state)
+    QgsChunkLoader *mLoader = nullptr;              //!< Contains extra data necessary for entity creation (not null <=> Loading state)
+    Qt3DCore::QEntity *mEntity = nullptr;           //!< Contains everything to display chunk as 3D object (not null <=> Loaded or QueuedForUpdate or Updating state)
+    std::unique_ptr<QgsSceneObject3D> mSceneObject; //!< What mEntity is for a loader ported to the QRhi engine (not null <=> Loaded or QueuedForUpdate or Updating state)
 
     QgsChunkQueueJobFactory *mUpdaterFactory = nullptr; //!< Object that creates updater (not null <=> QueuedForUpdate state)
     QgsChunkQueueJob *mUpdater = nullptr;               //!< Object that does update of the chunk (not null <=> Updating state)

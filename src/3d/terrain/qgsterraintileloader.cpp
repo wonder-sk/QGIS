@@ -20,15 +20,20 @@
 #include "qgs3dutils.h"
 #include "qgschunknode.h"
 #include "qgscoordinatetransform.h"
+#include "qgsgputexture.h"
 #include "qgsmaterial.h"
 #include "qgsmaterial3dhandler.h"
+#include "qgsphongmaterial3d.h"
 #include "qgsphongtexturedmaterial.h"
+#include "qgsphongtexturedmaterial3d.h"
+#include "qgssceneobject3d.h"
 #include "qgsterrainentity.h"
 #include "qgsterraingenerator.h"
 #include "qgsterraintexturegenerator_p.h"
 #include "qgsterraintextureimage_p.h"
 #include "qgsterraintileentity_p.h"
 #include "qgstexturematerial.h"
+#include "qgstexturematerial3d.h"
 
 #include <Qt3DRender/QCullFace>
 #include <Qt3DRender/QTechnique>
@@ -113,6 +118,49 @@ Qt3DRender::QTexture2D *QgsTerrainTileLoader::createTexture( QgsTerrainTileEntit
   entity->setTextureImage( textureImage );
 
   return texture;
+}
+
+std::unique_ptr<QgsMaterial3D> QgsTerrainTileLoader::createTileMaterial( QgsSceneObject3D *object, bool isShadingEnabled, const QgsPhongMaterialSettings &shadingMaterial, bool useTexture )
+{
+  std::unique_ptr<QgsMaterial3D> material;
+
+  if ( ( useTexture || !isShadingEnabled ) && !mTextureImage.isNull() )
+  {
+    auto texture = std::make_unique<QgsGpuTexture>();
+    texture->setImage( mTextureImage );
+    QgsGpuTexture *texturePtr = object->addTexture( std::move( texture ) );
+
+    if ( isShadingEnabled )
+    {
+      auto phongTextured = std::make_unique<QgsPhongTexturedMaterial3D>();
+      phongTextured->setAmbient( shadingMaterial.ambient() );
+      phongTextured->setSpecular( shadingMaterial.specular() );
+      phongTextured->setShininess( static_cast<float>( shadingMaterial.shininess() ) );
+      phongTextured->setOpacity( static_cast<float>( shadingMaterial.opacity() ) );
+      phongTextured->setDiffuseTexture( texturePtr );
+      material = std::move( phongTextured );
+    }
+    else
+    {
+      auto textured = std::make_unique<QgsTextureMaterial3D>();
+      textured->setDiffuseTexture( texturePtr );
+      material = std::move( textured );
+    }
+  }
+  else
+  {
+    auto phong = std::make_unique<QgsPhongMaterial3D>();
+    phong->setAmbient( shadingMaterial.ambient() );
+    phong->setDiffuse( shadingMaterial.diffuse() );
+    phong->setSpecular( shadingMaterial.specular() );
+    phong->setShininess( static_cast<float>( shadingMaterial.shininess() ) );
+    phong->setOpacity( static_cast<float>( shadingMaterial.opacity() ) );
+    material = std::move( phong );
+  }
+
+  // no backface culling on terrain, to allow terrain to be viewed from underground
+  material->setCullMode( QRhiGraphicsPipeline::None );
+  return material;
 }
 
 void QgsTerrainTileLoader::onTextureLoaded()

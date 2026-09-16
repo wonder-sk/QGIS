@@ -27,11 +27,15 @@
 // version without notice, or even be removed.
 //
 
+#include <memory>
+
 #include "qgis_3d.h"
 #include "qgsbox3d.h"
 #include "qgschunkqueuejob.h"
 
 #define SIP_NO_FILE
+
+class QgsSceneObject3D;
 
 /**
  * \ingroup qgis_3d
@@ -54,6 +58,15 @@ class QgsChunkLoader : public QgsChunkQueueJob
      * Returns entity attached to the given parent entity in disabled state
      */
     virtual Qt3DCore::QEntity *createEntity( Qt3DCore::QEntity *parent ) = 0;
+
+    /**
+     * Run in main thread to use loaded data, for a loader ported to the QRhi engine.
+     *
+     * Returns the chunk as a scene object, or NULLPTR if this loader still produces a
+     * Qt3D entity, which is what QgsChunkedEntity falls back to. Every loader will
+     * eventually implement this one and createEntity() will go.
+     */
+    virtual std::unique_ptr<QgsSceneObject3D> createSceneObject() { return nullptr; }
 };
 
 

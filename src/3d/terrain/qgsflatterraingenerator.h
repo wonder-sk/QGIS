@@ -39,7 +39,12 @@ class FlatTerrainChunkLoader : public QgsTerrainTileLoader
 
     Qt3DCore::QEntity *createEntity( Qt3DCore::QEntity *parent ) override;
 
+    std::unique_ptr<QgsSceneObject3D> createSceneObject() override;
+
   private:
+    //! Returns the transform that stretches a unit quad over the tile's extent
+    QMatrix4x4 tileTransform();
+
     Qt3DExtras::QPlaneGeometry *mTileGeometry = nullptr;
 };
 

@@ -871,6 +871,8 @@ Sets whether the 2D terrain surface will be rendered in.
 .. versionadded:: 3.22
 %End
 
+
+
     Qgis::RendererUsage rendererUsage() const;
 %Docstring
 Returns the renderer usage

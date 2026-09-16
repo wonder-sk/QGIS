@@ -186,6 +186,7 @@ set(QGIS_3D_SRCS
   engine/qgsrhishader.cpp
   engine/qgsoverlayquads.cpp
   engine/qgsscenerenderer.cpp
+  engine/qgssceneobject3d.cpp
   engine/qgsscreenquad.cpp
   engine/qgstessellatedpolygongeometry3d.cpp
   engine/qgsuniformring.cpp
@@ -380,6 +381,7 @@ set(QGIS_3D_HDRS
   engine/qgsrhishader.h
   engine/qgsoverlayquads.h
   engine/qgsscenerenderer.h
+  engine/qgssceneobject3d.h
   engine/qgsscreenquad.h
   engine/qgstessellatedpolygongeometry3d.h
   engine/qgsuniformring.h
