@@ -1,6 +1,9 @@
 // The Phong shading model, ported from shaders/phong.inc.frag, which in turn came from
 // qt3d/src/extras/shaders/gl3/phong.inc.frag.
 
+#ifndef QGS_PHONG_GLSL
+#define QGS_PHONG_GLSL
+
 #include "qgslights.glsl"
 
 void adsModel( const in vec3 worldPos,
@@ -53,3 +56,5 @@ vec4 phongFunction( const in vec4 ambient,
 
   return vec4( color, diffuse.a );
 }
+
+#endif // QGS_PHONG_GLSL

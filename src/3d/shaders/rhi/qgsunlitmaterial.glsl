@@ -1,6 +1,9 @@
 // The unlit material's own uniform block.
 // Must stay in step with QgsUnlitUniforms in src/3d/engine/materials/qgsunlitmaterial3d.h.
 
+#ifndef QGS_UNLIT_MATERIAL_GLSL
+#define QGS_UNLIT_MATERIAL_GLSL
+
 layout( std140, binding = 3 ) uniform QgsUnlitBlock
 {
   vec4 materialColor;
@@ -14,3 +17,5 @@ layout( std140, binding = 3 ) uniform QgsUnlitBlock
   vec4 symbolRotation;
   vec4 symbolScale;
 } material;
+
+#endif // QGS_UNLIT_MATERIAL_GLSL

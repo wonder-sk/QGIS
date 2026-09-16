@@ -21,6 +21,7 @@
 #include "qgis_3d.h"
 
 #include <QString>
+#include <QStringList>
 #include <QVector>
 
 #define SIP_NO_FILE
@@ -95,11 +96,37 @@ class _3D_EXPORT QgsRhiShader
      */
     int inputLocation( const QString &name ) const;
 
+    /**
+     * Returns the names of every vertex input the vertex stage declares.
+     *
+     * A geometry has to supply an attribute for each of them. A shader input that no
+     * attribute matches is not merely unused: the graphics pipeline fails to build, and
+     * nothing is drawn at all. Which inputs a shader declares is therefore part of what
+     * picks one baked variant over another.
+     */
+    QStringList inputNames() const;
+
     //! Returns the combined image samplers the fragment stage declares, in binding order
     QVector<QShaderDescription::InOutVariable> samplers() const;
 
     //! Returns the size in bytes of the uniform block at \a binding, or -1 if there is none
     int uniformBlockSize( int binding ) const;
+
+    /**
+     * Checks that every input the fragment stage reads is written by the vertex stage,
+     * under the same name and at the same location.
+     *
+     * Matching locations is enough for SPIR-V, and so for the Vulkan, Metal and Direct3D
+     * backends, but the OpenGL backend links varyings by name. A pair of stages that
+     * disagree about a name therefore draws correctly everywhere except on OpenGL, where
+     * the program fails to link and nothing is drawn at all. load() runs this check in
+     * debug builds so that the mismatch is reported wherever the shader is used, rather
+     * than only on the one backend that minds.
+     *
+     * Returns TRUE if the two stages agree, and describes the first mismatch in \a error
+     * otherwise.
+     */
+    bool checkStageInterface( QString *error = nullptr ) const;
 
     /**
      * Checks that the uniform block at \a binding is laid out the way the C++ side assumes.

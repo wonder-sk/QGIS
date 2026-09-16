@@ -1,6 +1,9 @@
 // The unlit textured material's own uniform block.
 // Must stay in step with QgsTexturedUniforms in src/3d/engine/materials/qgstexturematerial3d.h.
 
+#ifndef QGS_TEXTURED_MATERIAL_GLSL
+#define QGS_TEXTURED_MATERIAL_GLSL
+
 layout( std140, binding = 3 ) uniform QgsTexturedBlock
 {
   float opacity;
@@ -17,3 +20,5 @@ layout( std140, binding = 3 ) uniform QgsTexturedBlock
   vec4 symbolRotation;
   vec4 symbolScale;
 } material;
+
+#endif // QGS_TEXTURED_MATERIAL_GLSL

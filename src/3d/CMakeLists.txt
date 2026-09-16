@@ -180,6 +180,7 @@ set(QGIS_3D_SRCS
 
   engine/materials/qgsgoochmaterial3d.cpp
   engine/materials/qgsmaterial3dutils.cpp
+  engine/materials/qgsmetalroughmaterial3d.cpp
   engine/materials/qgsphongmaterial3d.cpp
   engine/materials/qgsphongtexturedmaterial3d.cpp
   engine/materials/qgstexturematerial3d.cpp
@@ -344,6 +345,7 @@ set(QGIS_3D_HDRS
 
   engine/materials/qgsgoochmaterial3d.h
   engine/materials/qgsmaterial3dutils.h
+  engine/materials/qgsmetalroughmaterial3d.h
   engine/materials/qgsphongmaterial3d.h
   engine/materials/qgsphongtexturedmaterial3d.h
   engine/materials/qgstexturematerial3d.h
@@ -437,17 +439,19 @@ endfunction()
 # genuinely different shaders rather than a flag. All four always exist, so a material can
 # never ask for a combination that was not baked.
 function(qgis_add_rhi_instanced_shaders base)
+  cmake_parse_arguments(ARG "" "" "DEFINES" ${ARGN})
+
   qgis_add_rhi_shader(${base}_instanced
-    FILE ${base}.vert DEFINES INSTANCING=1
+    FILE ${base}.vert DEFINES INSTANCING=1 ${ARG_DEFINES}
     OUTPUT ${base}_instanced.vert.qsb)
   qgis_add_rhi_shader(${base}_instanced_scale
-    FILE ${base}.vert DEFINES INSTANCING=1 USE_INSTANCE_SCALE=1
+    FILE ${base}.vert DEFINES INSTANCING=1 USE_INSTANCE_SCALE=1 ${ARG_DEFINES}
     OUTPUT ${base}_instanced_scale.vert.qsb)
   qgis_add_rhi_shader(${base}_instanced_rotation
-    FILE ${base}.vert DEFINES INSTANCING=1 USE_INSTANCE_ROTATION=1
+    FILE ${base}.vert DEFINES INSTANCING=1 USE_INSTANCE_ROTATION=1 ${ARG_DEFINES}
     OUTPUT ${base}_instanced_rotation.vert.qsb)
   qgis_add_rhi_shader(${base}_instanced_scale_rotation
-    FILE ${base}.vert DEFINES INSTANCING=1 USE_INSTANCE_SCALE=1 USE_INSTANCE_ROTATION=1
+    FILE ${base}.vert DEFINES INSTANCING=1 USE_INSTANCE_SCALE=1 USE_INSTANCE_ROTATION=1 ${ARG_DEFINES}
     OUTPUT ${base}_instanced_scale_rotation.vert.qsb)
 endfunction()
 
@@ -499,6 +503,31 @@ qgis_add_rhi_shader(phongtextured_datadefined_vert
   FILE phongtextured.vert DEFINES DATA_DEFINED_TEXTURE_TRANSFORMS=1
   OUTPUT phongtextured_datadefined.vert.qsb)
 qgis_add_rhi_instanced_shaders(phongtextured)
+
+# QgsMetalRoughMaterial3D. Its eleven feature #defines became run time flags, so what is
+# left to bake is only what changes which vertex attributes are read - a shader input no
+# attribute feeds makes the pipeline fail to build, so those cannot be flags.
+qgis_add_rhi_shader(metalrough_vert FILE metalrough.vert)
+qgis_add_rhi_shader(metalrough_frag FILE metalrough.frag)
+qgis_add_rhi_shader(metalrough_texcoord_vert
+  FILE metalrough.vert DEFINES HAS_TEXCOORD=1
+  OUTPUT metalrough_texcoord.vert.qsb)
+qgis_add_rhi_shader(metalrough_texcoord_tangent_vert
+  FILE metalrough.vert DEFINES HAS_TEXCOORD=1 HAS_TANGENT=1
+  OUTPUT metalrough_texcoord_tangent.vert.qsb)
+qgis_add_rhi_shader(metalrough_datadefined_vert
+  FILE metalrough.vert DEFINES DATA_DEFINED=1
+  OUTPUT metalrough_datadefined.vert.qsb)
+qgis_add_rhi_shader(metalrough_datadefined_frag
+  FILE metalrough.frag DEFINES DATA_DEFINED=1
+  OUTPUT metalrough_datadefined.frag.qsb)
+qgis_add_rhi_shader(metalrough_ddtexture_vert
+  FILE metalrough.vert DEFINES HAS_TEXCOORD=1 DATA_DEFINED_TEXTURE_TRANSFORMS=1
+  OUTPUT metalrough_ddtexture.vert.qsb)
+qgis_add_rhi_shader(metalrough_ddtexture_tangent_vert
+  FILE metalrough.vert DEFINES HAS_TEXCOORD=1 HAS_TANGENT=1 DATA_DEFINED_TEXTURE_TRANSFORMS=1
+  OUTPUT metalrough_ddtexture_tangent.vert.qsb)
+qgis_add_rhi_instanced_shaders(metalrough DEFINES HAS_TEXCOORD=1 HAS_TANGENT=1)
 
 if (USE_PRECOMPILED_HEADERS)
   target_precompile_headers(qgis_3d PRIVATE $<$<COMPILE_LANGUAGE:CXX>:${CMAKE_SOURCE_DIR}/src/core/qgis.h>)

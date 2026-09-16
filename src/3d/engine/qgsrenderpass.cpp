@@ -73,6 +73,7 @@ bool QgsRenderPass::execute( QgsRhiEngine *engine, QgsGraphicsPipelineCache *cac
   viewUniforms.setCamera( mView, correctedProjection );
   viewUniforms.setEyePosition( mEyePosition );
   viewUniforms.setViewportSize( targetSize );
+  viewUniforms.setFramebufferYUp( rhi->isYUpInFramebuffer() );
   mViewBuffer.setData( QByteArray( reinterpret_cast<const char *>( &viewUniforms ), sizeof( QgsViewUniforms ) ) );
 
   QRhiBuffer *viewBuffer = mViewBuffer.rhiBuffer( rhi, updates );

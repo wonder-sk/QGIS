@@ -14,6 +14,7 @@
 
 #include "qgsrhishader.h"
 
+#include <algorithm>
 #include <rhi/qshaderdescription.h>
 
 #include "qgslogger.h"
@@ -69,6 +70,15 @@ std::shared_ptr<QgsRhiShader> QgsRhiShader::load( const QString &vertexPath, con
   shader->mVertexPath = vertexPath;
   shader->mFragmentPath = fragmentPath;
 
+#ifdef QGISDEBUG
+  // the OpenGL backend links varyings by name, the others by location, so a pair of
+  // stages that disagree about a name works on three backends out of four. Say so here
+  // rather than let it turn up as an empty view on somebody else's machine.
+  QString interfaceError;
+  if ( !shader->checkStageInterface( &interfaceError ) )
+    QgsDebugError( u"%1 and %2 do not fit together: %3"_s.arg( vertexPath, fragmentPath, interfaceError ) );
+#endif
+
   sShaderCache.insert( cacheKey, shader );
   return shader;
 }
@@ -89,6 +99,42 @@ int QgsRhiShader::inputLocation( const QString &name ) const
       return input.location;
   }
   return -1;
+}
+
+bool QgsRhiShader::checkStageInterface( QString *error ) const
+{
+  const QList<QShaderDescription::InOutVariable> outputs = mVertexShader.description().outputVariables();
+  const QList<QShaderDescription::InOutVariable> inputs = mFragmentShader.description().inputVariables();
+
+  for ( const QShaderDescription::InOutVariable &input : inputs )
+  {
+    const auto match = std::find_if( outputs.cbegin(), outputs.cend(), [&input]( const QShaderDescription::InOutVariable &output ) { return output.name == input.name; } );
+    if ( match == outputs.cend() )
+    {
+      if ( error )
+        *error = u"the fragment stage reads \"%1\", which the vertex stage does not write"_s.arg( input.name );
+      return false;
+    }
+
+    if ( match->location != input.location )
+    {
+      if ( error )
+        *error = u"\"%1\" is at location %2 in the vertex stage and %3 in the fragment stage"_s.arg( input.name ).arg( match->location ).arg( input.location );
+      return false;
+    }
+  }
+
+  return true;
+}
+
+QStringList QgsRhiShader::inputNames() const
+{
+  QStringList names;
+  const QList<QShaderDescription::InOutVariable> inputs = mVertexShader.description().inputVariables();
+  names.reserve( inputs.size() );
+  for ( const QShaderDescription::InOutVariable &input : inputs )
+    names.append( input.name );
+  return names;
 }
 
 QVector<QShaderDescription::InOutVariable> QgsRhiShader::samplers() const

@@ -14,6 +14,8 @@
 
 #include "qgsgraphicspipelinecache.h"
 
+#include <algorithm>
+
 #include "qgsgeometry3d.h"
 #include "qgslogger.h"
 #include "qgsmaterial3d.h"
@@ -21,6 +23,7 @@
 
 #include <QHashFunctions>
 #include <QString>
+#include <QStringList>
 
 using namespace Qt::StringLiterals;
 
@@ -82,6 +85,26 @@ const QgsGraphicsPipelineCache::Pipeline *QgsGraphicsPipelineCache::pipeline(
     // at the attribute's own byte offset when the draw is recorded
     inputAttributes.append( QRhiVertexInputAttribute( binding, location, attribute.format, 0 ) );
     entry.attributeIndexes.append( i );
+  }
+
+  // a shader input with no attribute to feed it is fatal rather than merely unused: the
+  // backend refuses to build the pipeline, and it does so with a message that varies by
+  // API, so say what is actually wrong here instead
+  if ( inputAttributes.size() != shader->inputNames().size() )
+  {
+    QStringList missing;
+    const QStringList inputs = shader->inputNames();
+    for ( const QString &input : inputs )
+    {
+      const auto found = std::find_if( attributes.cbegin(), attributes.cend(), [&input]( const QgsVertexAttribute &attribute ) { return attribute.name == input; } );
+      if ( found == attributes.cend() )
+        missing.append( input );
+    }
+    if ( !missing.isEmpty() )
+    {
+      QgsDebugError( u"%1 reads vertex attributes the geometry does not have: %2"_s.arg( shader->vertexPath(), missing.join( ", "_L1 ) ) );
+      return nullptr;
+    }
   }
 
   QRhiVertexInputLayout layout;

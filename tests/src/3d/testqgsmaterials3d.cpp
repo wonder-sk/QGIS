@@ -17,6 +17,7 @@
 #include "qgsgpubuffer.h"
 #include "qgsgputexture.h"
 #include "qgsgraphicspipelinecache.h"
+#include "qgsmetalroughmaterial3d.h"
 #include "qgsphongtexturedmaterial3d.h"
 #include "qgsrendercommand.h"
 #include "qgsrenderpass.h"
@@ -85,6 +86,15 @@ class TestQgsMaterials3D : public QgsTest
     void testGoochTones();
     void testGoochDataDefined();
 
+    void testMetalRoughVariantsExist();
+    void testMetalRoughUniformBlockLayout();
+    void testMetalRoughFeatureFlags();
+    void testMetalRoughEmission();
+    void testMetalRoughLitBaseColor();
+    void testMetalRoughBaseColorMap();
+    void testMetalRoughDataDefined();
+    void testMetalRoughFlatShading();
+
     void testPhongTexturedVariantsExist();
     void testPhongTexturedUniformBlockLayout();
     void testPhongTexturedQuad();
@@ -100,6 +110,15 @@ class TestQgsMaterials3D : public QgsTest
      * a light along -Z shines straight onto it.
      */
     void setTopDownCamera( QgsRenderPass &pass );
+
+    /**
+     * Fills \a buffer with a 10x10 square lying flat in the XY plane, as six vertices of
+     * position, normal, texture coordinate and tangent interleaved in that order.
+     *
+     * \a normal is what every vertex claims its normal is, which is the surface normal
+     * unless a test wants to see what happens when it is not.
+     */
+    void makeQuad( QgsGpuBuffer &buffer, const QVector3D &normal = QVector3D( 0.0f, 0.0f, 1.0f ) );
 
     //! Adds one white directional light shining straight down, which fully lights the square
     void setOverheadLight( QgsRenderPass &pass );
@@ -134,6 +153,23 @@ void TestQgsMaterials3D::setTopDownCamera( QgsRenderPass &pass )
   pass.setEyePosition( eye );
 }
 
+void TestQgsMaterials3D::makeQuad( QgsGpuBuffer &buffer, const QVector3D &normal )
+{
+  const float corners[4][2] = { { 0.0f, 0.0f }, { 10.0f, 0.0f }, { 10.0f, 10.0f }, { 0.0f, 10.0f } };
+  const int order[6] = { 0, 1, 2, 0, 2, 3 };
+
+  QVector<float> vertices;
+  for ( const int corner : order )
+  {
+    vertices << corners[corner][0] << corners[corner][1] << 0.0f;
+    vertices << normal.x() << normal.y() << normal.z();
+    vertices << corners[corner][0] / 10.0f << corners[corner][1] / 10.0f;
+    vertices << 1.0f << 0.0f << 0.0f << 1.0f;
+  }
+
+  buffer.setData( QByteArray( reinterpret_cast<const char *>( vertices.constData() ), vertices.size() * int( sizeof( float ) ) ) );
+}
+
 void TestQgsMaterials3D::setOverheadLight( QgsRenderPass &pass )
 {
   QgsLightUniforms lights;
@@ -150,6 +186,11 @@ void TestQgsMaterials3D::checkVariantsExist( const QStringList &variants, const 
 
     // whatever else it reads, every variant still draws from a position attribute
     QCOMPARE( shader->inputLocation( u"vertexPosition"_s ), 0 );
+
+    // and its two stages have to agree about every varying by name as well as by
+    // location, or it links on every backend except OpenGL
+    QString error;
+    QVERIFY2( shader->checkStageInterface( &error ), u"%1: %2"_s.arg( variant, error ).toUtf8() );
   }
 }
 
@@ -736,6 +777,473 @@ void TestQgsMaterials3D::testGoochDataDefined()
   engine->endFrame();
 
   QVERIFY2( colorsClose( centerPixel( engine->readbackImage() ), QColor( 0, 255, 0 ) ), centerPixel( engine->readbackImage() ).name().toUtf8() );
+
+  pass.releaseGpuResources();
+  material.releaseGpuResources();
+  cache.clear();
+}
+
+//
+// QgsMetalRoughMaterial3D
+//
+
+void TestQgsMaterials3D::testMetalRoughVariantsExist()
+{
+  const QString fragment = u":/shaders/rhi/metalrough.frag.qsb"_s;
+  checkVariantsExist(
+    { u"metalrough"_s,
+      u"metalrough_texcoord"_s,
+      u"metalrough_texcoord_tangent"_s,
+      u"metalrough_ddtexture"_s,
+      u"metalrough_ddtexture_tangent"_s,
+      u"metalrough_instanced"_s,
+      u"metalrough_instanced_scale"_s,
+      u"metalrough_instanced_rotation"_s,
+      u"metalrough_instanced_scale_rotation"_s },
+    fragment
+  );
+  checkVariantsExist( { u"metalrough_datadefined"_s }, u":/shaders/rhi/metalrough_datadefined.frag.qsb"_s );
+
+  // what the material asks for and what CMake bakes are written in two different places,
+  // so walk every combination the constructor can produce and check it resolves
+  using Mode = QgsMetalRoughMaterial3D::Mode;
+  using Attribute = QgsMetalRoughMaterial3D::VertexAttribute;
+  using Attributes = QgsMetalRoughMaterial3D::VertexAttributes;
+
+  const QVector<Attributes> attributeSets { Attributes(), Attributes( Attribute::TextureCoords ), Attributes( Attribute::TextureCoords ) | Attribute::Tangents };
+  for ( const Mode mode : { Mode::Uniform, Mode::DataDefinedColors, Mode::DataDefinedTextureTransform, Mode::Instanced } )
+  {
+    for ( const Attributes &attributes : attributeSets )
+    {
+      for ( const Qgis::InstancedMaterialFlags flags :
+            { Qgis::InstancedMaterialFlags(),
+              Qgis::InstancedMaterialFlags( Qgis::InstancedMaterialFlag::DataDefinedScale ),
+              Qgis::InstancedMaterialFlags( Qgis::InstancedMaterialFlag::DataDefinedRotation ),
+              Qgis::InstancedMaterialFlag::DataDefinedScale | Qgis::InstancedMaterialFlag::DataDefinedRotation } )
+      {
+        const QString variant = QgsMetalRoughMaterial3D::shaderVariant( mode, attributes, flags );
+        const QString path = u":/shaders/rhi/metalrough%1.vert.qsb"_s.arg( variant );
+        QVERIFY2( QgsRhiShader::load( path, fragment ), path.toUtf8() );
+      }
+    }
+  }
+
+  // the plain variant has no optional attributes at all, so it can draw geometry that
+  // carries nothing but positions and normals
+  const std::shared_ptr<QgsRhiShader> plain = QgsRhiShader::load( u":/shaders/rhi/metalrough.vert.qsb"_s, fragment );
+  QCOMPARE( plain->inputNames().size(), 2 );
+  QCOMPARE( plain->inputLocation( u"vertexNormal"_s ), 1 );
+  QCOMPARE( plain->inputLocation( u"vertexTexCoord"_s ), -1 );
+  QCOMPARE( plain->inputLocation( u"vertexTangent"_s ), -1 );
+
+  const std::shared_ptr<QgsRhiShader> textured = QgsRhiShader::load( u":/shaders/rhi/metalrough_texcoord_tangent.vert.qsb"_s, fragment );
+  QCOMPARE( textured->inputLocation( u"vertexTexCoord"_s ), 2 );
+  QCOMPARE( textured->inputLocation( u"vertexTangent"_s ), 3 );
+
+  const std::shared_ptr<QgsRhiShader> dataDefined = QgsRhiShader::load( u":/shaders/rhi/metalrough_datadefined.vert.qsb"_s, u":/shaders/rhi/metalrough_datadefined.frag.qsb"_s );
+  QCOMPARE( dataDefined->inputLocation( u"dataDefinedBaseColor"_s ), 4 );
+  QCOMPARE( dataDefined->inputLocation( u"dataDefinedEmissionColor"_s ), 5 );
+
+  const std::shared_ptr<QgsRhiShader> ddTexture = QgsRhiShader::load( u":/shaders/rhi/metalrough_ddtexture.vert.qsb"_s, fragment );
+  QCOMPARE( ddTexture->inputLocation( u"ddTextureTransform"_s ), 6 );
+
+  const std::shared_ptr<QgsRhiShader> instanced = QgsRhiShader::load( u":/shaders/rhi/metalrough_instanced_scale_rotation.vert.qsb"_s, fragment );
+  QCOMPARE( instanced->inputLocation( u"instanceTranslation"_s ), 7 );
+  QCOMPARE( instanced->inputLocation( u"instanceScale"_s ), 8 );
+  QCOMPARE( instanced->inputLocation( u"instanceRotation"_s ), 9 );
+
+  // all seven maps are declared unconditionally, which is what the placeholder texture is for
+  const QVector<QShaderDescription::InOutVariable> samplers = plain->samplers();
+  QCOMPARE( samplers.size(), 7 );
+  QCOMPARE( samplers.at( 0 ).binding, int( QgsMetalRoughMaterial3D::BaseColorMapBinding ) );
+  QCOMPARE( samplers.at( 6 ).binding, int( QgsMetalRoughMaterial3D::EmissionMapBinding ) );
+}
+
+void TestQgsMaterials3D::testMetalRoughUniformBlockLayout()
+{
+  const std::shared_ptr<QgsRhiShader> shader = QgsRhiShader::load( u":/shaders/rhi/metalrough.vert.qsb"_s, u":/shaders/rhi/metalrough.frag.qsb"_s );
+  QVERIFY( shader );
+
+  QCOMPARE( shader->uniformBlockSize( QgsRhiBinding::Material ), int( sizeof( QgsMetalRoughUniforms ) ) );
+
+  QString error;
+  const QVector<QgsUniformMember> members {
+    { u"baseColor"_s, offsetof( QgsMetalRoughUniforms, baseColor ), 16 },
+    { u"emissiveColor"_s, offsetof( QgsMetalRoughUniforms, emissiveColor ), 16 },
+    { u"metalness"_s, offsetof( QgsMetalRoughUniforms, metalness ), 4 },
+    { u"roughness"_s, offsetof( QgsMetalRoughUniforms, roughness ), 4 },
+    { u"reflectance"_s, offsetof( QgsMetalRoughUniforms, reflectance ), 4 },
+    { u"opacity"_s, offsetof( QgsMetalRoughUniforms, opacity ), 4 },
+    { u"anisotropy"_s, offsetof( QgsMetalRoughUniforms, anisotropy ), 4 },
+    { u"anisotropyRotation"_s, offsetof( QgsMetalRoughUniforms, anisotropyRotation ), 4 },
+    { u"clearCoatFactor"_s, offsetof( QgsMetalRoughUniforms, clearCoatFactor ), 4 },
+    { u"clearCoatRoughness"_s, offsetof( QgsMetalRoughUniforms, clearCoatRoughness ), 4 },
+    { u"parallaxScale"_s, offsetof( QgsMetalRoughUniforms, parallaxScale ), 4 },
+    { u"emissiveFactor"_s, offsetof( QgsMetalRoughUniforms, emissiveFactor ), 4 },
+    { u"texCoordScale"_s, offsetof( QgsMetalRoughUniforms, texCoordScale ), 4 },
+    { u"texCoordRotation"_s, offsetof( QgsMetalRoughUniforms, texCoordRotation ), 4 },
+    { u"texCoordOffset"_s, offsetof( QgsMetalRoughUniforms, texCoordOffset ), 8 },
+    { u"featureFlags"_s, offsetof( QgsMetalRoughUniforms, featureFlags ), 4 },
+    { u"meshMatrix"_s, offsetof( QgsMetalRoughUniforms, meshMatrix ), 64 },
+    { u"meshNormalMatrix"_s, offsetof( QgsMetalRoughUniforms, meshNormalMatrix ), 48 },
+    { u"symbolRotation"_s, offsetof( QgsMetalRoughUniforms, symbolRotation ), 16 },
+    { u"symbolScale"_s, offsetof( QgsMetalRoughUniforms, symbolScale ), 16 },
+  };
+  QVERIFY2( shader->checkUniformBlockLayout( QgsRhiBinding::Material, members, &error ), error.toUtf8() );
+}
+
+void TestQgsMaterials3D::testMetalRoughFeatureFlags()
+{
+  using Feature = QgsMetalRoughMaterial3D::Feature;
+
+  QgsMetalRoughMaterial3D material;
+  QCOMPARE( material.mode(), QgsMetalRoughMaterial3D::Mode::Uniform );
+  QCOMPARE( material.features(), QgsMetalRoughMaterial3D::Features() );
+
+  QgsGpuTexture texture;
+  QImage image( 1, 1, QImage::Format_RGBA8888 );
+  image.fill( Qt::white );
+  texture.setImage( image );
+
+  material.setBaseColorTexture( &texture );
+  QVERIFY( material.features().testFlag( Feature::BaseColorMap ) );
+  material.setBaseColorTexture( nullptr );
+  QVERIFY( !material.features().testFlag( Feature::BaseColorMap ) );
+
+  material.setNormalTexture( &texture );
+  material.setHeightTexture( &texture );
+  QVERIFY( material.features().testFlag( Feature::NormalMap ) );
+  QVERIFY( material.features().testFlag( Feature::HeightMap ) );
+
+  // anisotropy and the clear coat follow their own values rather than being set directly,
+  // which is how the Qt3D material decided whether to inject their defines
+  material.setAnisotropy( 0.5f );
+  QVERIFY( material.features().testFlag( Feature::Anisotropy ) );
+  material.setAnisotropy( 0.0f );
+  QVERIFY( !material.features().testFlag( Feature::Anisotropy ) );
+
+  material.setClearCoatFactor( 0.25f );
+  QVERIFY( material.features().testFlag( Feature::ClearCoat ) );
+  material.setClearCoatFactor( 0.0f );
+  QVERIFY( !material.features().testFlag( Feature::ClearCoat ) );
+
+  material.setFlatShadingEnabled( true );
+  QVERIFY( material.features().testFlag( Feature::FlatShading ) );
+
+  // degrees in, radians out, because the shader takes the sine of this directly
+  material.setAnisotropyRotation( 180.0f );
+  QGSCOMPARENEAR( material.uniforms().anisotropyRotation, 3.14159f, 0.0001 );
+}
+
+void TestQgsMaterials3D::testMetalRoughEmission()
+{
+  if ( skipIfNoPixels() )
+    QSKIP( "The Null backend draws no pixels" );
+
+  const std::unique_ptr<QgsRhiEngine> engine = makeEngine();
+  QVERIFY( engine );
+  QgsGraphicsPipelineCache cache;
+
+  QgsGpuBuffer vertexBuffer( QgsGpuBuffer::Role::Vertex );
+  makeQuad( vertexBuffer );
+
+  const quint32 stride = 12 * sizeof( float );
+  QgsGeometry3D geometry;
+  geometry.addAttribute( { u"vertexPosition"_s, &vertexBuffer, QRhiVertexInputAttribute::Float3, 0, stride, 0 } );
+  geometry.addAttribute( { u"vertexNormal"_s, &vertexBuffer, QRhiVertexInputAttribute::Float3, 3 * sizeof( float ), stride, 0 } );
+  geometry.setVertexCount( 6 );
+
+  QgsMetalRoughMaterial3D material;
+  material.setCullMode( QRhiGraphicsPipeline::None );
+  material.setEmissionColor( QColor( 255, 0, 0 ) );
+
+  QgsRenderPass pass( u"metal rough emission"_s );
+  setTopDownCamera( pass );
+  pass.setClearColor( QColor( 0, 0, 255 ) );
+
+  QgsRenderCommand command;
+  command.geometry = &geometry;
+  command.material = &material;
+  pass.addCommand( command );
+
+  // with no lights the only term left is the emission, so the result is exact, and it
+  // also says the material drew at all with nothing but placeholder textures bound
+  engine->setReadbackEnabled( true );
+  QVERIFY( engine->beginFrame() );
+  QVERIFY( pass.execute( engine.get(), &cache ) );
+  engine->endFrame();
+  QVERIFY2( colorsClose( centerPixel( engine->readbackImage() ), QColor( 255, 0, 0 ) ), centerPixel( engine->readbackImage() ).name().toUtf8() );
+
+  // and the emission factor scales it
+  material.setEmissionFactor( 0.5f );
+  QVERIFY( engine->beginFrame() );
+  QVERIFY( pass.execute( engine.get(), &cache ) );
+  engine->endFrame();
+  QVERIFY2( colorsClose( centerPixel( engine->readbackImage() ), QColor( 128, 0, 0 ), 2 ), centerPixel( engine->readbackImage() ).name().toUtf8() );
+
+  pass.releaseGpuResources();
+  material.releaseGpuResources();
+  cache.clear();
+}
+
+void TestQgsMaterials3D::testMetalRoughLitBaseColor()
+{
+  if ( skipIfNoPixels() )
+    QSKIP( "The Null backend draws no pixels" );
+
+  const std::unique_ptr<QgsRhiEngine> engine = makeEngine();
+  QVERIFY( engine );
+  QgsGraphicsPipelineCache cache;
+
+  QgsGpuBuffer vertexBuffer( QgsGpuBuffer::Role::Vertex );
+  makeQuad( vertexBuffer );
+
+  const quint32 stride = 12 * sizeof( float );
+  QgsGeometry3D geometry;
+  geometry.addAttribute( { u"vertexPosition"_s, &vertexBuffer, QRhiVertexInputAttribute::Float3, 0, stride, 0 } );
+  geometry.addAttribute( { u"vertexNormal"_s, &vertexBuffer, QRhiVertexInputAttribute::Float3, 3 * sizeof( float ), stride, 0 } );
+  geometry.setVertexCount( 6 );
+
+  QgsMetalRoughMaterial3D material;
+  material.setCullMode( QRhiGraphicsPipeline::None );
+  material.setBaseColor( QColor( 255, 0, 0 ) );
+  material.setMetalness( 0.0f );
+  material.setRoughness( 1.0f );
+
+  QgsRenderPass pass( u"metal rough"_s );
+  setTopDownCamera( pass );
+  pass.setClearColor( QColor( 0, 0, 255 ) );
+
+  QgsRenderCommand command;
+  command.geometry = &geometry;
+  command.material = &material;
+  pass.addCommand( command );
+
+  engine->setReadbackEnabled( true );
+
+  // unlit, and with no emission, a metal rough surface is black
+  QVERIFY( engine->beginFrame() );
+  QVERIFY( pass.execute( engine.get(), &cache ) );
+  engine->endFrame();
+  const QColor unlit = centerPixel( engine->readbackImage() );
+  QVERIFY2( colorsClose( unlit, QColor( 0, 0, 0 ) ), unlit.name().toUtf8() );
+
+  // lit, a red dielectric reflects red and next to nothing else. The exact value depends
+  // on the whole BRDF, so what is pinned down here is the hue and that it is lit at all.
+  setOverheadLight( pass );
+  QVERIFY( engine->beginFrame() );
+  QVERIFY( pass.execute( engine.get(), &cache ) );
+  engine->endFrame();
+  const QColor lit = centerPixel( engine->readbackImage() );
+  QVERIFY2( lit.red() > 40, lit.name().toUtf8() );
+  QVERIFY2( lit.green() < lit.red() / 2, lit.name().toUtf8() );
+  QVERIFY2( lit.blue() < lit.red() / 2, lit.name().toUtf8() );
+
+  // a metal takes its specular colour from the base colour and has no diffuse term, so it
+  // is darker than the dielectric under a light this far off the mirror direction
+  material.setMetalness( 1.0f );
+  QVERIFY( engine->beginFrame() );
+  QVERIFY( pass.execute( engine.get(), &cache ) );
+  engine->endFrame();
+  const QColor metal = centerPixel( engine->readbackImage() );
+  QVERIFY2( metal.red() < lit.red(), u"metal %1 should be darker than dielectric %2"_s.arg( metal.name(), lit.name() ).toUtf8() );
+
+  pass.releaseGpuResources();
+  material.releaseGpuResources();
+  cache.clear();
+}
+
+void TestQgsMaterials3D::testMetalRoughBaseColorMap()
+{
+  if ( skipIfNoPixels() )
+    QSKIP( "The Null backend draws no pixels" );
+
+  const std::unique_ptr<QgsRhiEngine> engine = makeEngine();
+  QVERIFY( engine );
+  QgsGraphicsPipelineCache cache;
+
+  QgsGpuBuffer vertexBuffer( QgsGpuBuffer::Role::Vertex );
+  makeQuad( vertexBuffer );
+
+  const quint32 stride = 12 * sizeof( float );
+  QgsGeometry3D geometry;
+  geometry.addAttribute( { u"vertexPosition"_s, &vertexBuffer, QRhiVertexInputAttribute::Float3, 0, stride, 0 } );
+  geometry.addAttribute( { u"vertexNormal"_s, &vertexBuffer, QRhiVertexInputAttribute::Float3, 3 * sizeof( float ), stride, 0 } );
+  geometry.addAttribute( { u"vertexTexCoord"_s, &vertexBuffer, QRhiVertexInputAttribute::Float2, 6 * sizeof( float ), stride, 0 } );
+  geometry.setVertexCount( 6 );
+
+  QImage source( 4, 4, QImage::Format_RGBA8888 );
+  source.fill( QColor( 0, 255, 0 ) );
+  QgsGpuTexture baseColorMap;
+  baseColorMap.setImage( source );
+
+  QgsMetalRoughMaterial3D material( QgsMetalRoughMaterial3D::Mode::Uniform, QgsMetalRoughMaterial3D::VertexAttribute::TextureCoords );
+  material.setCullMode( QRhiGraphicsPipeline::None );
+  material.setMetalness( 0.0f );
+  material.setRoughness( 1.0f );
+
+  // the uniform base colour must lose to the map
+  material.setBaseColor( QColor( 255, 0, 0 ) );
+  material.setBaseColorTexture( &baseColorMap );
+
+  QgsRenderPass pass( u"metal rough base colour map"_s );
+  setTopDownCamera( pass );
+  pass.setClearColor( QColor( 0, 0, 255 ) );
+  setOverheadLight( pass );
+
+  QgsRenderCommand command;
+  command.geometry = &geometry;
+  command.material = &material;
+  pass.addCommand( command );
+
+  engine->setReadbackEnabled( true );
+  QVERIFY( engine->beginFrame() );
+  QVERIFY( pass.execute( engine.get(), &cache ) );
+  engine->endFrame();
+
+  const QColor color = centerPixel( engine->readbackImage() );
+  QVERIFY2( color.green() > 40, color.name().toUtf8() );
+  QVERIFY2( color.red() < color.green() / 2, color.name().toUtf8() );
+
+  pass.releaseGpuResources();
+  material.releaseGpuResources();
+  baseColorMap.releaseGpuResources();
+  cache.clear();
+}
+
+void TestQgsMaterials3D::testMetalRoughDataDefined()
+{
+  if ( skipIfNoPixels() )
+    QSKIP( "The Null backend draws no pixels" );
+
+  const std::unique_ptr<QgsRhiEngine> engine = makeEngine();
+  QVERIFY( engine );
+  QgsGraphicsPipelineCache cache;
+
+  QgsGpuBuffer vertexBuffer( QgsGpuBuffer::Role::Vertex );
+  makeQuad( vertexBuffer );
+
+  // base colour green and emission red, repeated for all six vertices
+  QVector<float> colors;
+  for ( int i = 0; i < 6; ++i )
+    colors << 0.0f << 1.0f << 0.0f << 1.0f << 0.0f << 0.0f;
+
+  QgsGpuBuffer colorBuffer( QgsGpuBuffer::Role::Vertex );
+  colorBuffer.setData( QByteArray( reinterpret_cast<const char *>( colors.constData() ), colors.size() * int( sizeof( float ) ) ) );
+
+  const quint32 stride = 12 * sizeof( float );
+  const quint32 colorStride = 6 * sizeof( float );
+
+  QgsGeometry3D geometry;
+  geometry.addAttribute( { u"vertexPosition"_s, &vertexBuffer, QRhiVertexInputAttribute::Float3, 0, stride, 0 } );
+  geometry.addAttribute( { u"vertexNormal"_s, &vertexBuffer, QRhiVertexInputAttribute::Float3, 3 * sizeof( float ), stride, 0 } );
+  geometry.addAttribute( { u"dataDefinedBaseColor"_s, &colorBuffer, QRhiVertexInputAttribute::Float3, 0, colorStride, 0 } );
+  geometry.addAttribute( { u"dataDefinedEmissionColor"_s, &colorBuffer, QRhiVertexInputAttribute::Float3, 3 * sizeof( float ), colorStride, 0 } );
+  geometry.setVertexCount( 6 );
+
+  QgsMetalRoughMaterial3D material( QgsMetalRoughMaterial3D::Mode::DataDefinedColors );
+  QCOMPARE( material.mode(), QgsMetalRoughMaterial3D::Mode::DataDefinedColors );
+  material.setCullMode( QRhiGraphicsPipeline::None );
+
+  // both uniform colours must be ignored entirely by this variant
+  material.setBaseColor( QColor( 0, 0, 255 ) );
+  material.setEmissionColor( QColor( 0, 0, 255 ) );
+
+  QgsRenderPass pass( u"metal rough data defined"_s );
+  setTopDownCamera( pass );
+  pass.setClearColor( QColor( 0, 0, 255 ) );
+
+  QgsRenderCommand command;
+  command.geometry = &geometry;
+  command.material = &material;
+  pass.addCommand( command );
+
+  // unlit, so only the per-vertex emission shows and the expected colour is exact
+  engine->setReadbackEnabled( true );
+  QVERIFY( engine->beginFrame() );
+  QVERIFY( pass.execute( engine.get(), &cache ) );
+  engine->endFrame();
+  QVERIFY2( colorsClose( centerPixel( engine->readbackImage() ), QColor( 255, 0, 0 ) ), centerPixel( engine->readbackImage() ).name().toUtf8() );
+
+  // lit, the per-vertex base colour adds its own green on top of that emission
+  setOverheadLight( pass );
+  QVERIFY( engine->beginFrame() );
+  QVERIFY( pass.execute( engine.get(), &cache ) );
+  engine->endFrame();
+  const QColor lit = centerPixel( engine->readbackImage() );
+  QVERIFY2( lit.green() > 40, lit.name().toUtf8() );
+  QVERIFY2( lit.red() > 200, lit.name().toUtf8() );
+
+  pass.releaseGpuResources();
+  material.releaseGpuResources();
+  cache.clear();
+}
+
+void TestQgsMaterials3D::testMetalRoughFlatShading()
+{
+  if ( skipIfNoPixels() )
+    QSKIP( "The Null backend draws no pixels" );
+
+  const std::unique_ptr<QgsRhiEngine> engine = makeEngine();
+  QVERIFY( engine );
+  QgsGraphicsPipelineCache cache;
+
+  // the square lies flat, but every vertex claims its normal points sideways, so the
+  // interpolated normal is wrong and the derived one is right
+  QgsGpuBuffer vertexBuffer( QgsGpuBuffer::Role::Vertex );
+  makeQuad( vertexBuffer, QVector3D( 0.0f, 1.0f, 0.0f ) );
+
+  const quint32 stride = 12 * sizeof( float );
+  QgsGeometry3D geometry;
+  geometry.addAttribute( { u"vertexPosition"_s, &vertexBuffer, QRhiVertexInputAttribute::Float3, 0, stride, 0 } );
+  geometry.addAttribute( { u"vertexNormal"_s, &vertexBuffer, QRhiVertexInputAttribute::Float3, 3 * sizeof( float ), stride, 0 } );
+  geometry.setVertexCount( 6 );
+
+  QgsMetalRoughMaterial3D material;
+  material.setCullMode( QRhiGraphicsPipeline::None );
+  material.setBaseColor( QColor( 255, 255, 255 ) );
+  material.setMetalness( 0.0f );
+  material.setRoughness( 1.0f );
+
+  QgsRenderPass pass( u"metal rough flat shading"_s );
+  setTopDownCamera( pass );
+  pass.setClearColor( QColor( 0, 0, 255 ) );
+  setOverheadLight( pass );
+
+  QgsRenderCommand command;
+  command.geometry = &geometry;
+  command.material = &material;
+  pass.addCommand( command );
+
+  engine->setReadbackEnabled( true );
+
+  // the light grazes the claimed normal, so the surface picks up almost nothing
+  QVERIFY( engine->beginFrame() );
+  QVERIFY( pass.execute( engine.get(), &cache ) );
+  engine->endFrame();
+  const QColor interpolated = centerPixel( engine->readbackImage() );
+
+  // with flat shading the normal comes from the geometry itself, which really does face
+  // the light
+  material.setFlatShadingEnabled( true );
+  QVERIFY( engine->beginFrame() );
+  QVERIFY( pass.execute( engine.get(), &cache ) );
+  engine->endFrame();
+  const QColor flat = centerPixel( engine->readbackImage() );
+
+  QVERIFY2( flat.red() > interpolated.red() + 20, u"flat %1 should be brighter than interpolated %2"_s.arg( flat.name(), interpolated.name() ).toUtf8() );
+
+  // and it points out of the surface rather than into it, which only holds because the
+  // shader corrects its y derivative for the framebuffer's row order. Without that this
+  // passes on OpenGL and comes out black on every other backend.
+  QgsLightUniforms fromBelow;
+  fromBelow.addDirectionalLight( QVector3D( 0.0f, 0.0f, 1.0f ), QColor( 255, 255, 255 ), 1.0f );
+  pass.setLights( fromBelow );
+
+  QVERIFY( engine->beginFrame() );
+  QVERIFY( pass.execute( engine.get(), &cache ) );
+  engine->endFrame();
+  QVERIFY2( colorsClose( centerPixel( engine->readbackImage() ), QColor( 0, 0, 0 ) ), "a light behind the facet should not light it" );
 
   pass.releaseGpuResources();
   material.releaseGpuResources();

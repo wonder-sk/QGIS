@@ -1,6 +1,9 @@
 // The Phong material's own uniform block, shared by its vertex and fragment stages.
 // Must stay in step with QgsPhongUniforms in src/3d/engine/materials/qgsphongmaterial3d.h.
 
+#ifndef QGS_PHONG_MATERIAL_GLSL
+#define QGS_PHONG_MATERIAL_GLSL
+
 layout( std140, binding = 3 ) uniform QgsPhongBlock
 {
   vec4 ambientColor;        // rgb used
@@ -21,3 +24,5 @@ layout( std140, binding = 3 ) uniform QgsPhongBlock
   vec4 symbolRotation;
   vec4 symbolScale;
 } material;
+
+#endif // QGS_PHONG_MATERIAL_GLSL

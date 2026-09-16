@@ -6,6 +6,9 @@
 // anyway - spelling the packing out is what makes the C++ side a plain array with no
 // padding to guess at.
 
+#ifndef QGS_LIGHTS_GLSL
+#define QGS_LIGHTS_GLSL
+
 const int MAX_LIGHTS = 8;
 const int TYPE_POINT = 0;
 const int TYPE_DIRECTIONAL = 1;
@@ -105,3 +108,5 @@ LightParams calculateLightParams( const in int lightIndex,
   res.nDotH = max( dot( n, res.h ), 0.0 );
   return res;
 }
+
+#endif // QGS_LIGHTS_GLSL

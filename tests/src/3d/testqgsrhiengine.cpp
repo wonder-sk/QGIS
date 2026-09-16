@@ -89,6 +89,7 @@ class TestQgsRhiEngine : public QgsTest
     void testGeometryLayoutKey();
     void testDrawTriangle();
     void testVertexColors();
+    void testMissingAttribute();
     void testTexturedQuad();
     void testInstancedDraw();
     void testDepthTest();
@@ -410,6 +411,50 @@ void TestQgsRhiEngine::testVertexColors()
   engine->endFrame();
 
   QVERIFY2( colorsClose( centerPixel( engine->readbackImage() ), QColor( 0, 255, 0 ) ), centerPixel( engine->readbackImage() ).name().toUtf8() );
+
+  pass.releaseGpuResources();
+  material.releaseGpuResources();
+  cache.clear();
+}
+
+void TestQgsRhiEngine::testMissingAttribute()
+{
+  const std::unique_ptr<QgsRhiEngine> engine = makeEngine();
+  QVERIFY( engine );
+  QgsGraphicsPipelineCache cache;
+
+  const std::unique_ptr<QgsGpuBuffer> buffer = makeTriangleBuffer();
+
+  // the shader reads vertexColor, the geometry does not have it
+  QgsGeometry3D geometry;
+  geometry.addAttribute( { u"vertexPosition"_s, buffer.get(), QRhiVertexInputAttribute::Float3, 0, 0, 0 } );
+  geometry.setVertexCount( 3 );
+
+  const std::shared_ptr<QgsRhiShader> shader = QgsRhiShader::load( u":/shaders/rhi/unlit_vertexcolor.vert.qsb"_s, u":/shaders/rhi/unlit.frag.qsb"_s );
+  QVERIFY( shader );
+  QVERIFY( shader->inputNames().contains( u"vertexColor"_s ) );
+
+  QgsMaterial3D material( shader );
+  material.setCullMode( QRhiGraphicsPipeline::None );
+  material.setUniforms( unlitColor( 1.0f, 0.0f, 0.0f ) );
+
+  QgsRenderPass pass( u"missing attribute"_s );
+  setIdentityCamera( pass );
+  pass.setClearColor( Qt::black );
+
+  QgsRenderCommand command;
+  command.geometry = &geometry;
+  command.material = &material;
+  pass.addCommand( command );
+
+  QVERIFY( engine->beginFrame() );
+
+  // an unfed shader input is not simply unused: no pipeline can be built for it, so the
+  // pass reports failure rather than drawing something wrong. Which shader inputs a
+  // geometry can feed is therefore what decides between baked variants, and materials
+  // must not declare inputs their geometry may be missing.
+  QVERIFY( !pass.execute( engine.get(), &cache ) );
+  engine->endFrame();
 
   pass.releaseGpuResources();
   material.releaseGpuResources();

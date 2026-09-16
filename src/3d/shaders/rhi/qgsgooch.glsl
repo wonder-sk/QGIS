@@ -1,6 +1,9 @@
 // The Gooch shading model, ported from shaders/gooch.frag, which in turn follows
 // http://www.cs.northwestern.edu/~ago820/SIG98/abstract.html
 
+#ifndef QGS_GOOCH_GLSL
+#define QGS_GOOCH_GLSL
+
 #include "qgslights.glsl"
 
 /**
@@ -52,3 +55,5 @@ vec3 goochModel( const in vec3 worldPos,
 
   return result;
 }
+
+#endif // QGS_GOOCH_GLSL

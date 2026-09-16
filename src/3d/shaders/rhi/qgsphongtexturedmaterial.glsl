@@ -2,6 +2,9 @@
 // Must stay in step with QgsPhongTexturedUniforms in
 // src/3d/engine/materials/qgsphongtexturedmaterial3d.h.
 
+#ifndef QGS_PHONG_TEXTURED_MATERIAL_GLSL
+#define QGS_PHONG_TEXTURED_MATERIAL_GLSL
+
 layout( std140, binding = 3 ) uniform QgsPhongTexturedBlock
 {
   vec4 ambientColor;  // rgb used
@@ -27,3 +30,5 @@ layout( std140, binding = 3 ) uniform QgsPhongTexturedBlock
   vec4 symbolRotation;
   vec4 symbolScale;
 } material;
+
+#endif // QGS_PHONG_TEXTURED_MATERIAL_GLSL

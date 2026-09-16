@@ -1,6 +1,9 @@
 // The Gooch material's own uniform block, shared by its vertex and fragment stages.
 // Must stay in step with QgsGoochUniforms in src/3d/engine/materials/qgsgoochmaterial3d.h.
 
+#ifndef QGS_GOOCH_MATERIAL_GLSL
+#define QGS_GOOCH_MATERIAL_GLSL
+
 layout( std140, binding = 3 ) uniform QgsGoochBlock
 {
   vec4 diffuseColor;  // kd in the paper, rgb used
@@ -23,3 +26,5 @@ layout( std140, binding = 3 ) uniform QgsGoochBlock
   vec4 symbolRotation;
   vec4 symbolScale;
 } material;
+
+#endif // QGS_GOOCH_MATERIAL_GLSL

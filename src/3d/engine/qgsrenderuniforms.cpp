@@ -18,7 +18,7 @@
 
 #include <QSize>
 
-static_assert( sizeof( QgsViewUniforms ) == 352, "QgsViewUniforms must match its std140 layout" );
+static_assert( sizeof( QgsViewUniforms ) == 356, "QgsViewUniforms must match its std140 layout" );
 static_assert( sizeof( QgsDrawUniforms ) == 176, "QgsDrawUniforms must match its std140 layout" );
 static_assert( sizeof( QgsLightUniforms ) == 528, "QgsLightUniforms must match its std140 layout" );
 static_assert( sizeof( QgsLightUniforms::Light ) == 64, "a light must be exactly four vec4s" );

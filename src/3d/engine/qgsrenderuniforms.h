@@ -78,6 +78,15 @@ struct _3D_EXPORT QgsViewUniforms
     float viewportHeight = 0.0f;            // offset 348
 
     /**
+   * +1 when the framebuffer's rows run the same way as world space, -1 when they run the
+   * other way, which is what a fragment shader has to multiply any dFdy() by before using
+   * it to build a direction. QRhi's clip space correction leaves this difference behind:
+   * OpenGL's framebuffer is y up and every other backend's is y down, so a derivative
+   * taken across y comes out with the opposite sign there. See QgsRenderPass::execute().
+   */
+    float framebufferYSign = 1.0f; // offset 352
+
+    /**
    * Fills the block from a view and a projection matrix.
    *
    * \a projectionMatrix must already include the backend's clip space correction, see
@@ -90,6 +99,9 @@ struct _3D_EXPORT QgsViewUniforms
 
     //! Sets the viewport size in pixels, and the aspect ratio derived from it
     void setViewportSize( const QSize &size );
+
+    //! Sets framebufferYSign from whether the backend's framebuffer rows run bottom up
+    void setFramebufferYUp( bool yUp ) { framebufferYSign = yUp ? 1.0f : -1.0f; }
 };
 
 /**
