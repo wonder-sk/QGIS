@@ -71,5 +71,8 @@ void QgsDepthRenderPass::collectReadback( const QgsRhiEngine *engine )
   if ( mReadback.data.isEmpty() )
     return;
 
-  mImage = engine->imageFromReadback( mReadback );
+  // QgsCameraController reads this both a pixel at a time, which any format survives, and
+  // a scan line at a time cast to QRgb *, which only the 32 bit native orders survive. The
+  // readback comes back as RGBA8888, so it is converted here rather than at each reader.
+  mImage = engine->imageFromReadback( mReadback ).convertToFormat( QImage::Format_RGB32 );
 }

@@ -112,6 +112,7 @@ class TestQgsRenderPasses3D : public QgsTest
     void testBackgroundBehindScene();
 
     void testDepthPassReadback();
+    void testDepthReadbackSwitchedOnAfterPrepare();
     void testAmbientOcclusionOpenSurface();
     void testBloomChainSizes();
     void testBloomDisabledHoldsNoTextures();
@@ -762,6 +763,72 @@ void TestQgsRenderPasses3D::testDepthPassReadback()
   QVERIFY( center.blue() < 255 );
 }
 
+void TestQgsRenderPasses3D::testDepthReadbackSwitchedOnAfterPrepare()
+{
+  if ( skipIfNoPixels() )
+    QSKIP( "The Null backend draws no pixels" );
+
+  auto engine = makeEngine();
+  QVERIFY( engine );
+
+  // A 3D view prepares its scene renderer once, when the window is first shown, and only
+  // switches the depth readback on later, when a camera gesture asks for a depth buffer.
+  // The pass therefore has to build its target then rather than at prepare() time.
+  QgsSceneRenderer renderer;
+  QVERIFY( renderer.prepare( engine.get(), QSize( 64, 64 ) ) );
+  QVERIFY( renderer.depthImage().isNull() );
+
+  QMatrix4x4 view;
+  const QVector3D eye( 5.0f, 5.0f, 30.0f );
+  view.lookAt( eye, QVector3D( 5.0f, 5.0f, 0.0f ), QVector3D( 0.0f, 1.0f, 0.0f ) );
+  QMatrix4x4 projection;
+  projection.perspective( 45.0f, 1.0f, 1.0f, 100.0f );
+  renderer.setCamera( view, projection, eye, 45.0f, 1.0f, 100.0f );
+  renderer.setClearColor( QColor( 0, 0, 0 ) );
+
+  QgsGpuBuffer buffer;
+  QgsGeometry3D geometry;
+  makeQuad( buffer, geometry );
+  QgsUnlitMaterial3D material;
+
+  QgsRenderCommand command;
+  command.geometry = &geometry;
+  command.material = &material;
+
+  renderer.setDepthReadbackEnabled( true );
+
+  renderer.clearCommands();
+  renderer.forwardPass().addCommand( command, QgsForwardRenderPass::Group::Opaque );
+
+  QVERIFY( engine->beginFrame() );
+  QVERIFY( renderer.renderFrame( engine.get() ) );
+  engine->endFrame();
+  renderer.finishFrame( engine.get() );
+
+  const QImage depth = renderer.depthImage();
+  QVERIFY( !depth.isNull() );
+  QCOMPARE( depth.size(), QSize( 64, 64 ) );
+
+  // QgsCameraController averages the buffer by casting whole scan lines to QRgb *, so the
+  // channel order has to be the native 32 bit one rather than the readback's RGBA8888.
+  QCOMPARE( depth.format(), QImage::Format_RGB32 );
+
+  // as in testDepthPassReadback(): the cleared background encodes to pure blue, the square
+  // in the middle of the view is much nearer than the far plane
+  QCOMPARE( depth.pixelColor( 1, 1 ), QColor( 0, 0, 255 ) );
+  QVERIFY( centerPixel( depth ).blue() < 255 );
+
+  // and switching it off again releases the pass without disturbing the frame
+  renderer.setDepthReadbackEnabled( false );
+  renderer.clearCommands();
+  renderer.forwardPass().addCommand( command, QgsForwardRenderPass::Group::Opaque );
+
+  QVERIFY( engine->beginFrame() );
+  QVERIFY( renderer.renderFrame( engine.get() ) );
+  engine->endFrame();
+  renderer.finishFrame( engine.get() );
+}
+
 void TestQgsRenderPasses3D::testAmbientOcclusionOpenSurface()
 {
   if ( skipIfNoPixels() )
@@ -1144,9 +1211,9 @@ void TestQgsRenderPasses3D::testShadowedSurfaceIsDarker()
   caster.setCullMode( QRhiGraphicsPipeline::None );
 
   auto renderOnce = [&]( bool shadows ) -> QImage {
+    // no second prepare(): the scene renderer builds the shadow pass when the setting is
+    // switched on, which is what a real view does between two frames
     renderer.setShadowsEnabled( shadows, lightDirection, 0, 1024, 500.0f );
-    if ( shadows && !renderer.prepare( engine.get(), QSize( 64, 64 ) ) )
-      return QImage();
 
     renderer.clearCommands();
 

@@ -45,14 +45,13 @@ bool QgsSceneRenderer::prepare( QgsRhiEngine *engine, QSize size )
   if ( !mForwardPass.prepare( rhi, size, mSampleCount ) )
     return false;
 
-  if ( mShadowsEnabled && !mShadowPass.prepare( rhi, mShadowResolution ) )
-    return false;
-
-  if ( mDepthReadbackEnabled && !mDepthPass.prepare( rhi, size ) )
-    return false;
-
-  if ( mAmbientOcclusionEnabled && !mAmbientOcclusionPass.prepare( rhi, size ) )
-    return false;
+  // The two optional passes that are sized like the view have to be rebuilt at the new
+  // size, and both sample the depth attachment the forward pass has just replaced.
+  // updateOptionalPasses() below does the rebuilding; this is what asks it to.
+  mAmbientOcclusionPass.releaseGpuResources();
+  mAmbientOcclusionPassPrepared = false;
+  mDepthPass.releaseGpuResources();
+  mDepthPassPrepared = false;
 
   if ( !mHighlightsPass.prepare( rhi, size ) )
     return false;
@@ -66,6 +65,9 @@ bool QgsSceneRenderer::prepare( QgsRhiEngine *engine, QSize size )
   mDepthPass.setDepthTexture( depthTexture );
   mAmbientOcclusionPass.setDepthTexture( depthTexture );
   mBloomPass.setSourceTexture( mForwardPass.colorTexture() );
+
+  if ( !updateOptionalPasses( rhi ) )
+    return false;
 
   QgsPostprocessingMaterial3D &postMaterial = mPostprocessingPass.material();
   postMaterial.setColorTexture( mForwardPass.colorTexture() );
@@ -99,6 +101,61 @@ void QgsSceneRenderer::releaseGpuResources()
   mScreenQuad.releaseGpuResources();
   mPipelineCache.clear();
   mSize = QSize();
+
+  mPreparedShadowResolution = 0;
+  mAmbientOcclusionPassPrepared = false;
+  mDepthPassPrepared = false;
+}
+
+bool QgsSceneRenderer::updateOptionalPasses( QRhi *rhi )
+{
+  if ( !rhi || mSize.isEmpty() )
+    return false;
+
+  const int shadowResolution = mShadowsEnabled ? mShadowResolution : 0;
+  if ( shadowResolution != mPreparedShadowResolution )
+  {
+    mShadowPass.releaseGpuResources();
+    mPreparedShadowResolution = 0;
+    if ( shadowResolution > 0 )
+    {
+      if ( !mShadowPass.prepare( rhi, shadowResolution ) )
+        return false;
+      mPreparedShadowResolution = shadowResolution;
+    }
+  }
+
+  if ( mAmbientOcclusionEnabled != mAmbientOcclusionPassPrepared )
+  {
+    if ( mAmbientOcclusionEnabled )
+    {
+      if ( !mAmbientOcclusionPass.prepare( rhi, mSize ) )
+        return false;
+      mAmbientOcclusionPass.setDepthTexture( mForwardPass.depthTexture() );
+    }
+    else
+    {
+      mAmbientOcclusionPass.releaseGpuResources();
+    }
+    mAmbientOcclusionPassPrepared = mAmbientOcclusionEnabled;
+  }
+
+  if ( mDepthReadbackEnabled != mDepthPassPrepared )
+  {
+    if ( mDepthReadbackEnabled )
+    {
+      if ( !mDepthPass.prepare( rhi, mSize ) )
+        return false;
+      mDepthPass.setDepthTexture( mForwardPass.depthTexture() );
+    }
+    else
+    {
+      mDepthPass.releaseGpuResources();
+    }
+    mDepthPassPrepared = mDepthReadbackEnabled;
+  }
+
+  return true;
 }
 
 void QgsSceneRenderer::setCamera( const QMatrix4x4 &view, const QMatrix4x4 &projection, const QVector3D &eyePosition, float fieldOfView, float nearPlane, float farPlane )
@@ -195,6 +252,13 @@ void QgsSceneRenderer::clearCommands()
 bool QgsSceneRenderer::renderFrame( QgsRhiEngine *engine, QRhiRenderTarget *output )
 {
   if ( !engine || !engine->commandBuffer() )
+    return false;
+
+  // A setting may have been switched on since the last frame, in which case its pass owns
+  // no target yet. Without this a pass that is asked to render does nothing at all: the
+  // depth readback silently returns a null image, and camera navigation, which waits for
+  // that image before it moves anything, stops responding.
+  if ( !updateOptionalPasses( engine->rhi() ) )
     return false;
 
   QgsGraphicsPipelineCache *cache = &mPipelineCache;

@@ -202,6 +202,17 @@ class _3D_EXPORT QgsSceneRenderer
     //! Sets the camera on the passes that need it, and the derived values they need with it
     void updatePassCameras();
 
+    /**
+     * Brings the optional passes into line with the settings that switch them on.
+     *
+     * Shadows, ambient occlusion and the depth readback each own a render target that only
+     * needs to exist while that feature is on, and the feature can be switched between two
+     * frames - the map settings are read into the renderer every frame, while prepare()
+     * only runs when the view is created or resized. Returns FALSE if a pass that is now
+     * needed could not be built.
+     */
+    bool updateOptionalPasses( QRhi *rhi );
+
     QSize mSize;
     int mSampleCount = 1;
 
@@ -222,6 +233,13 @@ class _3D_EXPORT QgsSceneRenderer
 
     bool mAmbientOcclusionEnabled = false;
     bool mDepthReadbackEnabled = false;
+
+    // What updateOptionalPasses() has actually built, against which the three settings
+    // above are compared. The shadow map is tracked by its resolution because that is a
+    // setting too; zero means the pass is not built.
+    int mPreparedShadowResolution = 0;
+    bool mAmbientOcclusionPassPrepared = false;
+    bool mDepthPassPrepared = false;
 
     QgsScreenQuad mScreenQuad;
     QgsGraphicsPipelineCache mPipelineCache;
