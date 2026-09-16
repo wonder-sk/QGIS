@@ -475,6 +475,13 @@ endif()
 # is small and fully known, and baking them all is what lets a missing variant be a build
 # error instead of a scene that silently fails to draw.
 
+# qsb writes a depfile, but it names only the includes a shader lists itself: the includes
+# those pull in are not in it. So editing a shared file that is reached through another one
+# - qgslights.glsl through qgsphong.glsl, qgsshadows.glsl through qgslights.glsl - leaves
+# every shader below the first level baked from the old source, with no warning and no
+# rebuild. Every rhi shader is made to depend on all of the shared files instead.
+file(GLOB QGIS_RHI_SHADER_INCLUDES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/shaders/rhi/*.glsl")
+
 # Every call below bakes the same source through the same qsb settings, so this wraps up
 # everything they share and leaves only the file, the defines and the baked name.
 function(qgis_add_rhi_shader name)
@@ -501,6 +508,15 @@ function(qgis_add_rhi_shader name)
     FILES shaders/rhi/${ARG_FILE}
     ${_outputs}
   )
+
+  # qt6_add_shaders() has no DEPENDS, so the shared includes are appended to the custom
+  # command it just declared for this .qsb.
+  if(ARG_OUTPUT)
+    set(_qsb_output "${CMAKE_CURRENT_BINARY_DIR}/.qsb/${ARG_OUTPUT}")
+  else()
+    set(_qsb_output "${CMAKE_CURRENT_BINARY_DIR}/.qsb/${ARG_FILE}.qsb")
+  endif()
+  add_custom_command(OUTPUT "${_qsb_output}" APPEND DEPENDS ${QGIS_RHI_SHADER_INCLUDES})
 endfunction()
 
 # Bakes the four instancing variants of a vertex shader: with and without a per-instance
