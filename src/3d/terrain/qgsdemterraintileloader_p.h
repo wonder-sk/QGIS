@@ -61,6 +61,8 @@ class QgsDemTerrainTileLoader : public QgsTerrainTileLoader
 
     Qt3DCore::QEntity *createEntity( Qt3DCore::QEntity *parent ) override;
 
+    std::unique_ptr<QgsSceneObject3D> createSceneObject() override;
+
   private slots:
     void onHeightMapReady( int jobId, const QByteArray &heightMap );
 

@@ -22,10 +22,12 @@
 #include "qgsabstractterrainsettings.h"
 #include "qgschunknode.h"
 #include "qgsdemterraingenerator.h"
+#include "qgsdemterraintilegeometry3d.h"
 #include "qgsdemterraintilegeometry_p.h"
 #include "qgseventtracing.h"
 #include "qgsgeotransform.h"
 #include "qgsonlineterraingenerator.h"
+#include "qgssceneobject3d.h"
 #include "qgsterrainentity.h"
 #include "qgsterraingenerator.h"
 #include "qgsterraintexturegenerator_p.h"
@@ -94,6 +96,48 @@ void QgsDemTerrainTileLoader::start()
   connect( heightMapGenerator, &QgsDemHeightMapGenerator::heightMapReady, this, &QgsDemTerrainTileLoader::onHeightMapReady );
   mHeightMapJobId = heightMapGenerator->render( node->tileId() );
   mResolution = heightMapGenerator->resolution();
+}
+
+std::unique_ptr<QgsSceneObject3D> QgsDemTerrainTileLoader::createSceneObject()
+{
+  Qgs3DMapSettings *map = terrain()->mapSettings();
+  if ( !map->rhiEngineEnabled() )
+    return nullptr;
+
+  float zMin, zMax;
+  _heightMapMinMax( mHeightMap, zMin, zMax );
+  if ( std::isnan( zMin ) || std::isnan( zMax ) )
+  {
+    // no data available for this tile
+    return nullptr;
+  }
+
+  const QgsChunkNodeId nodeId = mNode->tileId();
+  const QgsRectangle extent = map->terrainGenerator()->tilingScheme().tileToExtent( nodeId );
+  const double side = extent.width();
+  const float verticalScale = static_cast<float>( map->terrainSettings()->verticalScale() );
+
+  auto object = std::make_unique<QgsSceneObject3D>();
+
+  std::unique_ptr<QgsMaterial3D> material = createTileMaterial( object.get(), map->isTerrainShadingEnabled(), map->terrainShadingMaterial(), !map->layers().empty() );
+
+  auto geometry = std::make_unique<QgsDemTerrainTileGeometry3D>( mResolution, static_cast<float>( side ), verticalScale, mSkirtHeight, mHeightMap );
+  object->addPart( std::move( geometry ), std::move( material ) );
+
+  // the tile's vertices start at its own corner, so the transform is where that corner is
+  QMatrix4x4 transform;
+  transform.translate( ( QgsVector3D( extent.xMinimum(), extent.yMinimum(), 0 ) - map->origin() ).toVector3D() );
+  object->setTransform( transform );
+
+  // clang-format off
+  mNode->setExactBox3D(
+    QgsBox3D( extent.xMinimum(), extent.yMinimum(), zMin * verticalScale,
+             extent.xMinimum() + side, extent.yMinimum() + side, zMax * verticalScale )
+  );
+  // clang-format on
+  mNode->updateParentBoundingBoxesRecursively();
+
+  return object;
 }
 
 Qt3DCore::QEntity *QgsDemTerrainTileLoader::createEntity( Qt3DCore::QEntity *parent )

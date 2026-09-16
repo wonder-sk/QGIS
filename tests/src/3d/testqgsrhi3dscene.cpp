@@ -20,6 +20,7 @@
 #include "qgscameracontroller.h"
 #include "qgschunkedentity.h"
 #include "qgschunknode.h"
+#include "qgsdemterraingenerator.h"
 #include "qgsflatterraingenerator.h"
 #include "qgspointlightsettings.h"
 #include "qgsproject.h"
@@ -60,10 +61,13 @@ class TestQgsRhi3DScene : public QgsTest
     void testFlatTerrainProducesSceneObjects();
     void testRendersTerrain();
     void testCameraMovesWhatIsDrawn();
+    void testRendersDemTerrain();
 
   private:
-    //! Builds the map settings a flat terrain scene needs
-    std::unique_ptr<Qgs3DMapSettings> createMapSettings() const;
+    /**
+     * Builds the map settings a terrain scene needs, flat unless \a withDem is TRUE.
+     */
+    std::unique_ptr<Qgs3DMapSettings> createMapSettings( bool withDem = false ) const;
 
     /**
      * Runs frames until every chunk has loaded, and returns whether it got there.
@@ -100,7 +104,7 @@ void TestQgsRhi3DScene::cleanupTestCase()
   QgsApplication::exitQgis();
 }
 
-std::unique_ptr<Qgs3DMapSettings> TestQgsRhi3DScene::createMapSettings() const
+std::unique_ptr<Qgs3DMapSettings> TestQgsRhi3DScene::createMapSettings( bool withDem ) const
 {
   auto map = std::make_unique<Qgs3DMapSettings>();
   map->setCrs( mProject->crs() );
@@ -112,9 +116,19 @@ std::unique_ptr<Qgs3DMapSettings> TestQgsRhi3DScene::createMapSettings() const
   map->setOutputDpi( 96 );
   map->setBackgroundColor( Qt::black );
 
-  auto *flatTerrain = new QgsFlatTerrainGenerator;
-  flatTerrain->setCrs( map->crs(), map->transformContext() );
-  map->setTerrainGenerator( flatTerrain );
+  if ( withDem )
+  {
+    auto *demTerrain = new QgsDemTerrainGenerator;
+    demTerrain->setCrs( map->crs(), map->transformContext() );
+    demTerrain->setLayer( mLayerDtm );
+    map->setTerrainGenerator( demTerrain );
+  }
+  else
+  {
+    auto *flatTerrain = new QgsFlatTerrainGenerator;
+    flatTerrain->setCrs( map->crs(), map->transformContext() );
+    map->setTerrainGenerator( flatTerrain );
+  }
 
   QgsPointLightSettings light;
   light.setPosition( map->origin() + QgsVector3D( 0, 0, 1000 ) );
@@ -258,6 +272,62 @@ void TestQgsRhi3DScene::testCameraMovesWhatIsDrawn()
   // and the camera the passes rendered with is the one the controller owns
   QCOMPARE( controller->pitch(), 85.0f );
   QCOMPARE( controller->yaw(), 30.0f );
+}
+
+void TestQgsRhi3DScene::testRendersDemTerrain()
+{
+  std::unique_ptr<Qgs3DMapSettings> map = createMapSettings( true );
+  map->setTerrainShadingEnabled( true );
+
+  QgsRhi3DEngine engine( QSize( 400, 300 ) );
+  QVERIFY( engine.initialize() );
+
+  auto scene = std::make_unique<Qgs3DMapScene>( *map, &engine );
+  engine.setRootEntity( scene.get() );
+  engine.setScene( scene.get() );
+
+  // the DEM's elevation range is only known once tiles have loaded, and viewZoomFull()
+  // uses it to choose the camera distance, so frame the view after the first load
+  QVERIFY( renderUntilLoaded( engine, scene.get() ) );
+  scene->viewZoomFull();
+
+  // look at the relief from the side, where a DEM differs from a flat plane
+  QgsCameraController *controller = scene->cameraController();
+  controller->setLookingAtPoint( controller->lookingAtPoint(), controller->distance(), 60.0f, 0.0f );
+  QVERIFY( renderUntilLoaded( engine, scene.get() ) );
+
+  QgsTerrainEntity *terrain = scene->terrainEntity();
+  QVERIFY( terrain );
+
+  const QList<QgsChunkNode *> nodes = terrain->activeNodes();
+  QVERIFY( !nodes.isEmpty() );
+
+  // a DEM tile is a grid rather than the flat terrain's two triangles
+  bool sawGrid = false;
+  for ( QgsChunkNode *node : nodes )
+  {
+    QgsSceneObject3D *object = node->sceneObject();
+    QVERIFY( object );
+    QCOMPARE( object->parts().size(), size_t( 1 ) );
+    if ( object->parts()[0]->geometry->vertexCount() > 100 )
+      sawGrid = true;
+  }
+  QVERIFY( sawGrid );
+
+  const QImage image = engine.renderedImage();
+  QVERIFY( !image.isNull() );
+
+  int litPixels = 0;
+  for ( int y = 0; y < image.height(); ++y )
+  {
+    for ( int x = 0; x < image.width(); ++x )
+    {
+      const QColor color = image.pixelColor( x, y );
+      if ( color.red() + color.green() + color.blue() > 30 )
+        ++litPixels;
+    }
+  }
+  QVERIFY2( litPixels > 1000, qPrintable( u"only %1 pixels were drawn"_s.arg( litPixels ) ) );
 }
 
 QGSTEST_MAIN( TestQgsRhi3DScene )
