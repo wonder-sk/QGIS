@@ -12,7 +12,7 @@ layout( location = 1 ) in vec4 vertexColor;
 #endif
 
 #ifdef DATA_DEFINED
-layout( location = 2 ) in vec3 dataDefinedBaseColor;
+layout( location = 2 ) in vec4 dataDefinedBaseColor;
 #endif
 
 #ifdef INSTANCING
@@ -60,7 +60,8 @@ void main()
   // the colour is resolved here rather than in the fragment stage, so that the fragment
   // shader has no variants at all
 #ifdef DATA_DEFINED
-  color = vec4( dataDefinedBaseColor, 1.0 );
+  // the fourth component is padding, see phong.vert
+  color = vec4( dataDefinedBaseColor.rgb, 1.0 );
 #elif defined( VERTEX_COLOR )
   color = material.materialColor * vertexColor;
 #else

@@ -17,10 +17,13 @@
 
 #include "qgsbillboardgeometry3d.h"
 #include "qgsbillboardmaterial3d.h"
+#include "qgscoordinatetransform.h"
 #include "qgsdemterraintilegeometry3d.h"
+#include "qgsglobetilegeometry3d.h"
 #include "qgsgltfgeometry3d.h"
 #include "qgsgputexture.h"
 #include "qgsgraphicspipelinecache.h"
+#include "qgsmaterial3dutils.h"
 #include "qgsmeshgeometry3d.h"
 #include "qgsmeshmaterial3d.h"
 #include "qgsobjgeometry3d.h"
@@ -136,6 +139,12 @@ class TestQgsGeometry3D : public QgsTest
     void testGltfRenders();
 
     void testObjLayouts();
+
+    void testGlobeTileLayout();
+    void testGlobeTileIsOnTheSphere();
+
+    void testDataDefinedColorPacking();
+    void testDataDefinedColorAttributes();
 
   private:
     QRhi::Implementation mBackend = QRhi::Null;
@@ -1261,6 +1270,140 @@ void TestQgsGeometry3D::testObjLayouts()
     QCOMPARE( obj.stride(), 5 * int( sizeof( float ) ) );
     QCOMPARE( obj.geometry()->attribute( u"vertexTexCoord"_s )->byteOffset, 3 * sizeof( float ) );
   }
+}
+
+void TestQgsGeometry3D::testGlobeTileLayout()
+{
+  const QgsCoordinateTransform globeCrsToLatLon( QgsCoordinateReferenceSystem( u"EPSG:4978"_s ), QgsCoordinateReferenceSystem( u"EPSG:4326"_s ), QgsCoordinateTransformContext() );
+  QVERIFY( globeCrsToLatLon.isValid() );
+
+  const int lonSlices = 9;
+  const int latSlices = 5;
+  const QgsGlobeTileGeometry3D tile( globeCrsToLatLon, 10.0, 20.0, 40.0, 50.0, lonSlices, latSlices );
+
+  QCOMPARE( tile.geometry()->vertexCount(), lonSlices * latSlices );
+  QCOMPARE( tile.geometry()->indexCount(), ( lonSlices - 1 ) * ( latSlices - 1 ) * 2 * 3 );
+  QCOMPARE( QgsGlobeTileGeometry3D::stride(), 8 * int( sizeof( float ) ) );
+
+  // a tile is small enough for 16 bit indices, which is what keeps its index buffer half
+  // the size of the terrain tiles'
+  QCOMPARE( tile.geometry()->indexFormat(), QRhiCommandBuffer::IndexUInt16 );
+
+  QCOMPARE( tile.geometry()->attributes().size(), 3 );
+  QCOMPARE( tile.geometry()->attribute( u"vertexPosition"_s )->byteOffset, 0u );
+  QCOMPARE( tile.geometry()->attribute( u"vertexTexCoord"_s )->byteOffset, 3 * sizeof( float ) );
+  QCOMPARE( tile.geometry()->attribute( u"vertexNormal"_s )->byteOffset, 5 * sizeof( float ) );
+
+  // every index is inside the grid
+  const quint16 *indices = reinterpret_cast<const quint16 *>( tile.geometry()->indexBuffer()->data().constData() );
+  for ( int i = 0; i < tile.geometry()->indexCount(); ++i )
+    QVERIFY( indices[i] < lonSlices * latSlices );
+}
+
+void TestQgsGeometry3D::testGlobeTileIsOnTheSphere()
+{
+  const QgsCoordinateTransform globeCrsToLatLon( QgsCoordinateReferenceSystem( u"EPSG:4978"_s ), QgsCoordinateReferenceSystem( u"EPSG:4326"_s ), QgsCoordinateTransformContext() );
+  QVERIFY( globeCrsToLatLon.isValid() );
+
+  const QgsGlobeTileGeometry3D tile( globeCrsToLatLon, 10.0, 20.0, 40.0, 50.0, 5, 5 );
+
+  // the origin is on the earth's surface, roughly one earth radius from its centre
+  const double originLength = tile.origin().length();
+  QVERIFY2( originLength > 6.3e6 && originLength < 6.4e6, qPrintable( QString::number( originLength ) ) );
+
+  const QByteArray vertexData = tile.geometry()->attribute( u"vertexPosition"_s )->buffer->data();
+  const int floatsPerVertex = QgsGlobeTileGeometry3D::stride() / int( sizeof( float ) );
+  const float *data = reinterpret_cast<const float *>( vertexData.constData() );
+
+  for ( int i = 0; i < tile.geometry()->vertexCount(); ++i )
+  {
+    const float *vertex = data + i * floatsPerVertex;
+
+    // positions are relative to the tile's own centre, which is the whole point: absolute
+    // ECEF coordinates would lose metres of precision in a float this far out
+    const QVector3D relative( vertex[0], vertex[1], vertex[2] );
+    QVERIFY2( relative.length() < 1.0e6f, qPrintable( QString::number( relative.length() ) ) );
+
+    // put the origin back and the vertex is on the ellipsoid
+    const double x = relative.x() + tile.origin().x();
+    const double y = relative.y() + tile.origin().y();
+    const double z = relative.z() + tile.origin().z();
+    const double radius = std::sqrt( x * x + y * y + z * z );
+    QVERIFY2( radius > 6.3e6 && radius < 6.4e6, qPrintable( QString::number( radius ) ) );
+
+    // the normal points straight out from the earth's centre, so it agrees with the
+    // absolute position rather than the relative one
+    const QVector3D normal( vertex[3 + 2], vertex[3 + 3], vertex[3 + 4] );
+    QVERIFY( std::abs( normal.length() - 1.0f ) < 1e-3f );
+    const QVector3D outwards = QVector3D( float( x ), float( y ), float( z ) ).normalized();
+    QVERIFY2( QVector3D::dotProduct( normal, outwards ) > 0.999f, qPrintable( QString::number( QVector3D::dotProduct( normal, outwards ) ) ) );
+
+    // texture coordinates span the tile
+    QVERIFY( vertex[3] >= 0.0f && vertex[3] <= 1.0f );
+    QVERIFY( vertex[4] >= 0.0f && vertex[4] <= 1.0f );
+  }
+}
+
+void TestQgsGeometry3D::testDataDefinedColorPacking()
+{
+  // four components per colour rather than three, because QRhi has no three component
+  // byte vertex format at all
+  QCOMPARE( QgsMaterial3DUtils::dataDefinedColorStride( 3, false ), 12 );
+  QCOMPARE( QgsMaterial3DUtils::dataDefinedColorStride( 3, true ), 48 );
+  QCOMPARE( QgsMaterial3DUtils::dataDefinedColorStride( 1, false ), 4 );
+
+  QByteArray packed;
+  packed.resize( QgsMaterial3DUtils::dataDefinedColorStride( 2, false ) );
+  QgsMaterial3DUtils::writeDataDefinedColors( packed.data(), { QColor( 10, 20, 30 ), QColor( 200, 100, 50 ) }, false );
+
+  const uchar *bytes = reinterpret_cast<const uchar *>( packed.constData() );
+  QCOMPARE( bytes[0], uchar( 10 ) );
+  QCOMPARE( bytes[1], uchar( 20 ) );
+  QCOMPARE( bytes[2], uchar( 30 ) );
+  QCOMPARE( bytes[3], uchar( 0 ) ); // padding
+  QCOMPARE( bytes[4], uchar( 200 ) );
+  QCOMPARE( bytes[6], uchar( 50 ) );
+
+  // the float path exists for colours already scaled by a coefficient below one, where a
+  // byte per channel is not enough precision
+  QByteArray asFloats;
+  asFloats.resize( QgsMaterial3DUtils::dataDefinedColorStride( 1, true ) );
+  QgsMaterial3DUtils::writeDataDefinedColors( asFloats.data(), { QColor( 255, 0, 0 ) }, true );
+
+  const float *floats = reinterpret_cast<const float *>( asFloats.constData() );
+  QCOMPARE( floats[0], 1.0f );
+  QCOMPARE( floats[1], 0.0f );
+  QCOMPARE( floats[3], 0.0f ); // padding
+}
+
+void TestQgsGeometry3D::testDataDefinedColorAttributes()
+{
+  const QStringList names { u"dataDefinedAmbientColor"_s, u"dataDefinedDiffuseColor"_s, u"dataDefinedSpecularColor"_s };
+
+  QgsGpuBuffer buffer( QgsGpuBuffer::Role::Vertex );
+  QgsGeometry3D geometry;
+  QgsMaterial3DUtils::addDataDefinedColorAttributes( &geometry, &buffer, names, false );
+
+  QCOMPARE( geometry.attributes().size(), 3 );
+  for ( int i = 0; i < names.size(); ++i )
+  {
+    const QgsVertexAttribute *attribute = geometry.attribute( names.at( i ) );
+    QVERIFY( attribute );
+    // normalised so that a packed byte comes back to the shader as a 0 to 1 colour
+    QCOMPARE( attribute->format, QRhiVertexInputAttribute::UNormByte4 );
+    QCOMPARE( attribute->byteOffset, quint32( i * 4 ) );
+    QCOMPARE( attribute->byteStride, 12u );
+    QCOMPARE( attribute->instanceDivisor, 0u );
+  }
+
+  QgsGeometry3D floatGeometry;
+  QgsMaterial3DUtils::addDataDefinedColorAttributes( &floatGeometry, &buffer, names, true );
+  QCOMPARE( floatGeometry.attribute( names.at( 1 ) )->format, QRhiVertexInputAttribute::Float4 );
+  QCOMPARE( floatGeometry.attribute( names.at( 1 ) )->byteOffset, 4 * sizeof( float ) );
+  QCOMPARE( floatGeometry.attribute( names.at( 2 ) )->byteStride, 12 * sizeof( float ) );
+
+  // the two precisions must not share a pipeline, since the vertex layout differs
+  QVERIFY( geometry.layoutKey() != floatGeometry.layoutKey() );
 }
 
 QGSTEST_MAIN( TestQgsGeometry3D )

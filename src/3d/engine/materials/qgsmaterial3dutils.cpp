@@ -17,6 +17,9 @@
 #include <cmath>
 #include <cstring>
 
+#include "qgsgeometry3d.h"
+#include "qgsgpubuffer.h"
+
 #include <QColor>
 #include <QMatrix3x3>
 #include <QMatrix4x4>
@@ -88,4 +91,58 @@ QString QgsMaterial3DUtils::shaderVariantSuffix( bool dataDefined, bool instance
   if ( instanceFlags.testFlag( Qgis::InstancedMaterialFlag::DataDefinedRotation ) )
     suffix += "_rotation"_L1;
   return suffix;
+}
+
+int QgsMaterial3DUtils::dataDefinedColorStride( int colorCount, bool useFloats )
+{
+  return colorCount * 4 * static_cast<int>( useFloats ? sizeof( float ) : sizeof( uchar ) );
+}
+
+void QgsMaterial3DUtils::writeDataDefinedColors( char *destination, const QList<QColor> &colors, bool useFloats )
+{
+  if ( useFloats )
+  {
+    float *out = reinterpret_cast<float *>( destination );
+    for ( const QColor &color : colors )
+    {
+      *out++ = static_cast<float>( color.redF() );
+      *out++ = static_cast<float>( color.greenF() );
+      *out++ = static_cast<float>( color.blueF() );
+      *out++ = 0.0f; // padding, the shaders take .rgb
+    }
+  }
+  else
+  {
+    uchar *out = reinterpret_cast<uchar *>( destination );
+    for ( const QColor &color : colors )
+    {
+      *out++ = static_cast<uchar>( color.red() );
+      *out++ = static_cast<uchar>( color.green() );
+      *out++ = static_cast<uchar>( color.blue() );
+      *out++ = 0; // padding, the shaders take .rgb
+    }
+  }
+}
+
+void QgsMaterial3DUtils::addDataDefinedColorAttributes( QgsGeometry3D *geometry, QgsGpuBuffer *buffer, const QStringList &names, bool useFloats )
+{
+  Q_ASSERT( geometry && buffer );
+
+  const int stride = dataDefinedColorStride( static_cast<int>( names.size() ), useFloats );
+  const int colorSize = stride / static_cast<int>( names.size() );
+
+  int offset = 0;
+  for ( const QString &name : names )
+  {
+    QgsVertexAttribute attribute;
+    attribute.name = name;
+    attribute.buffer = buffer;
+    // UNormByte4 divides by 255 on the way in, which is what turns the packed bytes back
+    // into the 0 to 1 colour the shader works in
+    attribute.format = useFloats ? QRhiVertexInputAttribute::Float4 : QRhiVertexInputAttribute::UNormByte4;
+    attribute.byteOffset = static_cast<quint32>( offset );
+    attribute.byteStride = static_cast<quint32>( stride );
+    geometry->addAttribute( attribute );
+    offset += colorSize;
+  }
 }

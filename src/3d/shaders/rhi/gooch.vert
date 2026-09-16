@@ -9,10 +9,10 @@ layout( location = 0 ) in vec3 vertexPosition;
 layout( location = 1 ) in vec3 vertexNormal;
 
 #ifdef DATA_DEFINED
-layout( location = 2 ) in vec3 dataDefinedDiffuseColor;
-layout( location = 3 ) in vec3 dataDefinedWarmColor;
-layout( location = 4 ) in vec3 dataDefinedCoolColor;
-layout( location = 5 ) in vec3 dataDefinedSpecularColor;
+layout( location = 2 ) in vec4 dataDefinedDiffuseColor;
+layout( location = 3 ) in vec4 dataDefinedWarmColor;
+layout( location = 4 ) in vec4 dataDefinedCoolColor;
+layout( location = 5 ) in vec4 dataDefinedSpecularColor;
 #endif
 
 #ifdef INSTANCING
@@ -74,10 +74,11 @@ void main()
   worldNormal = normalize( draw.modelNormalMatrix * localNormal );
 
 #ifdef DATA_DEFINED
-  diffuseColor = dataDefinedDiffuseColor;
-  warmColor = dataDefinedWarmColor;
-  coolColor = dataDefinedCoolColor;
-  specularColor = dataDefinedSpecularColor;
+  // the fourth component of each is padding, see phong.vert
+  diffuseColor = dataDefinedDiffuseColor.rgb;
+  warmColor = dataDefinedWarmColor.rgb;
+  coolColor = dataDefinedCoolColor.rgb;
+  specularColor = dataDefinedSpecularColor.rgb;
 #endif
 
   gl_Position = draw.modelViewProjectionMatrix * vec4( localPosition, 1.0 );

@@ -15,6 +15,7 @@
 #include "qgsgeometry3d.h"
 #include "qgsgpubuffer.h"
 #include "qgsgraphicspipelinecache.h"
+#include "qgsmaterial3dutils.h"
 #include "qgsphongmaterial3d.h"
 #include "qgspolygon.h"
 #include "qgsrendercommand.h"
@@ -529,22 +530,23 @@ void TestQgsPhongMaterial3D::testDataDefinedVariant()
   QgsGpuBuffer vertexBuffer( QgsGpuBuffer::Role::Vertex );
   vertexBuffer.setData( QByteArray( reinterpret_cast<const char *>( vertices ), sizeof( vertices ) ) );
 
-  // ambient black, diffuse green, specular black, repeated for all six vertices
-  QVector<float> colors;
+  // ambient black, diffuse green, specular black, repeated for all six vertices, packed
+  // the way the geometry generators do it
+  const QStringList colorNames { u"dataDefinedAmbientColor"_s, u"dataDefinedDiffuseColor"_s, u"dataDefinedSpecularColor"_s };
+  const int colorStride = QgsMaterial3DUtils::dataDefinedColorStride( colorNames.size(), false );
+
+  QByteArray colors;
+  colors.resize( 6 * colorStride );
   for ( int i = 0; i < 6; ++i )
-    colors << 0.0f << 0.0f << 0.0f << 0.0f << 1.0f << 0.0f << 0.0f << 0.0f << 0.0f;
+    QgsMaterial3DUtils::writeDataDefinedColors( colors.data() + i * colorStride, { Qt::black, QColor( 0, 255, 0 ), Qt::black }, false );
 
   QgsGpuBuffer colorBuffer( QgsGpuBuffer::Role::Vertex );
-  colorBuffer.setData( QByteArray( reinterpret_cast<const char *>( colors.constData() ), colors.size() * int( sizeof( float ) ) ) );
-
-  const quint32 colorStride = 9 * sizeof( float );
+  colorBuffer.setData( colors );
 
   QgsGeometry3D geometry;
   geometry.addAttribute( { u"vertexPosition"_s, &vertexBuffer, QRhiVertexInputAttribute::Float3, 0, 6 * sizeof( float ), 0 } );
   geometry.addAttribute( { u"vertexNormal"_s, &vertexBuffer, QRhiVertexInputAttribute::Float3, 3 * sizeof( float ), 6 * sizeof( float ), 0 } );
-  geometry.addAttribute( { u"dataDefinedAmbientColor"_s, &colorBuffer, QRhiVertexInputAttribute::Float3, 0, colorStride, 0 } );
-  geometry.addAttribute( { u"dataDefinedDiffuseColor"_s, &colorBuffer, QRhiVertexInputAttribute::Float3, 3 * sizeof( float ), colorStride, 0 } );
-  geometry.addAttribute( { u"dataDefinedSpecularColor"_s, &colorBuffer, QRhiVertexInputAttribute::Float3, 6 * sizeof( float ), colorStride, 0 } );
+  QgsMaterial3DUtils::addDataDefinedColorAttributes( &geometry, &colorBuffer, colorNames, false );
   geometry.setVertexCount( 6 );
 
   QgsPhongMaterial3D material( true );

@@ -17,8 +17,8 @@ layout( location = 3 ) in vec4 vertexTangent;
 #endif
 
 #ifdef DATA_DEFINED
-layout( location = 4 ) in vec3 dataDefinedBaseColor;
-layout( location = 5 ) in vec3 dataDefinedEmissionColor;
+layout( location = 4 ) in vec4 dataDefinedBaseColor;
+layout( location = 5 ) in vec4 dataDefinedEmissionColor;
 #endif
 
 #ifdef DATA_DEFINED_TEXTURE_TRANSFORMS
@@ -138,8 +138,9 @@ void main()
 #endif
 
 #ifdef DATA_DEFINED
-  vsBaseColor = dataDefinedBaseColor;
-  vsEmissionColor = dataDefinedEmissionColor;
+  // the fourth component of each is padding, see phong.vert
+  vsBaseColor = dataDefinedBaseColor.rgb;
+  vsEmissionColor = dataDefinedEmissionColor.rgb;
 #endif
 
   gl_Position = draw.modelViewProjectionMatrix * vec4( localPosition, 1.0 );

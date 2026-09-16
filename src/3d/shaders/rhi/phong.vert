@@ -9,9 +9,9 @@ layout( location = 0 ) in vec3 vertexPosition;
 layout( location = 1 ) in vec3 vertexNormal;
 
 #ifdef DATA_DEFINED
-layout( location = 2 ) in vec3 dataDefinedAmbientColor;
-layout( location = 3 ) in vec3 dataDefinedDiffuseColor;
-layout( location = 4 ) in vec3 dataDefinedSpecularColor;
+layout( location = 2 ) in vec4 dataDefinedAmbientColor;
+layout( location = 3 ) in vec4 dataDefinedDiffuseColor;
+layout( location = 4 ) in vec4 dataDefinedSpecularColor;
 #endif
 
 #ifdef INSTANCING
@@ -72,9 +72,11 @@ void main()
   worldNormal = normalize( draw.modelNormalMatrix * localNormal );
 
 #ifdef DATA_DEFINED
-  ambientColor = dataDefinedAmbientColor;
-  diffuseColor = dataDefinedDiffuseColor;
-  specularColor = dataDefinedSpecularColor;
+  // the fourth component is padding: the attribute is four wide because QRhi has no
+  // three component byte format, which is what the packed data defined colours use
+  ambientColor = dataDefinedAmbientColor.rgb;
+  diffuseColor = dataDefinedDiffuseColor.rgb;
+  specularColor = dataDefinedSpecularColor.rgb;
 #endif
 
   gl_Position = draw.modelViewProjectionMatrix * vec4( localPosition, 1.0 );

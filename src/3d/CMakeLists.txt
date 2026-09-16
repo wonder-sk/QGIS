@@ -35,6 +35,7 @@ set(QGIS_3D_SRCS
   qgsfonttextureatlasgenerator.cpp
   qgsgeotransform.cpp
   qgsglobechunkedentity.cpp
+  qgsglobetilegeometry3d.cpp
   qgsgltf3dutils.cpp
   qgsgltfgeometry3d.cpp
   qgsimagetexture.cpp
@@ -233,6 +234,7 @@ set(QGIS_3D_HDRS
   qgsfonttextureatlasgenerator.h
   qgsgeotransform.h
   qgsglobechunkedentity.h
+  qgsglobetilegeometry3d.h
   qgsgltf3dutils.h
   qgsgltfgeometry3d.h
   qgslayoutitem3dmap.h

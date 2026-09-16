@@ -19,9 +19,15 @@
 #include "qgis.h"
 #include "qgis_3d.h"
 
+#include <QList>
+#include <QStringList>
+
 #define SIP_NO_FILE
 
+class QByteArray;
 class QColor;
+class QgsGeometry3D;
+class QgsGpuBuffer;
 class QMatrix4x4;
 class QQuaternion;
 class QString;
@@ -87,6 +93,39 @@ namespace QgsMaterial3DUtils
    * materials did when their shaders were swapped at runtime.
    */
   _3D_EXPORT QString shaderVariantSuffix( bool dataDefined, bool instanced, Qgis::InstancedMaterialFlags instanceFlags );
+
+  /**
+   * Returns how many bytes one vertex of \a colorCount data defined colours occupies.
+   *
+   * Each colour takes four components rather than three, whether they are bytes or
+   * floats. That is not padding for its own sake: QRhi has no three component byte
+   * vertex format at all, and the data defined shaders declare their inputs as vec4
+   * and take .rgb to match.
+   *
+   * Set \a useFloats when the colours have been scaled by a material coefficient below
+   * one, where a byte per channel is not enough precision.
+   */
+  _3D_EXPORT int dataDefinedColorStride( int colorCount, bool useFloats );
+
+  /**
+   * Writes one vertex's \a colors into \a destination, which must have room for
+   * dataDefinedColorStride() bytes.
+   *
+   * Colours are written as they are, without the sRGB to linear conversion the uniform
+   * blocks use, because the data defined shaders do that conversion themselves.
+   */
+  _3D_EXPORT void writeDataDefinedColors( char *destination, const QList<QColor> &colors, bool useFloats );
+
+  /**
+   * Adds the data defined colour attributes \a names to \a geometry, interleaved in
+   * \a buffer in the order they are given.
+   *
+   * The names are the vertex shader inputs of the material this geometry will be drawn
+   * with, such as "dataDefinedAmbientColor"; a name the shader does not read, or a
+   * shader input no name covers, leaves the pipeline unbuildable and the geometry
+   * undrawn.
+   */
+  _3D_EXPORT void addDataDefinedColorAttributes( QgsGeometry3D *geometry, QgsGpuBuffer *buffer, const QStringList &names, bool useFloats );
 } // namespace QgsMaterial3DUtils
 
 #endif // QGSMATERIAL3DUTILS_H
