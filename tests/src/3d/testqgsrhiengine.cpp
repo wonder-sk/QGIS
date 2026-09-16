@@ -23,7 +23,9 @@
 #include "qgsrhiengine.h"
 #include "qgsrhishader.h"
 #include "qgstest.h"
+#include "qgstexturematerial3d.h"
 #include "qgsuniformring.h"
+#include "qgsunlitmaterial3d.h"
 
 #include <QColor>
 #include <QImage>
@@ -39,7 +41,20 @@ namespace
     return image.pixelColor( image.width() / 2, image.height() / 2 );
   }
 
-  //! TRUE if two colours are within \a tolerance on every channel
+  /**
+   * TRUE if two colours are within \a tolerance on every channel
+   * The unlit material's uniform block, filled with a solid colour and nothing else
+   */
+  QgsUnlitUniforms unlitColor( float red, float green, float blue )
+  {
+    QgsUnlitUniforms uniforms;
+    uniforms.materialColor[0] = red;
+    uniforms.materialColor[1] = green;
+    uniforms.materialColor[2] = blue;
+    uniforms.materialColor[3] = 1.0f;
+    return uniforms;
+  }
+
   bool colorsClose( const QColor &a, const QColor &b, int tolerance = 4 )
   {
     return std::abs( a.red() - b.red() ) <= tolerance && std::abs( a.green() - b.green() ) <= tolerance && std::abs( a.blue() - b.blue() ) <= tolerance && std::abs( a.alpha() - b.alpha() ) <= tolerance;
@@ -324,8 +339,7 @@ void TestQgsRhiEngine::testDrawTriangle()
 
   QgsMaterial3D material( shader );
   material.setCullMode( QRhiGraphicsPipeline::None );
-  const float color[4] = { 1.0f, 0.0f, 0.0f, 1.0f };
-  material.setUniformData( color, sizeof( color ) );
+  material.setUniforms( unlitColor( 1.0f, 0.0f, 0.0f ) );
 
   QgsRenderPass pass( u"triangle"_s );
   setIdentityCamera( pass );
@@ -379,8 +393,7 @@ void TestQgsRhiEngine::testVertexColors()
 
   QgsMaterial3D material( shader );
   material.setCullMode( QRhiGraphicsPipeline::None );
-  const float white[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
-  material.setUniformData( white, sizeof( white ) );
+  material.setUniforms( unlitColor( 1.0f, 1.0f, 1.0f ) );
 
   QgsRenderPass pass( u"vertex colors"_s );
   setIdentityCamera( pass );
@@ -439,8 +452,9 @@ void TestQgsRhiEngine::testTexturedQuad()
 
   QgsMaterial3D material( shader );
   material.setCullMode( QRhiGraphicsPipeline::None );
-  const float opacity = 1.0f;
-  material.setUniformData( &opacity, sizeof( opacity ) );
+  QgsTexturedUniforms texturedUniforms;
+  texturedUniforms.opacity = 1.0f;
+  material.setUniforms( texturedUniforms );
   material.setTexture( { QgsRhiBinding::FirstSampler, &texture } );
 
   QgsRenderPass pass( u"textured"_s );
@@ -494,8 +508,7 @@ void TestQgsRhiEngine::testInstancedDraw()
 
   QgsMaterial3D material( shader );
   material.setCullMode( QRhiGraphicsPipeline::None );
-  const float yellow[4] = { 1.0f, 1.0f, 0.0f, 1.0f };
-  material.setUniformData( yellow, sizeof( yellow ) );
+  material.setUniforms( unlitColor( 1.0f, 1.0f, 0.0f ) );
 
   QgsRenderPass pass( u"instanced"_s );
   setIdentityCamera( pass );
@@ -546,13 +559,11 @@ void TestQgsRhiEngine::testDepthTest()
 
   QgsMaterial3D nearMaterial( shader );
   nearMaterial.setCullMode( QRhiGraphicsPipeline::None );
-  const float red[4] = { 1.0f, 0.0f, 0.0f, 1.0f };
-  nearMaterial.setUniformData( red, sizeof( red ) );
+  nearMaterial.setUniforms( unlitColor( 1.0f, 0.0f, 0.0f ) );
 
   QgsMaterial3D farMaterial( shader );
   farMaterial.setCullMode( QRhiGraphicsPipeline::None );
-  const float green[4] = { 0.0f, 1.0f, 0.0f, 1.0f };
-  farMaterial.setUniformData( green, sizeof( green ) );
+  farMaterial.setUniforms( unlitColor( 0.0f, 1.0f, 0.0f ) );
 
   QgsRenderPass pass( u"depth"_s );
   setIdentityCamera( pass );
@@ -603,20 +614,18 @@ void TestQgsRhiEngine::testPipelineSharing()
   // two materials differing only in colour: same shader, same state, so one pipeline
   QgsMaterial3D first( shader );
   first.setCullMode( QRhiGraphicsPipeline::None );
-  const float red[4] = { 1.0f, 0.0f, 0.0f, 1.0f };
-  first.setUniformData( red, sizeof( red ) );
+  first.setUniforms( unlitColor( 1.0f, 0.0f, 0.0f ) );
 
   QgsMaterial3D second( shader );
   second.setCullMode( QRhiGraphicsPipeline::None );
-  const float blue[4] = { 0.0f, 0.0f, 1.0f, 1.0f };
-  second.setUniformData( blue, sizeof( blue ) );
+  second.setUniforms( unlitColor( 0.0f, 0.0f, 1.0f ) );
 
   QCOMPARE( first.stateKey(), second.stateKey() );
 
   // a third one differs in state, and must not share
   QgsMaterial3D third( shader );
   third.setCullMode( QRhiGraphicsPipeline::Back );
-  third.setUniformData( red, sizeof( red ) );
+  third.setUniforms( unlitColor( 1.0f, 0.0f, 0.0f ) );
   QVERIFY( first.stateKey() != third.stateKey() );
 
   QgsRenderPass pass( u"sharing"_s );
@@ -682,8 +691,7 @@ void TestQgsRhiEngine::testMultisampleResolve()
 
   QgsMaterial3D material( shader );
   material.setCullMode( QRhiGraphicsPipeline::None );
-  const float red[4] = { 1.0f, 0.0f, 0.0f, 1.0f };
-  material.setUniformData( red, sizeof( red ) );
+  material.setUniforms( unlitColor( 1.0f, 0.0f, 0.0f ) );
 
   QgsRenderPass pass( u"msaa"_s );
   setIdentityCamera( pass );

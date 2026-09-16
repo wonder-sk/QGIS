@@ -37,17 +37,17 @@
  */
 struct _3D_EXPORT QgsPhongUniforms
 {
-    float ambientColor[4] = {};      // offset 0, rgb used
-    float diffuseColor[4] = {};      // offset 16, rgb used
-    float specularColor[4] = {};     // offset 32, rgb used
-    float shininess = 0.0f;          // offset 48
-    float opacity = 1.0f;            // offset 52
-    float unused0 = 0.0f;            // offset 56
-    float unused1 = 0.0f;            // offset 60
-    float meshMatrix[16] = {};       // offset 64
-    float meshNormalMatrix[12] = {}; // offset 128, a mat3 as three padded columns
-    float symbolRotation[4] = {};    // offset 176
-    float symbolScale[4] = {};       // offset 192
+    float ambientColor[4] = {};                                                                                                // offset 0, rgb used
+    float diffuseColor[4] = {};                                                                                                // offset 16, rgb used
+    float specularColor[4] = {};                                                                                               // offset 32, rgb used
+    float shininess = 0.0f;                                                                                                    // offset 48
+    float opacity = 1.0f;                                                                                                      // offset 52
+    float unused0 = 0.0f;                                                                                                      // offset 56
+    float unused1 = 0.0f;                                                                                                      // offset 60
+    float meshMatrix[16] = { 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f }; // offset 64, identity by default
+    float meshNormalMatrix[12] = { 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f };                   // offset 128, a mat3 as three padded columns
+    float symbolRotation[4] = { 0.0f, 0.0f, 0.0f, 1.0f };                                                                      // offset 176, no rotation
+    float symbolScale[4] = { 1.0f, 1.0f, 1.0f, 0.0f };                                                                         // offset 192, unit scale
 };
 
 /**

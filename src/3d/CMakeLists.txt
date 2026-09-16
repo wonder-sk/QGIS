@@ -178,7 +178,12 @@ set(QGIS_3D_SRCS
   engine/qgstessellatedpolygongeometry3d.cpp
   engine/qgsuniformring.cpp
 
+  engine/materials/qgsgoochmaterial3d.cpp
+  engine/materials/qgsmaterial3dutils.cpp
   engine/materials/qgsphongmaterial3d.cpp
+  engine/materials/qgsphongtexturedmaterial3d.cpp
+  engine/materials/qgstexturematerial3d.cpp
+  engine/materials/qgsunlitmaterial3d.cpp
 
   geometry/qgsprimitivegeometry3d.cpp
 )
@@ -337,7 +342,12 @@ set(QGIS_3D_HDRS
   engine/qgsuniformring.h
   engine/qgsvertexattribute.h
 
+  engine/materials/qgsgoochmaterial3d.h
+  engine/materials/qgsmaterial3dutils.h
   engine/materials/qgsphongmaterial3d.h
+  engine/materials/qgsphongtexturedmaterial3d.h
+  engine/materials/qgstexturematerial3d.h
+  engine/materials/qgsunlitmaterial3d.h
 
   geometry/qgsprimitivegeometry3d.h
 )
@@ -389,148 +399,106 @@ endif()
 # SPIR-V, GLSL, HLSL and MSL, all inside a single .qsb file per shader. Nothing is
 # translated at runtime, so there is no per-run cost and no shader cache to keep.
 #
-# Variants are spelled out rather than generated: the set of defines QGIS uses is small
-# and fully known, and an explicit list is what lets a missing variant be a build error
-# instead of a scene that silently fails to draw.
+# Every variant is baked here rather than picked at runtime: the set of defines QGIS uses
+# is small and fully known, and baking them all is what lets a missing variant be a build
+# error instead of a scene that silently fails to draw.
 
-qt6_add_shaders(qgis_3d "qgis_3d_rhi_shaders"
-  SILENT
-  PREFIX "/shaders/rhi"
-  BASE "${CMAKE_CURRENT_SOURCE_DIR}/shaders/rhi"
-  GLSL "120,150,330"
-  HLSL 50
-  MSL 12
-  FILES
-    shaders/rhi/unlit.vert
-    shaders/rhi/unlit.frag
-    shaders/rhi/textured.vert
-    shaders/rhi/textured.frag
-)
+# Every call below bakes the same source through the same qsb settings, so this wraps up
+# everything they share and leaves only the file, the defines and the baked name.
+function(qgis_add_rhi_shader name)
+  cmake_parse_arguments(ARG "" "FILE;OUTPUT" "DEFINES" ${ARGN})
 
-qt6_add_shaders(qgis_3d "qgis_3d_rhi_shaders_vertex_color"
-  SILENT
-  PREFIX "/shaders/rhi"
-  BASE "${CMAKE_CURRENT_SOURCE_DIR}/shaders/rhi"
-  GLSL "120,150,330"
-  HLSL 50
-  MSL 12
-  DEFINES VERTEX_COLOR=1
-  FILES
-    shaders/rhi/unlit.vert
-  OUTPUTS
-    unlit_vertexcolor.vert.qsb
-)
+  set(_defines "")
+  if(ARG_DEFINES)
+    set(_defines DEFINES ${ARG_DEFINES})
+  endif()
 
-# The Phong variant matrix, spelled out rather than generated. Which vertex attributes a
-# variant reads differs, so these are genuinely different shaders, and listing them means a
-# missing one is a build error rather than a scene that quietly fails to draw.
+  set(_outputs "")
+  if(ARG_OUTPUT)
+    set(_outputs OUTPUTS ${ARG_OUTPUT})
+  endif()
 
-qt6_add_shaders(qgis_3d "qgis_3d_rhi_phong_vert"
-  SILENT
-  PREFIX "/shaders/rhi"
-  BASE "${CMAKE_CURRENT_SOURCE_DIR}/shaders/rhi"
-  GLSL "120,150,330"
-  HLSL 50
-  MSL 12
-  FILES shaders/rhi/phong.vert
-)
+  qt6_add_shaders(qgis_3d "qgis_3d_rhi_${name}"
+    SILENT
+    PREFIX "/shaders/rhi"
+    BASE "${CMAKE_CURRENT_SOURCE_DIR}/shaders/rhi"
+    GLSL "120,150,330"
+    HLSL 50
+    MSL 12
+    ${_defines}
+    FILES shaders/rhi/${ARG_FILE}
+    ${_outputs}
+  )
+endfunction()
 
-qt6_add_shaders(qgis_3d "qgis_3d_rhi_phong_instanced_vert"
-  SILENT
-  PREFIX "/shaders/rhi"
-  BASE "${CMAKE_CURRENT_SOURCE_DIR}/shaders/rhi"
-  GLSL "120,150,330"
-  HLSL 50
-  MSL 12
-  DEFINES INSTANCING=1
-  FILES shaders/rhi/phong.vert
-  OUTPUTS phong_instanced.vert.qsb
-)
+# Bakes the four instancing variants of a vertex shader: with and without a per-instance
+# scale, with and without a per-instance rotation. A material picks one of them when it is
+# constructed, and which attributes the shader reads is what differs, so these are
+# genuinely different shaders rather than a flag. All four always exist, so a material can
+# never ask for a combination that was not baked.
+function(qgis_add_rhi_instanced_shaders base)
+  qgis_add_rhi_shader(${base}_instanced
+    FILE ${base}.vert DEFINES INSTANCING=1
+    OUTPUT ${base}_instanced.vert.qsb)
+  qgis_add_rhi_shader(${base}_instanced_scale
+    FILE ${base}.vert DEFINES INSTANCING=1 USE_INSTANCE_SCALE=1
+    OUTPUT ${base}_instanced_scale.vert.qsb)
+  qgis_add_rhi_shader(${base}_instanced_rotation
+    FILE ${base}.vert DEFINES INSTANCING=1 USE_INSTANCE_ROTATION=1
+    OUTPUT ${base}_instanced_rotation.vert.qsb)
+  qgis_add_rhi_shader(${base}_instanced_scale_rotation
+    FILE ${base}.vert DEFINES INSTANCING=1 USE_INSTANCE_SCALE=1 USE_INSTANCE_ROTATION=1
+    OUTPUT ${base}_instanced_scale_rotation.vert.qsb)
+endfunction()
 
-qt6_add_shaders(qgis_3d "qgis_3d_rhi_phong_instanced_scale_vert"
-  SILENT
-  PREFIX "/shaders/rhi"
-  BASE "${CMAKE_CURRENT_SOURCE_DIR}/shaders/rhi"
-  GLSL "120,150,330"
-  HLSL 50
-  MSL 12
-  DEFINES INSTANCING=1;USE_INSTANCE_SCALE=1
-  FILES shaders/rhi/phong.vert
-  OUTPUTS phong_instanced_scale.vert.qsb
-)
+# QgsUnlitMaterial3D. The fragment stage has no variants at all: which of the uniform, the
+# per-vertex and the data defined colour applies is resolved in the vertex stage.
+qgis_add_rhi_shader(unlit_vert FILE unlit.vert)
+qgis_add_rhi_shader(unlit_frag FILE unlit.frag)
+qgis_add_rhi_shader(unlit_datadefined_vert
+  FILE unlit.vert DEFINES DATA_DEFINED=1
+  OUTPUT unlit_datadefined.vert.qsb)
+qgis_add_rhi_shader(unlit_vertexcolor_vert
+  FILE unlit.vert DEFINES VERTEX_COLOR=1
+  OUTPUT unlit_vertexcolor.vert.qsb)
+qgis_add_rhi_instanced_shaders(unlit)
 
-qt6_add_shaders(qgis_3d "qgis_3d_rhi_phong_instanced_rotation_vert"
-  SILENT
-  PREFIX "/shaders/rhi"
-  BASE "${CMAKE_CURRENT_SOURCE_DIR}/shaders/rhi"
-  GLSL "120,150,330"
-  HLSL 50
-  MSL 12
-  DEFINES INSTANCING=1;USE_INSTANCE_ROTATION=1
-  FILES shaders/rhi/phong.vert
-  OUTPUTS phong_instanced_rotation.vert.qsb
-)
+# QgsTextureMaterial3D
+qgis_add_rhi_shader(textured_vert FILE textured.vert)
+qgis_add_rhi_shader(textured_frag FILE textured.frag)
+qgis_add_rhi_instanced_shaders(textured)
 
-qt6_add_shaders(qgis_3d "qgis_3d_rhi_phong_instanced_scale_rotation_vert"
-  SILENT
-  PREFIX "/shaders/rhi"
-  BASE "${CMAKE_CURRENT_SOURCE_DIR}/shaders/rhi"
-  GLSL "120,150,330"
-  HLSL 50
-  MSL 12
-  DEFINES INSTANCING=1;USE_INSTANCE_SCALE=1;USE_INSTANCE_ROTATION=1
-  FILES shaders/rhi/phong.vert
-  OUTPUTS phong_instanced_scale_rotation.vert.qsb
-)
+# QgsPhongMaterial3D. Only where the colour comes from differs in the fragment stage, so
+# that has two variants where the vertex stage has six.
+qgis_add_rhi_shader(phong_vert FILE phong.vert)
+qgis_add_rhi_shader(phong_frag FILE phong.frag)
+qgis_add_rhi_shader(phong_datadefined_vert
+  FILE phong.vert DEFINES DATA_DEFINED=1
+  OUTPUT phong_datadefined.vert.qsb)
+qgis_add_rhi_shader(phong_datadefined_frag
+  FILE phong.frag DEFINES DATA_DEFINED=1
+  OUTPUT phong_datadefined.frag.qsb)
+qgis_add_rhi_instanced_shaders(phong)
 
-qt6_add_shaders(qgis_3d "qgis_3d_rhi_phong_datadefined_vert"
-  SILENT
-  PREFIX "/shaders/rhi"
-  BASE "${CMAKE_CURRENT_SOURCE_DIR}/shaders/rhi"
-  GLSL "120,150,330"
-  HLSL 50
-  MSL 12
-  DEFINES DATA_DEFINED=1
-  FILES shaders/rhi/phong.vert
-  OUTPUTS phong_datadefined.vert.qsb
-)
+# QgsGoochMaterial3D
+qgis_add_rhi_shader(gooch_vert FILE gooch.vert)
+qgis_add_rhi_shader(gooch_frag FILE gooch.frag)
+qgis_add_rhi_shader(gooch_datadefined_vert
+  FILE gooch.vert DEFINES DATA_DEFINED=1
+  OUTPUT gooch_datadefined.vert.qsb)
+qgis_add_rhi_shader(gooch_datadefined_frag
+  FILE gooch.frag DEFINES DATA_DEFINED=1
+  OUTPUT gooch_datadefined.frag.qsb)
+qgis_add_rhi_instanced_shaders(gooch)
 
-# only where the colour comes from differs in the fragment stage, so it has two variants
-qt6_add_shaders(qgis_3d "qgis_3d_rhi_phong_frag"
-  SILENT
-  PREFIX "/shaders/rhi"
-  BASE "${CMAKE_CURRENT_SOURCE_DIR}/shaders/rhi"
-  GLSL "120,150,330"
-  HLSL 50
-  MSL 12
-  FILES shaders/rhi/phong.frag
-)
-
-qt6_add_shaders(qgis_3d "qgis_3d_rhi_phong_datadefined_frag"
-  SILENT
-  PREFIX "/shaders/rhi"
-  BASE "${CMAKE_CURRENT_SOURCE_DIR}/shaders/rhi"
-  GLSL "120,150,330"
-  HLSL 50
-  MSL 12
-  DEFINES DATA_DEFINED=1
-  FILES shaders/rhi/phong.frag
-  OUTPUTS phong_datadefined.frag.qsb
-)
-
-qt6_add_shaders(qgis_3d "qgis_3d_rhi_shaders_instanced"
-  SILENT
-  PREFIX "/shaders/rhi"
-  BASE "${CMAKE_CURRENT_SOURCE_DIR}/shaders/rhi"
-  GLSL "120,150,330"
-  HLSL 50
-  MSL 12
-  DEFINES INSTANCING=1
-  FILES
-    shaders/rhi/unlit.vert
-  OUTPUTS
-    unlit_instanced.vert.qsb
-)
+# QgsPhongTexturedMaterial3D. Here the data defined variant is the one whose texture
+# transform comes from a vertex attribute rather than from the material.
+qgis_add_rhi_shader(phongtextured_vert FILE phongtextured.vert)
+qgis_add_rhi_shader(phongtextured_frag FILE phongtextured.frag)
+qgis_add_rhi_shader(phongtextured_datadefined_vert
+  FILE phongtextured.vert DEFINES DATA_DEFINED_TEXTURE_TRANSFORMS=1
+  OUTPUT phongtextured_datadefined.vert.qsb)
+qgis_add_rhi_instanced_shaders(phongtextured)
 
 if (USE_PRECOMPILED_HEADERS)
   target_precompile_headers(qgis_3d PRIVATE $<$<COMPILE_LANGUAGE:CXX>:${CMAKE_SOURCE_DIR}/src/core/qgis.h>)

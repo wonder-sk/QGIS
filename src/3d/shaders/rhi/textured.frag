@@ -1,12 +1,10 @@
 #version 440
+#extension GL_GOOGLE_include_directive : require
+
+#include "qgstexturedmaterial.glsl"
 
 layout( location = 0 ) in vec2 texCoord;
 layout( location = 0 ) out vec4 fragColor;
-
-layout( std140, binding = 3 ) uniform QgsTexturedBlock
-{
-  float opacity;
-} material;
 
 layout( binding = 4 ) uniform sampler2D diffuseTexture;
 
