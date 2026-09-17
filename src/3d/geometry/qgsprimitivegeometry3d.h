@@ -24,6 +24,9 @@
 
 #include <QSize>
 #include <QString>
+#include <QVector>
+#include <QVector3D>
+#include <QVector4D>
 
 #define SIP_NO_FILE
 
@@ -107,6 +110,18 @@ class _3D_EXPORT QgsPrimitiveGeometry3D
      */
     static std::unique_ptr<QgsPrimitiveGeometry3D> extrudedText( const QString &text, const QFont &font, float depth = 1.0f );
 
+    /**
+     * Makes the shape instanced, drawn once per entry of \a positions.
+     *
+     * \a scales and \a rotations are optional and must either be empty or hold one entry
+     * per position: what they are left out of comes from the material's own symbol scale
+     * and rotation instead, which is what Qgis::InstancedMaterialFlags tells the material.
+     */
+    void setInstances( const QVector<QVector3D> &positions, const QVector<QVector3D> &scales = {}, const QVector<QVector4D> &rotations = {} );
+
+    //! Returns the number of instances to draw, or zero when the shape is not instanced
+    int instanceCount() const { return mInstanceCount; }
+
     //! Returns the geometry to put in a render command
     const QgsGeometry3D *geometry() const { return &mGeometry; }
 
@@ -131,6 +146,10 @@ class _3D_EXPORT QgsPrimitiveGeometry3D
 
     QgsGpuBuffer mVertexBuffer { QgsGpuBuffer::Role::Vertex };
     QgsGpuBuffer mIndexBuffer { QgsGpuBuffer::Role::Index };
+    QgsGpuBuffer mInstanceTranslationBuffer { QgsGpuBuffer::Role::Vertex };
+    QgsGpuBuffer mInstanceScaleBuffer { QgsGpuBuffer::Role::Vertex };
+    QgsGpuBuffer mInstanceRotationBuffer { QgsGpuBuffer::Role::Vertex };
+    int mInstanceCount = 0;
     QgsGeometry3D mGeometry;
     int mStride = 0;
     bool mHasTangents = false;

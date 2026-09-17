@@ -32,11 +32,13 @@ set(QGIS_3D_SRCS
   qgsraycastcontext.cpp
   qgsraycasthit.cpp
   qgsraycastresult.cpp
+  qgsfeature3dhandler_p.cpp
   qgsrulebased3drenderer.cpp
   qgstiledscenechunkloader_p.cpp
   qgstiledscenelayer3drenderer.cpp
   qgstilingscheme.cpp
   qgsvectorlayer3drenderer.cpp
+  qgsvectorlayerchunkloader_p.cpp
   qgsmeshlayer3drenderer.cpp
   qgsfixedgradientbackgroundsettings.cpp
   qgsskyboxsettings.cpp
@@ -69,9 +71,12 @@ set(QGIS_3D_SRCS
   symbols/qgsbillboardgeometry3d.cpp
   symbols/qgspointcloudgeometry3d.cpp
   symbols/qgsline3dsymbol.cpp
+  symbols/qgsline3dsymbol_p.cpp
   symbols/qgsmesh3dsymbol.cpp
   symbols/qgspoint3dsymbol.cpp
+  symbols/qgspoint3dsymbol_p.cpp
   symbols/qgspolygon3dsymbol.cpp
+  symbols/qgspolygon3dsymbol_p.cpp
   symbols/qgspointcloud3dsymbol.cpp
   symbols/qgspointcloud3dsymbol_p.cpp
 
@@ -123,6 +128,7 @@ set(QGIS_3D_SRCS
   engine/materials/qgsglobematerial3d.cpp
   engine/materials/qgshighlightmaterial3d.cpp
   engine/materials/qgsgoochmaterial3d.cpp
+  engine/materials/qgsmaterial3dfactory.cpp
   engine/materials/qgsmaterial3dutils.cpp
   engine/materials/qgsmaterialcontext.cpp
   engine/materials/qgsmeshmaterial3d.cpp
@@ -264,6 +270,7 @@ set(QGIS_3D_HDRS
   engine/materials/qgsglobematerial3d.h
   engine/materials/qgshighlightmaterial3d.h
   engine/materials/qgsgoochmaterial3d.h
+  engine/materials/qgsmaterial3dfactory.h
   engine/materials/qgsmaterial3dutils.h
   engine/materials/qgsmaterialcontext.h
   engine/materials/qgsmeshmaterial3d.h
@@ -290,10 +297,15 @@ set(QGIS_3D_HDRS
 )
 
 set(QGIS_3D_PRIVATE_HDRS
+  qgsfeature3dhandler_p.h
   qgspointcloudlayerchunkloader_p.h
+  qgsvectorlayerchunkloader_p.h
   qgsvirtualpointcloudentity_p.h
   chunks/qgschunklist_p.h
+  symbols/qgsline3dsymbol_p.h
+  symbols/qgspoint3dsymbol_p.h
   symbols/qgspointcloud3dsymbol_p.h
+  symbols/qgspolygon3dsymbol_p.h
   terrain/qgsdemterraintilegeometry3d.h
   terrain/qgsdemterraintileloader_p.h
   terrain/qgsterraintexturegenerator_p.h

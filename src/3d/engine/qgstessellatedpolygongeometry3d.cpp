@@ -17,6 +17,8 @@
 
 #include <algorithm>
 
+#include "qgsmaterial3dutils.h"
+
 #include <QString>
 
 using namespace Qt::StringLiterals;
@@ -74,6 +76,30 @@ void QgsTessellatedPolygonGeometry3D::setIndexBufferData( const QByteArray &inde
   mGeometry.setIndexCount( indexCount );
 }
 
+void QgsTessellatedPolygonGeometry3D::setDataDefinedColorData( const QByteArray &data, const QStringList &attributeNames, bool useFloats )
+{
+  if ( data.isEmpty() || attributeNames.isEmpty() )
+    return;
+
+  mDataDefinedColorBuffer.setData( data );
+  QgsMaterial3DUtils::addDataDefinedColorAttributes( &mGeometry, &mDataDefinedColorBuffer, attributeNames, useFloats );
+}
+
+void QgsTessellatedPolygonGeometry3D::setTextureTransformData( const QByteArray &data )
+{
+  if ( data.isEmpty() )
+    return;
+
+  mTextureTransformBuffer.setData( data );
+
+  QgsVertexAttribute attribute;
+  attribute.name = u"ddTextureTransform"_s;
+  attribute.buffer = &mTextureTransformBuffer;
+  attribute.format = QRhiVertexInputAttribute::Float4;
+  attribute.byteStride = 4 * sizeof( float );
+  mGeometry.addAttribute( attribute );
+}
+
 void QgsTessellatedPolygonGeometry3D::setTriangleIndex( const QVector<QgsFeatureId> &featureIds, const QVector<uint> &startingIndices )
 {
   mFeatureIds = featureIds;
@@ -95,4 +121,6 @@ void QgsTessellatedPolygonGeometry3D::releaseGpuResources()
 {
   mVertexBuffer.releaseGpuResources();
   mIndexBuffer.releaseGpuResources();
+  mDataDefinedColorBuffer.releaseGpuResources();
+  mTextureTransformBuffer.releaseGpuResources();
 }

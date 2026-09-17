@@ -206,10 +206,41 @@ void QgsPrimitiveGeometry3D::setData( const QByteArray &vertexData, int vertexCo
   mGeometry.setIndexCount( indexCount );
 }
 
+void QgsPrimitiveGeometry3D::setInstances( const QVector<QVector3D> &positions, const QVector<QVector3D> &scales, const QVector<QVector4D> &rotations )
+{
+  const auto addInstanceAttribute = [this]( const QString &name, QgsGpuBuffer *buffer, const void *data, int count, int elementSize, QRhiVertexInputAttribute::Format format ) {
+    buffer->setData( QByteArray( reinterpret_cast<const char *>( data ), static_cast<qsizetype>( count ) * elementSize ) );
+
+    QgsVertexAttribute attribute;
+    attribute.name = name;
+    attribute.buffer = buffer;
+    attribute.format = format;
+    attribute.byteStride = static_cast<quint32>( elementSize );
+    // one step per instance, which is what makes these per-instance rather than per-vertex
+    attribute.instanceDivisor = 1;
+    mGeometry.addAttribute( attribute );
+  };
+
+  mInstanceCount = static_cast<int>( positions.size() );
+  if ( mInstanceCount == 0 )
+    return;
+
+  addInstanceAttribute( u"instanceTranslation"_s, &mInstanceTranslationBuffer, positions.constData(), mInstanceCount, sizeof( QVector3D ), QRhiVertexInputAttribute::Float3 );
+
+  if ( scales.size() == positions.size() )
+    addInstanceAttribute( u"instanceScale"_s, &mInstanceScaleBuffer, scales.constData(), mInstanceCount, sizeof( QVector3D ), QRhiVertexInputAttribute::Float3 );
+
+  if ( rotations.size() == positions.size() )
+    addInstanceAttribute( u"instanceRotation"_s, &mInstanceRotationBuffer, rotations.constData(), mInstanceCount, sizeof( QVector4D ), QRhiVertexInputAttribute::Float4 );
+}
+
 void QgsPrimitiveGeometry3D::releaseGpuResources()
 {
   mVertexBuffer.releaseGpuResources();
   mIndexBuffer.releaseGpuResources();
+  mInstanceTranslationBuffer.releaseGpuResources();
+  mInstanceScaleBuffer.releaseGpuResources();
+  mInstanceRotationBuffer.releaseGpuResources();
 }
 
 std::unique_ptr<QgsPrimitiveGeometry3D> QgsPrimitiveGeometry3D::sphere( float radius, int rings, int slices, bool withTangents )

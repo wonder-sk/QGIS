@@ -25,10 +25,13 @@
 #include "qgsapplication.h"
 #include "qgscategorized3drenderer.h"
 #include "qgsline3dsymbol.h"
+#include "qgsline3dsymbol_p.h"
 #include "qgsmeshlayer3drenderer.h"
 #include "qgspoint3dsymbol.h"
+#include "qgspoint3dsymbol_p.h"
 #include "qgspointcloudlayer3drenderer.h"
 #include "qgspolygon3dsymbol.h"
+#include "qgspolygon3dsymbol_p.h"
 #include "qgsrulebased3drenderer.h"
 #include "qgssettingsentryenumflag.h"
 #include "qgssettingsentryimpl.h"
@@ -70,9 +73,9 @@ void Qgs3D::initialize()
   QgsApplication::renderer3DRegistry()->addRenderer( new QgsTiledSceneLayer3DRendererMetadata );
   QgsApplication::renderer3DRegistry()->addRenderer( new QgsAnnotationLayer3DRendererMetadata );
 
-  QgsApplication::symbol3DRegistry()->addSymbolType( new Qgs3DSymbolMetadata( u"point"_s, QObject::tr( "Point" ), &QgsPoint3DSymbol::create ) );
-  QgsApplication::symbol3DRegistry()->addSymbolType( new Qgs3DSymbolMetadata( u"line"_s, QObject::tr( "Line" ), &QgsLine3DSymbol::create ) );
-  QgsApplication::symbol3DRegistry()->addSymbolType( new Qgs3DSymbolMetadata( u"polygon"_s, QObject::tr( "Polygon" ), &QgsPolygon3DSymbol::create ) );
+  QgsApplication::symbol3DRegistry()->addSymbolType( new Qgs3DSymbolMetadata( u"point"_s, QObject::tr( "Point" ), &QgsPoint3DSymbol::create, nullptr, Qgs3DSymbolImpl::handlerForPoint3DSymbol ) );
+  QgsApplication::symbol3DRegistry()->addSymbolType( new Qgs3DSymbolMetadata( u"line"_s, QObject::tr( "Line" ), &QgsLine3DSymbol::create, nullptr, Qgs3DSymbolImpl::handlerForLine3DSymbol ) );
+  QgsApplication::symbol3DRegistry()->addSymbolType( new Qgs3DSymbolMetadata( u"polygon"_s, QObject::tr( "Polygon" ), &QgsPolygon3DSymbol::create, nullptr, Qgs3DSymbolImpl::handlerForPolygon3DSymbol ) );
 
   // because we are usually populating the 3d registry AFTER QgsApplication initialization, we need to defer creation
   // of 3d symbols in the default style until now

@@ -21,6 +21,7 @@
 #include "qgsgeometry3d.h"
 #include "qgsgpubuffer.h"
 
+#include <QStringList>
 #include <QVector>
 
 #define SIP_NO_FILE
@@ -65,6 +66,21 @@ class _3D_EXPORT QgsTessellatedPolygonGeometry3D
     void setIndexBufferData( const QByteArray &indexData, int indexCount );
 
     /**
+     * Adds the per-vertex colours a data defined material reads, in \a data.
+     *
+     * \a attributeNames are the vertex shader inputs the packed colours feed, in the
+     * order they were packed; QgsMaterial3DFactory answers both that and \a useFloats for
+     * a given set of material settings.
+     */
+    void setDataDefinedColorData( const QByteArray &data, const QStringList &attributeNames, bool useFloats );
+
+    /**
+     * Adds the per-vertex texture transform in \a data, four floats per vertex: the
+     * offset, the scale and the rotation the material's data defined variant reads.
+     */
+    void setTextureTransformData( const QByteArray &data );
+
+    /**
      * Records which feature each triangle came from, for picking.
      *
      * For the feature at featureIds()[i], its triangles start at
@@ -96,6 +112,10 @@ class _3D_EXPORT QgsTessellatedPolygonGeometry3D
   private:
     QgsGpuBuffer mVertexBuffer { QgsGpuBuffer::Role::Vertex };
     QgsGpuBuffer mIndexBuffer { QgsGpuBuffer::Role::Index };
+    // data defined attributes are not interleaved with the tessellator's own output, which
+    // is written before the material is even consulted, so they get a buffer each
+    QgsGpuBuffer mDataDefinedColorBuffer { QgsGpuBuffer::Role::Vertex };
+    QgsGpuBuffer mTextureTransformBuffer { QgsGpuBuffer::Role::Vertex };
     QgsGeometry3D mGeometry;
     int mStride = 0;
 

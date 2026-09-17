@@ -20,6 +20,7 @@
 #include "qgsapplication.h"
 #include "qgsrulebased3drenderer.h"
 #include "qgsvectorlayer.h"
+#include "qgsvectorlayerchunkloader_p.h"
 #include "qgsxmlutils.h"
 
 #include <QString>
@@ -64,10 +65,12 @@ const QgsAbstract3DSymbol *QgsVectorLayer3DRenderer::symbol() const
 
 Qgs3DMapSceneEntity *QgsVectorLayer3DRenderer::createEntity( Qgs3DMapSettings *map ) const
 {
-  Q_UNUSED( map )
-  // the vector layer chunk loaders have not been ported to the QRhi engine yet, so the
-  // layer contributes nothing to a 3D scene
-  return nullptr;
+  QgsVectorLayer *vl = layer();
+
+  if ( !mSymbol || !vl )
+    return nullptr;
+
+  return new QgsVectorLayerChunkedEntity( map, vl, Qgs3DUtils::MINIMUM_VECTOR_Z_ESTIMATE, Qgs3DUtils::MAXIMUM_VECTOR_Z_ESTIMATE, tilingSettings(), mSymbol.get() );
 }
 
 void QgsVectorLayer3DRenderer::writeXml( QDomElement &elem, const QgsReadWriteContext &context ) const

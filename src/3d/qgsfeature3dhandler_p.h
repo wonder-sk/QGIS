@@ -1,0 +1,140 @@
+/***************************************************************************
+  qgsfeature3dhandler_p.h
+  --------------------------------------
+  Date                 : January 2019
+  Copyright            : (C) 2019 by Martin Dobias
+  Email                : wonder dot sk at gmail dot com
+ ***************************************************************************
+ *                                                                         *
+ *   This program is free software; you can redistribute it and/or modify  *
+ *   it under the terms of the GNU General Public License as published by  *
+ *   the Free Software Foundation; either version 2 of the License, or     *
+ *   (at your option) any later version.                                   *
+ ***************************************************************************/
+
+#ifndef QGSFEATURE3DHANDLER_P_H
+#define QGSFEATURE3DHANDLER_P_H
+
+/// @cond PRIVATE
+
+//
+//  W A R N I N G
+//  -------------
+//
+// This file is not part of the QGIS API.  It exists purely as an
+// implementation detail.  This header file may change from version to
+// version without notice, or even be removed.
+//
+
+#include <memory>
+
+#include "qgsbox3d.h"
+#include "qgsvector3d.h"
+
+#include <QSet>
+#include <QString>
+#include <QVector>
+
+#define SIP_NO_FILE
+
+class Qgs3DRenderContext;
+class QgsFeature;
+class QgsGeometry;
+class QgsSceneObject3D;
+
+
+/**
+ * \ingroup qgis_3d
+ * \brief Interface to be implemented by 3D symbol implementations in order to generate 3D geometry.
+ */
+class QgsFeature3DHandler
+{
+  public:
+    virtual ~QgsFeature3DHandler() = default;
+
+    /**
+     * Called before feature iteration starts to initialize, get required attributes.
+     * \returns TRUE on success (on FALSE the handler failed to initialize and processFeature() / createSceneObject() should not be called
+     */
+    virtual bool prepare( const Qgs3DRenderContext &context, QSet<QString> &attributeNames, const QgsBox3D &chunkExtent ) = 0;
+
+    /**
+     * Called for every feature to extract information out of it into some
+     * temporary variables in the derived handler class.
+     */
+    virtual void processFeature( const QgsFeature &feature, const Qgs3DRenderContext &context ) = 0;
+
+    /**
+     * When feature iteration has finished, createSceneObject() is called to turn the
+     * extracted data into something the render passes can draw.
+     *
+     * May return NULLPTR when there turned out to be nothing to draw. This is called on
+     * the main thread, but nothing here touches the GPU: a scene object holds CPU side
+     * buffers until the render thread first draws it.
+     */
+    virtual std::unique_ptr<QgsSceneObject3D> createSceneObject( const Qgs3DRenderContext &context ) = 0;
+
+    /**
+     * Returns minimal Z value of the data (in world coordinates).
+     * \note this method should not be called before call to createSceneObject() - it may not be initialized
+     */
+    float zMinimum() const { return mZMin; }
+
+    /**
+     * Returns maximal Z value of the data (in world coordinates).
+     * \note this method should not be called before call to createSceneObject() - it may not be initialized
+     */
+    float zMaximum() const { return mZMax; }
+
+    /**
+     * Returns the number of features processed by the handler.
+     */
+    int featureCount() const { return mFeatureCount; }
+
+    /**
+     * Sets whether the feature handler should use highlight material for the created 3D geometry. This is used
+     * for highlighting identified features.
+     * \since QGIS 4.0
+     */
+    void setHighlightingEnabled( bool enable ) { mHighlightingEnabled = enable; }
+
+    /**
+     * Returns whether the feature handler will use highlight material for the created 3D geometry.
+     * \since QGIS 4.0
+     */
+    bool highlightingEnabled() const { return mHighlightingEnabled; }
+
+  protected:
+    //! updates zMinimum, zMaximum from the vector of positions in 3D world coordinates
+    void updateZRangeFromPositions( const QVector<QVector3D> &positions );
+
+    /**
+     * Clips \a geom to the chunk extents if it is larger than MAX_GEOM_BBOX_SIZE
+     * Return TRUE if \a geom was clipped, FALSE otherwise
+     */
+    bool clipGeometryIfTooLarge( QgsGeometry &geom ) const;
+
+  protected:
+    float mZMin = std::numeric_limits<float>::max();
+    float mZMax = std::numeric_limits<float>::lowest();
+    int mFeatureCount = 0;
+    bool mHighlightingEnabled = false;
+
+    /**
+     * Origin (in map coordinates) for output geometries - it is kind of arbitrary, but it should be
+     * picked so that the coordinates are relatively small to avoid numerical precision issues (e.g. at the center of the chunk)
+     */
+    QgsVector3D mChunkOrigin;
+
+    //! bounding box of the chunk
+    QgsBox3D mChunkExtent;
+
+  private:
+    //! features whose bbox is larger than this should be clipped to the chunk's extents
+    static constexpr double MAX_GEOM_BBOX_SIZE = 1e6;
+};
+
+
+/// @endcond
+
+#endif // QGSFEATURE3DHANDLER_P_H

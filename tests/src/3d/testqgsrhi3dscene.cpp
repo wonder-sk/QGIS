@@ -15,7 +15,9 @@
 #include "qgs3d.h"
 #include "qgs3dmapscene.h"
 #include "qgs3dmapsettings.h"
+#include "qgsabstractmaterialsettings.h"
 #include "qgsapplication.h"
+#include "qgsbillboardmaterial3d.h"
 #include "qgscamera3d.h"
 #include "qgscameracontroller.h"
 #include "qgschunkedentity.h"
@@ -23,14 +25,28 @@
 #include "qgscoordinatetransform.h"
 #include "qgsdemterraingenerator.h"
 #include "qgsdirectionallightsettings.h"
+#include "qgsfeature.h"
 #include "qgsflatterraingenerator.h"
+#include "qgsflatterrainsettings.h"
+#include "qgsgeometry.h"
 #include "qgsgeometry3d.h"
+#include "qgsline3dsymbol.h"
+#include "qgsmetalroughmaterial3d.h"
+#include "qgsmetalroughtexturedmaterialsettings.h"
+#include "qgsphongmaterial3d.h"
+#include "qgsphongmaterialsettings.h"
+#include "qgsphongtexturedmaterial3d.h"
+#include "qgsphongtexturedmaterialsettings.h"
+#include "qgspoint3dsymbol.h"
 #include "qgspointcloud3dsymbol.h"
 #include "qgspointcloudlayer.h"
 #include "qgspointcloudlayer3drenderer.h"
 #include "qgspointcloudmaterial3d.h"
 #include "qgspointlightsettings.h"
+#include "qgspolygon3dsymbol.h"
 #include "qgsproject.h"
+#include "qgsproperty.h"
+#include "qgspropertycollection.h"
 #include "qgsrasterlayer.h"
 #include "qgsrhi3dengine.h"
 #include "qgssceneobject3d.h"
@@ -38,6 +54,8 @@
 #include "qgstest.h"
 #include "qgstiledscenelayer.h"
 #include "qgstiledscenelayer3drenderer.h"
+#include "qgsvectorlayer.h"
+#include "qgsvectorlayer3drenderer.h"
 
 #include <QCoreApplication>
 #include <QElapsedTimer>
@@ -79,6 +97,15 @@ class TestQgsRhi3DScene : public QgsTest
     void testRendersTiledScene();
     void testRendersInstancedTiledScene();
 
+    void testRendersExtrudedPolygons();
+    void testRendersTexturedPolygons();
+    void testMetalRoughTexturedPolygonsCarryTangents();
+    void testPolygonDataDefinedColorsAddAttributes();
+    void testRendersBufferedLines();
+    void testPointSymbolProducesInstances();
+    void testBillboardPointSymbolProducesASprite();
+    void testTerrainElevationOffsetMovesVectorChunks();
+
   private:
     /**
      * Builds the map settings a terrain scene needs, flat unless \a withDem is TRUE.
@@ -90,6 +117,20 @@ class TestQgsRhi3DScene : public QgsTest
      * no terrain, and one overhead directional light.
      */
     std::unique_ptr<Qgs3DMapSettings> createPointCloudMapSettings() const;
+
+    /**
+     * Builds a memory layer of \a wkbType holding \a wkts, in the project's CRS.
+     *
+     * The caller owns the layer; it is not added to the project, so that each test can
+     * give the same geometries a different 3D renderer without stepping on the others.
+     */
+    std::unique_ptr<QgsVectorLayer> createVectorLayer( const QString &wkbType, const QStringList &wkts ) const;
+
+    /**
+     * Builds the map settings a vector layer scene needs: the layer alone in the frame,
+     * flat terrain switched off, and one overhead light.
+     */
+    std::unique_ptr<Qgs3DMapSettings> createVectorMapSettings( QgsVectorLayer *layer ) const;
 
     /**
      * Returns the active chunk nodes of the chunked entity \a scene built for \a layer.
@@ -452,6 +493,44 @@ std::unique_ptr<Qgs3DMapSettings> TestQgsRhi3DScene::createPointCloudMapSettings
   return map;
 }
 
+std::unique_ptr<QgsVectorLayer> TestQgsRhi3DScene::createVectorLayer( const QString &wkbType, const QStringList &wkts ) const
+{
+  auto layer = std::make_unique<QgsVectorLayer>( u"%1?crs=EPSG:27700"_s.arg( wkbType ), u"vector"_s, u"memory"_s );
+
+  QgsFeatureList features;
+  for ( const QString &wkt : wkts )
+  {
+    QgsFeature feature( layer->fields() );
+    feature.setGeometry( QgsGeometry::fromWkt( wkt ) );
+    features << feature;
+  }
+  layer->dataProvider()->addFeatures( features );
+  layer->updateExtents();
+  return layer;
+}
+
+std::unique_ptr<Qgs3DMapSettings> TestQgsRhi3DScene::createVectorMapSettings( QgsVectorLayer *layer ) const
+{
+  auto map = std::make_unique<Qgs3DMapSettings>();
+  map->setCrs( layer->crs() );
+  map->setExtent( layer->extent() );
+  map->setLayers( QList<QgsMapLayer *>() << layer );
+  map->setTransformContext( mProject->transformContext() );
+  map->setPathResolver( mProject->pathResolver() );
+  map->setMapThemeCollection( mProject->mapThemeCollection() );
+  map->setOutputDpi( 96 );
+  map->setBackgroundColor( Qt::black );
+
+  // the vector layer is the only thing in the frame, so that counting lit pixels counts it
+  map->setTerrainRenderingEnabled( false );
+
+  QgsDirectionalLightSettings light;
+  light.setDirection( QgsVector3D( 0, 0, -1 ) );
+  map->setLightSources( { light.clone() } );
+
+  return map;
+}
+
 int TestQgsRhi3DScene::countLitPixels( const QImage &image, int threshold )
 {
   int count = 0;
@@ -680,6 +759,475 @@ void TestQgsRhi3DScene::testRendersInstancedTiledScene()
   QVERIFY( !image.isNull() );
   const int lit = countLitPixels( image );
   QVERIFY2( lit > 100, qPrintable( u"only %1 pixels were drawn"_s.arg( lit ) ) );
+}
+
+void TestQgsRhi3DScene::testRendersExtrudedPolygons()
+{
+  std::unique_ptr<QgsVectorLayer> layer = createVectorLayer( u"Polygon"_s, { u"POLYGON((0 0, 100 0, 100 100, 0 100, 0 0))"_s, u"POLYGON((200 200, 300 200, 300 300, 200 300, 200 200))"_s } );
+  QVERIFY( layer->isValid() );
+  QCOMPARE( layer->featureCount(), 2 );
+
+  auto *symbol = new QgsPolygon3DSymbol();
+  symbol->setExtrusionHeight( 50 );
+  QgsPhongMaterialSettings material;
+  material.setDiffuse( QColor( 255, 0, 0 ) );
+  material.setAmbient( QColor( 128, 0, 0 ) );
+  symbol->setMaterialSettings( material.clone() );
+
+  auto *renderer = new QgsVectorLayer3DRenderer( symbol );
+  renderer->setLayer( layer.get() );
+  layer->setRenderer3D( renderer );
+
+  std::unique_ptr<Qgs3DMapSettings> map = createVectorMapSettings( layer.get() );
+
+  QgsRhi3DEngine engine( QSize( 400, 300 ) );
+  QVERIFY( engine.initialize() );
+
+  auto scene = std::make_unique<Qgs3DMapScene>( *map, &engine );
+  engine.setScene( scene.get() );
+
+  scene->viewZoomFull();
+  QVERIFY( renderUntilLoaded( engine, scene.get() ) );
+
+  int parts = 0;
+  const QList<QgsChunkNode *> nodes = layerChunkNodes( scene.get(), layer.get() );
+  QVERIFY2( !nodes.isEmpty(), "the vector layer produced no chunks" );
+  for ( QgsChunkNode *node : nodes )
+  {
+    QgsSceneObject3D *object = node->sceneObject();
+    if ( !object )
+      continue;
+
+    for ( const std::unique_ptr<QgsSceneObject3D::Part> &part : object->parts() )
+    {
+      // a tessellated polygon is indexed and lit, so it carries a normal per vertex
+      QVERIFY( part->geometry->isIndexed() );
+      QVERIFY( part->geometry->indexCount() > 0 );
+      QVERIFY( part->geometry->attribute( u"vertexPosition"_s ) );
+      QVERIFY( part->geometry->attribute( u"vertexNormal"_s ) );
+      QCOMPARE( part->instanceCount, 1 );
+
+      const auto *phong = dynamic_cast<const QgsPhongMaterial3D *>( part->material.get() );
+      QVERIFY( phong );
+      QVERIFY( !phong->isDataDefined() );
+      ++parts;
+    }
+  }
+  QVERIFY2( parts > 0, "no polygon chunk produced any parts" );
+
+  const QImage image = engine.renderedImage();
+  QVERIFY( !image.isNull() );
+  const int lit = countLitPixels( image );
+  QVERIFY2( lit > 1000, qPrintable( u"only %1 pixels were drawn"_s.arg( lit ) ) );
+}
+
+void TestQgsRhi3DScene::testRendersTexturedPolygons()
+{
+  std::unique_ptr<QgsVectorLayer> layer = createVectorLayer( u"Polygon"_s, { u"POLYGON((0 0, 100 0, 100 100, 0 100, 0 0))"_s } );
+  QVERIFY( layer->isValid() );
+
+  auto *symbol = new QgsPolygon3DSymbol();
+  symbol->setExtrusionHeight( 30 );
+
+  // a textured material reads vertexTexCoord, and a shader input the geometry does not
+  // supply leaves the pipeline unbuildable - so what this really checks is that the
+  // tessellator was configured from the same requiresTextureCoordinates() the material was
+  QgsPhongTexturedMaterialSettings material;
+  material.setDiffuseTexturePath( QString( TEST_DATA_DIR ) + "/3d/materials/Metal005_Color.jpg" );
+  material.setTextureScale( 2.0 );
+  symbol->setMaterialSettings( material.clone() );
+
+  auto *renderer = new QgsVectorLayer3DRenderer( symbol );
+  renderer->setLayer( layer.get() );
+  layer->setRenderer3D( renderer );
+
+  std::unique_ptr<Qgs3DMapSettings> map = createVectorMapSettings( layer.get() );
+
+  QgsRhi3DEngine engine( QSize( 400, 300 ) );
+  QVERIFY( engine.initialize() );
+
+  auto scene = std::make_unique<Qgs3DMapScene>( *map, &engine );
+  engine.setScene( scene.get() );
+
+  scene->viewZoomFull();
+  QVERIFY( renderUntilLoaded( engine, scene.get() ) );
+
+  bool sawTexturedPart = false;
+  const QList<QgsChunkNode *> nodes = layerChunkNodes( scene.get(), layer.get() );
+  QVERIFY( !nodes.isEmpty() );
+  for ( QgsChunkNode *node : nodes )
+  {
+    QgsSceneObject3D *object = node->sceneObject();
+    if ( !object )
+      continue;
+    for ( const std::unique_ptr<QgsSceneObject3D::Part> &part : object->parts() )
+    {
+      QVERIFY( part->geometry->attribute( u"vertexTexCoord"_s ) );
+
+      const auto *textured = dynamic_cast<const QgsPhongTexturedMaterial3D *>( part->material.get() );
+      QVERIFY( textured );
+      QVERIFY( textured->diffuseTexture() );
+
+      // the texture scale exists to tile the image across the surface, which clamping
+      // would quietly turn into a stretched border
+      const QVector<QgsMaterial3D::TextureBinding> &bindings = textured->textures();
+      QCOMPARE( bindings.size(), 1 );
+      QCOMPARE( bindings.at( 0 ).addressU, QRhiSampler::Repeat );
+      QCOMPARE( bindings.at( 0 ).addressV, QRhiSampler::Repeat );
+
+      sawTexturedPart = true;
+    }
+  }
+  QVERIFY2( sawTexturedPart, "no textured part was produced" );
+
+  const QImage image = engine.renderedImage();
+  QVERIFY( !image.isNull() );
+  const int lit = countLitPixels( image );
+  QVERIFY2( lit > 1000, qPrintable( u"only %1 pixels were drawn"_s.arg( lit ) ) );
+}
+
+void TestQgsRhi3DScene::testMetalRoughTexturedPolygonsCarryTangents()
+{
+  std::unique_ptr<QgsVectorLayer> layer = createVectorLayer( u"Polygon"_s, { u"POLYGON((0 0, 100 0, 100 100, 0 100, 0 0))"_s } );
+  QVERIFY( layer->isValid() );
+
+  auto *symbol = new QgsPolygon3DSymbol();
+  symbol->setExtrusionHeight( 30 );
+
+  // a normal map is only readable in a tangent frame, so this material asks for tangents
+  // as well as texture coordinates, and both have to reach the geometry
+  QgsMetalRoughTexturedMaterialSettings material;
+  material.setBaseColorTexturePath( QString( TEST_DATA_DIR ) + "/3d/materials/Metal005_Color.jpg" );
+  material.setNormalTexturePath( QString( TEST_DATA_DIR ) + "/3d/materials/Metal005_Normal.jpg" );
+  symbol->setMaterialSettings( material.clone() );
+
+  auto *renderer = new QgsVectorLayer3DRenderer( symbol );
+  renderer->setLayer( layer.get() );
+  layer->setRenderer3D( renderer );
+
+  std::unique_ptr<Qgs3DMapSettings> map = createVectorMapSettings( layer.get() );
+
+  QgsRhi3DEngine engine( QSize( 400, 300 ) );
+  QVERIFY( engine.initialize() );
+
+  auto scene = std::make_unique<Qgs3DMapScene>( *map, &engine );
+  engine.setScene( scene.get() );
+
+  scene->viewZoomFull();
+  QVERIFY( renderUntilLoaded( engine, scene.get() ) );
+
+  bool sawPart = false;
+  const QList<QgsChunkNode *> nodes = layerChunkNodes( scene.get(), layer.get() );
+  QVERIFY( !nodes.isEmpty() );
+  for ( QgsChunkNode *node : nodes )
+  {
+    QgsSceneObject3D *object = node->sceneObject();
+    if ( !object )
+      continue;
+    for ( const std::unique_ptr<QgsSceneObject3D::Part> &part : object->parts() )
+    {
+      QVERIFY( part->geometry->attribute( u"vertexTexCoord"_s ) );
+      QVERIFY( part->geometry->attribute( u"vertexTangent"_s ) );
+
+      const auto *metalRough = dynamic_cast<const QgsMetalRoughMaterial3D *>( part->material.get() );
+      QVERIFY( metalRough );
+      QVERIFY( metalRough->vertexAttributes().testFlag( QgsMetalRoughMaterial3D::VertexAttribute::TextureCoords ) );
+      QVERIFY( metalRough->vertexAttributes().testFlag( QgsMetalRoughMaterial3D::VertexAttribute::Tangents ) );
+      QVERIFY( metalRough->features().testFlag( QgsMetalRoughMaterial3D::Feature::BaseColorMap ) );
+      QVERIFY( metalRough->features().testFlag( QgsMetalRoughMaterial3D::Feature::NormalMap ) );
+      sawPart = true;
+    }
+  }
+  QVERIFY2( sawPart, "no metal rough textured part was produced" );
+
+  const QImage image = engine.renderedImage();
+  QVERIFY( !image.isNull() );
+  const int lit = countLitPixels( image );
+  QVERIFY2( lit > 1000, qPrintable( u"only %1 pixels were drawn"_s.arg( lit ) ) );
+}
+
+void TestQgsRhi3DScene::testPolygonDataDefinedColorsAddAttributes()
+{
+  std::unique_ptr<QgsVectorLayer> layer = createVectorLayer( u"Polygon"_s, { u"POLYGON((0 0, 100 0, 100 100, 0 100, 0 0))"_s } );
+  QVERIFY( layer->isValid() );
+
+  auto *symbol = new QgsPolygon3DSymbol();
+  symbol->setExtrusionHeight( 50 );
+
+  // a data defined colour is a per-vertex attribute rather than a uniform, which is a
+  // different baked shader - so the geometry has to grow the inputs that shader reads
+  QgsPhongMaterialSettings material;
+  QgsPropertyCollection properties;
+  properties.setProperty( QgsAbstractMaterialSettings::Property::Diffuse, QgsProperty::fromExpression( u"'#00ff00'"_s ) );
+  material.setDataDefinedProperties( properties );
+  symbol->setMaterialSettings( material.clone() );
+
+  auto *renderer = new QgsVectorLayer3DRenderer( symbol );
+  renderer->setLayer( layer.get() );
+  layer->setRenderer3D( renderer );
+
+  std::unique_ptr<Qgs3DMapSettings> map = createVectorMapSettings( layer.get() );
+
+  QgsRhi3DEngine engine( QSize( 400, 300 ) );
+  QVERIFY( engine.initialize() );
+
+  auto scene = std::make_unique<Qgs3DMapScene>( *map, &engine );
+  engine.setScene( scene.get() );
+
+  scene->viewZoomFull();
+  QVERIFY( renderUntilLoaded( engine, scene.get() ) );
+
+  bool sawDataDefinedPart = false;
+  const QList<QgsChunkNode *> nodes = layerChunkNodes( scene.get(), layer.get() );
+  for ( QgsChunkNode *node : nodes )
+  {
+    QgsSceneObject3D *object = node->sceneObject();
+    if ( !object )
+      continue;
+
+    for ( const std::unique_ptr<QgsSceneObject3D::Part> &part : object->parts() )
+    {
+      const auto *phong = dynamic_cast<const QgsPhongMaterial3D *>( part->material.get() );
+      QVERIFY( phong );
+      QVERIFY( phong->isDataDefined() );
+
+      QVERIFY( part->geometry->attribute( u"dataDefinedAmbientColor"_s ) );
+      QVERIFY( part->geometry->attribute( u"dataDefinedDiffuseColor"_s ) );
+      QVERIFY( part->geometry->attribute( u"dataDefinedSpecularColor"_s ) );
+      sawDataDefinedPart = true;
+    }
+  }
+  QVERIFY2( sawDataDefinedPart, "no data defined part was produced" );
+
+  // a shader input the geometry cannot feed leaves the pipeline unbuildable and nothing
+  // drawn at all, so a pixel count is what says the attribute names actually match
+  const QImage image = engine.renderedImage();
+  QVERIFY( !image.isNull() );
+  const int lit = countLitPixels( image );
+  QVERIFY2( lit > 1000, qPrintable( u"only %1 pixels were drawn"_s.arg( lit ) ) );
+}
+
+void TestQgsRhi3DScene::testRendersBufferedLines()
+{
+  std::unique_ptr<QgsVectorLayer> layer = createVectorLayer( u"LineString"_s, { u"LINESTRING(0 0, 100 0, 100 100)"_s } );
+  QVERIFY( layer->isValid() );
+
+  // the buffered path is the one that does not wait for P6's thick lines, so it is the
+  // one a pixel count can lean on
+  auto *symbol = new QgsLine3DSymbol();
+  symbol->setRenderAsSimpleLines( false );
+  symbol->setWidth( 10 );
+  symbol->setExtrusionHeight( 20 );
+  QgsPhongMaterialSettings material;
+  material.setDiffuse( QColor( 0, 0, 255 ) );
+  material.setAmbient( QColor( 0, 0, 128 ) );
+  symbol->setMaterialSettings( material.clone() );
+
+  auto *renderer = new QgsVectorLayer3DRenderer( symbol );
+  renderer->setLayer( layer.get() );
+  layer->setRenderer3D( renderer );
+
+  std::unique_ptr<Qgs3DMapSettings> map = createVectorMapSettings( layer.get() );
+
+  QgsRhi3DEngine engine( QSize( 400, 300 ) );
+  QVERIFY( engine.initialize() );
+
+  auto scene = std::make_unique<Qgs3DMapScene>( *map, &engine );
+  engine.setScene( scene.get() );
+
+  scene->viewZoomFull();
+  QVERIFY( renderUntilLoaded( engine, scene.get() ) );
+
+  int parts = 0;
+  const QList<QgsChunkNode *> nodes = layerChunkNodes( scene.get(), layer.get() );
+  QVERIFY( !nodes.isEmpty() );
+  for ( QgsChunkNode *node : nodes )
+  {
+    QgsSceneObject3D *object = node->sceneObject();
+    if ( !object )
+      continue;
+    for ( const std::unique_ptr<QgsSceneObject3D::Part> &part : object->parts() )
+    {
+      QVERIFY( part->geometry->isIndexed() );
+      QVERIFY( part->geometry->indexCount() > 0 );
+      ++parts;
+    }
+  }
+  QVERIFY2( parts > 0, "no line chunk produced any parts" );
+
+  const QImage image = engine.renderedImage();
+  QVERIFY( !image.isNull() );
+  const int lit = countLitPixels( image );
+  QVERIFY2( lit > 200, qPrintable( u"only %1 pixels were drawn"_s.arg( lit ) ) );
+}
+
+void TestQgsRhi3DScene::testPointSymbolProducesInstances()
+{
+  std::unique_ptr<QgsVectorLayer> layer = createVectorLayer( u"Point"_s, { u"POINT(0 0)"_s, u"POINT(50 50)"_s, u"POINT(100 0)"_s } );
+  QVERIFY( layer->isValid() );
+
+  auto *symbol = new QgsPoint3DSymbol();
+  symbol->setShape( Qgis::Point3DShape::Sphere );
+  QVariantMap shapeProperties;
+  shapeProperties[u"radius"_s] = 20.0;
+  shapeProperties[u"rings"_s] = 16;
+  shapeProperties[u"slices"_s] = 16;
+  symbol->setShapeProperties( shapeProperties );
+  QgsPhongMaterialSettings material;
+  material.setDiffuse( QColor( 0, 255, 0 ) );
+  material.setAmbient( QColor( 0, 128, 0 ) );
+  symbol->setMaterialSettings( material.clone() );
+
+  auto *renderer = new QgsVectorLayer3DRenderer( symbol );
+  renderer->setLayer( layer.get() );
+  layer->setRenderer3D( renderer );
+
+  std::unique_ptr<Qgs3DMapSettings> map = createVectorMapSettings( layer.get() );
+
+  QgsRhi3DEngine engine( QSize( 400, 300 ) );
+  QVERIFY( engine.initialize() );
+
+  auto scene = std::make_unique<Qgs3DMapScene>( *map, &engine );
+  engine.setScene( scene.get() );
+
+  scene->viewZoomFull();
+  QVERIFY( renderUntilLoaded( engine, scene.get() ) );
+
+  int instances = 0;
+  const QList<QgsChunkNode *> nodes = layerChunkNodes( scene.get(), layer.get() );
+  QVERIFY( !nodes.isEmpty() );
+  for ( QgsChunkNode *node : nodes )
+  {
+    QgsSceneObject3D *object = node->sceneObject();
+    if ( !object )
+      continue;
+    for ( const std::unique_ptr<QgsSceneObject3D::Part> &part : object->parts() )
+    {
+      // one sphere mesh drawn once per point, with the position as a per-instance attribute
+      QVERIFY( part->geometry->attribute( u"instanceTranslation"_s ) );
+      QCOMPARE( part->geometry->attribute( u"instanceTranslation"_s )->instanceDivisor, 1u );
+      // neither scale nor rotation is data defined here, so they come from the material
+      QVERIFY( !part->geometry->attribute( u"instanceScale"_s ) );
+      QVERIFY( !part->geometry->attribute( u"instanceRotation"_s ) );
+
+      const auto *phong = dynamic_cast<const QgsPhongMaterial3D *>( part->material.get() );
+      QVERIFY( phong );
+      QVERIFY( phong->isInstanced() );
+
+      instances += part->instanceCount;
+    }
+  }
+  QCOMPARE( instances, 3 );
+
+  const QImage image = engine.renderedImage();
+  QVERIFY( !image.isNull() );
+  const int lit = countLitPixels( image );
+  QVERIFY2( lit > 200, qPrintable( u"only %1 pixels were drawn"_s.arg( lit ) ) );
+}
+
+void TestQgsRhi3DScene::testBillboardPointSymbolProducesASprite()
+{
+  std::unique_ptr<QgsVectorLayer> layer = createVectorLayer( u"Point"_s, { u"POINT(0 0)"_s, u"POINT(50 50)"_s } );
+  QVERIFY( layer->isValid() );
+
+  auto *symbol = new QgsPoint3DSymbol();
+  symbol->setShape( Qgis::Point3DShape::Billboard );
+
+  auto *renderer = new QgsVectorLayer3DRenderer( symbol );
+  renderer->setLayer( layer.get() );
+  layer->setRenderer3D( renderer );
+
+  std::unique_ptr<Qgs3DMapSettings> map = createVectorMapSettings( layer.get() );
+
+  QgsRhi3DEngine engine( QSize( 400, 300 ) );
+  QVERIFY( engine.initialize() );
+
+  auto scene = std::make_unique<Qgs3DMapScene>( *map, &engine );
+  engine.setScene( scene.get() );
+
+  scene->viewZoomFull();
+  QVERIFY( renderUntilLoaded( engine, scene.get() ) );
+
+  int instances = 0;
+  const QList<QgsChunkNode *> nodes = layerChunkNodes( scene.get(), layer.get() );
+  QVERIFY( !nodes.isEmpty() );
+  for ( QgsChunkNode *node : nodes )
+  {
+    QgsSceneObject3D *object = node->sceneObject();
+    if ( !object )
+      continue;
+    for ( const std::unique_ptr<QgsSceneObject3D::Part> &part : object->parts() )
+    {
+      const auto *billboard = dynamic_cast<const QgsBillboardMaterial3D *>( part->material.get() );
+      QVERIFY( billboard );
+      QVERIFY( billboard->spriteTexture() );
+      QVERIFY( !billboard->spriteTexture()->image().isNull() );
+      QCOMPARE( billboard->topology(), QRhiGraphicsPipeline::TriangleStrip );
+
+      // a quad that turns to face the main camera would be a nonsense shadow caster
+      QVERIFY( !part->castsShadows );
+
+      instances += part->instanceCount;
+    }
+  }
+  QCOMPARE( instances, 2 );
+}
+
+void TestQgsRhi3DScene::testTerrainElevationOffsetMovesVectorChunks()
+{
+  std::unique_ptr<QgsVectorLayer> layer = createVectorLayer( u"Polygon"_s, { u"POLYGON((0 0, 100 0, 100 100, 0 100, 0 0))"_s } );
+  QVERIFY( layer->isValid() );
+
+  auto *symbol = new QgsPolygon3DSymbol();
+  symbol->setExtrusionHeight( 10 );
+  // features clamped to absolute altitudes do not follow the terrain, so this is what
+  // decides whether the offset reaches the chunks at all
+  symbol->setAltitudeClamping( Qgis::AltitudeClamping::Relative );
+  auto *renderer = new QgsVectorLayer3DRenderer( symbol );
+  renderer->setLayer( layer.get() );
+  layer->setRenderer3D( renderer );
+
+  std::unique_ptr<Qgs3DMapSettings> map = createVectorMapSettings( layer.get() );
+
+  QgsRhi3DEngine engine( QSize( 400, 300 ) );
+  QVERIFY( engine.initialize() );
+
+  auto scene = std::make_unique<Qgs3DMapScene>( *map, &engine );
+  engine.setScene( scene.get() );
+
+  scene->viewZoomFull();
+  QVERIFY( renderUntilLoaded( engine, scene.get() ) );
+
+  const auto chunkTransformZ = [&scene, &layer] {
+    const QList<QgsChunkNode *> nodes = layerChunkNodes( scene.get(), layer.get() );
+    for ( QgsChunkNode *node : nodes )
+    {
+      if ( QgsSceneObject3D *object = node->sceneObject() )
+        return object->transform().column( 3 ).z();
+    }
+    return std::numeric_limits<float>::quiet_NaN();
+  };
+
+  QCOMPARE( chunkTransformZ(), 0.0f );
+
+  // raising the terrain moves the features that follow it, and chunks that are already
+  // loaded are moved rather than rebuilt
+  auto terrainSettings = std::make_unique<QgsFlatTerrainSettings>();
+  terrainSettings->setElevationOffset( 25.0 );
+  map->setTerrainSettings( terrainSettings.release() );
+
+  QCOMPARE( chunkTransformZ(), 25.0f );
+
+  // a symbol clamped to absolute altitudes sits where its data says regardless
+  symbol = new QgsPolygon3DSymbol();
+  symbol->setExtrusionHeight( 10 );
+  symbol->setAltitudeClamping( Qgis::AltitudeClamping::Absolute );
+  auto *absoluteRenderer = new QgsVectorLayer3DRenderer( symbol );
+  absoluteRenderer->setLayer( layer.get() );
+  layer->setRenderer3D( absoluteRenderer );
+
+  QVERIFY( renderUntilLoaded( engine, scene.get() ) );
+  QCOMPARE( chunkTransformZ(), 0.0f );
 }
 
 QGSTEST_MAIN( TestQgsRhi3DScene )
