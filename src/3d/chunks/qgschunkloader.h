@@ -54,19 +54,12 @@ class QgsChunkLoader : public QgsChunkQueueJob
     {}
 
     /**
-     * Run in main thread to use loaded data.
-     * Returns entity attached to the given parent entity in disabled state
-     */
-    virtual Qt3DCore::QEntity *createEntity( Qt3DCore::QEntity *parent ) = 0;
-
-    /**
-     * Run in main thread to use loaded data, for a loader ported to the QRhi engine.
+     * Run in the main thread to use loaded data.
      *
-     * Returns the chunk as a scene object, or NULLPTR if this loader still produces a
-     * Qt3D entity, which is what QgsChunkedEntity falls back to. Every loader will
-     * eventually implement this one and createEntity() will go.
+     * Returns the chunk as a scene object, which is what the render passes draw. May
+     * return NULLPTR if the chunk turned out to have nothing to draw.
      */
-    virtual std::unique_ptr<QgsSceneObject3D> createSceneObject() { return nullptr; }
+    virtual std::unique_ptr<QgsSceneObject3D> createSceneObject() = 0;
 };
 
 

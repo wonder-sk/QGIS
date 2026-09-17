@@ -29,12 +29,6 @@
 
 class QgsChunkNode;
 
-namespace Qt3DCore
-{
-  class QEntity;
-}
-
-
 #include <QObject>
 
 #define SIP_NO_FILE
@@ -50,8 +44,8 @@ namespace Qt3DCore
  *
  * There are currently two types of queue jobs:
  *
- * 1. chunk loaders: prepares all data needed for creation of entities (ChunkLoader sub-class)
- * 2. chunk updaters: given a chunk with already existing entity, it updates the entity (e.g. update texture or geometry)
+ * 1. chunk loaders: prepares all data needed for creation of scene objects (ChunkLoader sub-class)
+ * 2. chunk updaters: given a chunk with an already existing scene object, it updates it (e.g. update texture or geometry)
  *
  */
 class QgsChunkQueueJob : public QObject

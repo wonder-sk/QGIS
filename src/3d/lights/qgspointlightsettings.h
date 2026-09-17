@@ -44,7 +44,6 @@ class _3D_EXPORT QgsPointLightSettings : public QgsLightSource
 
     Qgis::LightSourceType type() const override;
     QgsPointLightSettings *clone() const override SIP_FACTORY;
-    Qt3DCore::QEntity *createEntity( const Qgs3DMapSettings &map, Qt3DCore::QEntity *parent ) const override SIP_SKIP;
     QDomElement writeXml( QDomDocument &doc, const QgsReadWriteContext &context = QgsReadWriteContext() ) const override;
     void readXml( const QDomElement &elem, const QgsReadWriteContext &context = QgsReadWriteContext() ) override;
 

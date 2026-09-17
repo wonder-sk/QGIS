@@ -20,7 +20,6 @@
 #include "qgscamera3d.h"
 #include "qgscameracontroller.h"
 #include "qgsdirectionallightsettings.h"
-#include "qgsframegraph.h"
 #include "qgslogger.h"
 #include "qgspointlightsettings.h"
 #include "qgsshadowsettings.h"
@@ -29,36 +28,17 @@
 #include <QOffscreenSurface>
 #include <QString>
 #include <QWindow>
-#include <Qt3DCore/QEntity>
-#include <Qt3DRender/QCamera>
-#include <Qt3DRender/QRenderSettings>
 
 #include "moc_qgsrhi3dengine.cpp"
 
 using namespace Qt::StringLiterals;
 
 QgsRhi3DEngine::QgsRhi3DEngine( QWindow *window, QObject *parent )
-  : QgsAbstract3DEngine( parent )
+  : QObject( parent )
   , mWindow( window )
 {
   mRhiEngine = std::make_unique<QgsRhiEngine>();
   mSceneRenderer = std::make_unique<QgsSceneRenderer>();
-
-  // The Qt3D scaffolding the not yet ported half of Qgs3DMapScene talks to. Nothing ever
-  // renders it: there is no aspect engine here, so these are inert QNodes. The frame
-  // graph insists on a surface to point at, so an offscreen engine gives it one.
-  mQt3DRoot = new Qt3DCore::QEntity;
-  mQt3DCamera = new Qt3DRender::QCamera( mQt3DRoot );
-  mQt3DRenderSettings = new Qt3DRender::QRenderSettings( mQt3DRoot );
-
-  QSurface *frameGraphSurface = window;
-  if ( !frameGraphSurface )
-  {
-    mQt3DSurface = std::make_unique<QOffscreenSurface>();
-    mQt3DSurface->create();
-    frameGraphSurface = mQt3DSurface.get();
-  }
-  mFrameGraph = new QgsFrameGraph( frameGraphSurface, QSize( 1024, 768 ), mQt3DCamera, mQt3DRoot );
 }
 
 QgsRhi3DEngine::QgsRhi3DEngine( QSize size, QObject *parent )
@@ -76,14 +56,6 @@ QgsRhi3DEngine::~QgsRhi3DEngine()
 
   mSceneRenderer.reset();
   mRhiEngine.reset();
-
-  delete mQt3DRoot;
-}
-
-bool QgsRhi3DEngine::isEnabled()
-{
-  const QString value = qEnvironmentVariable( "QGIS_3D_RHI" ).trimmed().toLower();
-  return value == "1"_L1 || value == "true"_L1 || value == "yes"_L1 || value == "on"_L1;
 }
 
 void QgsRhi3DEngine::prepareWindow( QWindow *window )
@@ -136,29 +108,6 @@ void QgsRhi3DEngine::setClearColor( const QColor &color )
   mSceneRenderer->setClearColor( color );
 }
 
-void QgsRhi3DEngine::setFrustumCullingEnabled( bool enabled )
-{
-  // culling is QGIS's own, in QgsChunkedEntity, and is never switched off
-  Q_UNUSED( enabled )
-}
-
-void QgsRhi3DEngine::setRootEntity( Qt3DCore::QEntity *root )
-{
-  mQt3DSceneRoot = root;
-  if ( root )
-    root->setParent( mQt3DRoot );
-}
-
-Qt3DRender::QRenderSettings *QgsRhi3DEngine::renderSettings()
-{
-  return mQt3DRenderSettings;
-}
-
-Qt3DRender::QCamera *QgsRhi3DEngine::camera()
-{
-  return mQt3DCamera;
-}
-
 QSize QgsRhi3DEngine::size() const
 {
   return mWindow ? mWindow->size() : mSize;
@@ -182,7 +131,6 @@ void QgsRhi3DEngine::setSize( QSize s )
   }
 
   mSize = pixelSize;
-  mFrameGraph->setSize( pixelSize );
 
   if ( isValid() )
   {
@@ -195,7 +143,7 @@ void QgsRhi3DEngine::setSize( QSize s )
 
 QSurface *QgsRhi3DEngine::surface() const
 {
-  return mWindow ? static_cast<QSurface *>( mWindow ) : static_cast<QSurface *>( mQt3DSurface.get() );
+  return mWindow;
 }
 
 void QgsRhi3DEngine::requestCaptureImage()

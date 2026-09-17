@@ -167,11 +167,6 @@ class _3D_EXPORT QgsPoint3DSymbol : public QgsAbstract3DSymbol SIP_NODEFAULTCTOR
     //! Returns how much the billboard should be elevated upwards
     float billboardHeight() const;
 
-    /**
-     * Exports the geometries contained within the hierarchy of entity.
-     * Returns whether any objects were exported
-     */
-    bool exportGeometries( Qgs3DSceneExporter *exporter, Qt3DCore::QEntity *entity, const QString &objectNamePrefix ) const override SIP_SKIP;
 
   private:
     //! how to handle altitude of vector features

@@ -155,7 +155,7 @@ QgsPointCloudLayer3DRenderer *QgsPointCloudLayer3DRenderer::clone() const
   return r;
 }
 
-Qt3DCore::QEntity *QgsPointCloudLayer3DRenderer::createEntity( Qgs3DMapSettings *map ) const
+Qgs3DMapSceneEntity *QgsPointCloudLayer3DRenderer::createEntity( Qgs3DMapSettings *map ) const
 {
   QgsPointCloudLayer *pcl = layer();
   if ( !pcl || !pcl->dataProvider() )
@@ -165,7 +165,7 @@ Qt3DCore::QEntity *QgsPointCloudLayer3DRenderer::createEntity( Qgs3DMapSettings 
 
   const QgsCoordinateTransform coordinateTransform( pcl->crs3D(), map->crs(), map->transformContext() );
 
-  Qt3DCore::QEntity *entity = nullptr;
+  Qgs3DMapSceneEntity *entity = nullptr;
   if ( pcl->index() )
   {
     entity = new QgsPointCloudLayerChunkedEntity(
@@ -175,7 +175,6 @@ Qt3DCore::QEntity *QgsPointCloudLayer3DRenderer::createEntity( Qgs3DMapSettings 
       coordinateTransform,
       mSymbol->clone(),
       static_cast<float>( maximumScreenError() ),
-      showBoundingBoxes(),
       static_cast<const QgsPointCloudLayerElevationProperties *>( pcl->elevationProperties() )->zScale(),
       static_cast<const QgsPointCloudLayerElevationProperties *>( pcl->elevationProperties() )->zOffset(),
       mPointBudget
@@ -189,7 +188,6 @@ Qt3DCore::QEntity *QgsPointCloudLayer3DRenderer::createEntity( Qgs3DMapSettings 
       coordinateTransform,
       mSymbol->clone(),
       static_cast<float>( maximumScreenError() ),
-      showBoundingBoxes(),
       static_cast<const QgsPointCloudLayerElevationProperties *>( pcl->elevationProperties() )->zScale(),
       static_cast<const QgsPointCloudLayerElevationProperties *>( pcl->elevationProperties() )->zOffset(),
       mPointBudget

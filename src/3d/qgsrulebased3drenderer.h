@@ -24,7 +24,6 @@
 #include <QUuid>
 
 class Qgs3DRenderContext;
-class QgsFeature3DHandler;
 
 
 /**
@@ -62,7 +61,6 @@ class _3D_EXPORT QgsRuleBased3DRenderer : public QgsAbstractVectorLayer3DRendere
   public:
     class Rule;
     typedef QList<QgsRuleBased3DRenderer::Rule *> RuleList;
-    typedef QHash<const QgsRuleBased3DRenderer::Rule *, QgsFeature3DHandler *> RuleToHandlerMap;
 
     /**
      * \ingroup qgis_3d
@@ -234,23 +232,6 @@ class _3D_EXPORT QgsRuleBased3DRenderer : public QgsAbstractVectorLayer3DRendere
 
         // evaluation
 
-        /**
-         * add handlers
-         * \note not available in Python bindings
-         */
-        void createHandlers( QgsVectorLayer *layer, RuleToHandlerMap &handlers ) const SIP_SKIP;
-
-        /**
-         * call prepare() on handlers and populate attributeNames
-         * \note not available in Python bindings
-         */
-        void prepare( const Qgs3DRenderContext &context, QSet<QString> &attributeNames, const QgsBox3D &chunkExtent, RuleToHandlerMap &handlers ) const SIP_SKIP;
-
-        /**
-         * register individual features
-         * \note not available in Python bindings
-         */
-        RegisterResult registerFeature( const QgsFeature &feature, Qgs3DRenderContext &context, const RuleToHandlerMap &handlers ) const SIP_SKIP;
 
       private:
 #ifdef SIP_RUN
@@ -303,7 +284,7 @@ class _3D_EXPORT QgsRuleBased3DRenderer : public QgsAbstractVectorLayer3DRendere
 
     QString type() const override { return "rulebased"; }
     QgsRuleBased3DRenderer *clone() const override SIP_FACTORY;
-    Qt3DCore::QEntity *createEntity( Qgs3DMapSettings *map ) const override SIP_SKIP;
+    Qgs3DMapSceneEntity *createEntity( Qgs3DMapSettings *map ) const override SIP_SKIP;
 
     void writeXml( QDomElement &elem, const QgsReadWriteContext &context ) const override;
     void readXml( const QDomElement &elem, const QgsReadWriteContext &context ) override;

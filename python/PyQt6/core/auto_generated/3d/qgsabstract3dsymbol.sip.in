@@ -10,7 +10,6 @@
 
 
 
-
 class QgsAbstract3DSymbol
 {
 %Docstring(signature="appended")
@@ -94,7 +93,6 @@ data defined overrides.
 Sets the symbol layer's property collection, used for data defined
 overrides.
 %End
-
 
     virtual void setDefaultPropertiesFromLayer( const QgsVectorLayer *layer );
 %Docstring

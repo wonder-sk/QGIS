@@ -27,14 +27,12 @@
 // version without notice, or even be removed.
 //
 
-
 #include <memory>
 #include <vector>
 
 #include "qgis_3d.h"
 #include "qgs3dutils.h"
 #include "qgsgltfutils.h"
-#include "qgsmaterial.h"
 #include "qgsmatrix4x4.h"
 
 #include <QQuaternion>
@@ -50,14 +48,6 @@ class QgsCoordinateTransform;
 class Qgs3DRenderContext;
 class QgsMaterialContext;
 class QgsSceneObject3D;
-
-namespace Qt3DCore
-{
-  class QEntity;
-  class QGeometry;
-  class QNode;
-  class QBuffer;
-} //namespace Qt3DCore
 
 /**
  * \ingroup qgis_3d
@@ -86,26 +76,6 @@ class _3D_EXPORT QgsGltf3DUtils
         double zValueOffset = 0;
     };
 
-    /**
-     * Parses a GLTF model from \a data and returns a valid 3D entity or nullptr on error.
-     * If \a errors is not a null pointer, error messages may be returned in the given object
-     * (there may be errors also when a valid 3D entity is returned, if some bits of the model
-     * were not fully/correctly parsed).
-     *
-     * The \a baseUri should be URI of the source model, so if GLTF model references some
-     * external data (e.g. textures), relative URIs can be resolved correctly.
-     *
-     * In the process, it applies transforms to the position coordinates: in addition to
-     * what QgsGltfUtils::accessorToMapCoordinates() does, it does an extra step of converting
-     * map coordinates to 3D scene coordinates: P_SCENE = flip_ZY(P_MAP - sceneOriginTargetCrs)
-     */
-    static Qt3DCore::QEntity *gltfToEntity( const QByteArray &data, const EntityTransform &transform, const QString &baseUri, const Qgs3DRenderContext &context, QStringList *errors = nullptr );
-
-    /**
-     * Converts a GLTF model into a Qt 3D entity.
-     * \see gltfToEntity()
-     */
-    static Qt3DCore::QEntity *parsedGltfToEntity( tinygltf::Model &model, const QgsGltf3DUtils::EntityTransform &transform, QString baseUri, const Qgs3DRenderContext &context, QStringList *errors );
 
     /**
      * Per-instance chunk-local transform (ready for the shader buffer).
@@ -138,19 +108,6 @@ class _3D_EXPORT QgsGltf3DUtils
      */
     static QVector<InstanceChunkTransform> tileSpaceToChunkLocal( const QgsGltfUtils::InstancedPrimitive &primitive, const EntityTransform &transform );
 
-    /**
-     * Adds per-instance GPU attributes (translation, rotation, scale) to the geometry.
-     * \since QGIS 4.2
-     */
-    static void createInstanceBuffer( Qt3DCore::QGeometry *geometry, const QVector<InstanceChunkTransform> &instances );
-
-    /**
-     * Creates Qt3D entities from instanced primitives resolved by resolveInstancing().
-     * \since QGIS 4.2
-     */
-    static QVector<Qt3DCore::QEntity *> createInstancedEntities(
-      tinygltf::Model &model, const QVector<QgsGltfUtils::InstancedPrimitive> &primitives, const EntityTransform &transform, const QString &baseUri, const QgsMaterialContext &context, QStringList *errors
-    );
 
     /**
      * Appends one part per glTF triangle primitive to \a object, for the QRhi engine.
@@ -187,20 +144,6 @@ class _3D_EXPORT QgsGltf3DUtils
       const QgsMaterialContext &context,
       QStringList *errors
     );
-
-    /**
-     * Loads a GLTF file from \a filePath and returns one QgsMeshNodeData entry per
-     * triangle primitive found across the entire scene. Each entry holds the geometry,
-     * material, and the accumulated mesh space to object space transform; vertex positions
-     * are kept verbatim in the original mesh space.
-     *
-     * \a context is used to configure the created materials.
-     * \a bufferParent is used as the Qt3D parent for any GPU buffers that are created.
-     * Optional \a errors receives any non-fatal parse warnings.
-     *
-     * \since QGIS 4.2
-     */
-    static std::vector<QgsMeshNodeData> buildGltfGeometries( const QString &filePath, const QgsMaterialContext &context, QStringList *errors = nullptr, Qt3DCore::QNode *bufferParent = nullptr );
 };
 
 ///@endcond

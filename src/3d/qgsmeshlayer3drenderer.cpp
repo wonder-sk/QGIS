@@ -17,7 +17,6 @@
 
 #include "qgs3dmapsettings.h"
 #include "qgs3drendercontext.h"
-#include "qgsmesh3dentity_p.h"
 #include "qgsmesh3dsymbol.h"
 #include "qgsmeshlayer.h"
 #include "qgsxmlutils.h"
@@ -71,32 +70,13 @@ const QgsMesh3DSymbol *QgsMeshLayer3DRenderer::symbol() const
   return mSymbol.get();
 }
 
-Qt3DCore::QEntity *QgsMeshLayer3DRenderer::createEntity( Qgs3DMapSettings *map ) const
+Qgs3DMapSceneEntity *QgsMeshLayer3DRenderer::createEntity( Qgs3DMapSettings *map ) const
 {
-  QgsMeshLayer *meshLayer = layer();
-
-  if ( !meshLayer || !meshLayer->dataProvider() )
-    return nullptr;
-
-  if ( meshLayer->dataProvider()->contains( QgsMesh::ElementType::Edge ) || !mSymbol->isEnabled() )
-  {
-    // 3D not implemented for 1D meshes
-    return nullptr;
-  }
-
-  if ( mSymbol->verticalDatasetGroupIndex() < 0 )
-    return nullptr;
-
-  Qt3DCore::QEntity *entity = nullptr;
-
-  const QgsCoordinateTransform coordTrans( meshLayer->crs(), map->crs(), map->transformContext() );
-  meshLayer->updateTriangularMesh( coordTrans );
-  const QgsTriangularMesh triangularMesh = *meshLayer->triangularMeshByLodIndex( mSymbol->levelOfDetailIndex() );
-  QgsMeshDataset3DEntity *meshEntity = new QgsMeshDataset3DEntity( Qgs3DRenderContext::fromMapSettings( map ), triangularMesh, meshLayer, mSymbol.get() );
-  meshEntity->build();
-  entity = meshEntity;
-
-  return entity;
+  Q_UNUSED( map )
+  // the mesh layer entity has not been ported to the QRhi engine yet, so the layer
+  // contributes nothing to a 3D scene. QgsMeshGeometry3D and QgsMeshMaterial3D are both
+  // there; what is missing is the entity that puts them together.
+  return nullptr;
 }
 
 void QgsMeshLayer3DRenderer::writeXml( QDomElement &elem, const QgsReadWriteContext &context ) const

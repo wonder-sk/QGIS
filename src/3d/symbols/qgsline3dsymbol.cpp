@@ -17,8 +17,6 @@
 
 #include "qgis.h"
 #include "qgs3d.h"
-#include "qgs3dexportobject.h"
-#include "qgs3dsceneexporter.h"
 #include "qgs3dutils.h"
 #include "qgsmaterialregistry.h"
 #include "qgsmetalroughmaterialsettings.h"
@@ -121,27 +119,4 @@ void QgsLine3DSymbol::setDefaultPropertiesFromLayer( const QgsVectorLayer *layer
 QgsAbstract3DSymbol *QgsLine3DSymbol::create()
 {
   return new QgsLine3DSymbol();
-}
-
-bool QgsLine3DSymbol::exportGeometries( Qgs3DSceneExporter *exporter, Qt3DCore::QEntity *entity, const QString &objectNamePrefix ) const
-{
-  if ( renderAsSimpleLines() )
-  {
-    const QVector<Qgs3DExportObject *> objs = exporter->processLines( entity, objectNamePrefix );
-    exporter->mObjects << objs;
-    return objs.size() != 0;
-  }
-  else
-  {
-    const QList<Qt3DRender::QGeometryRenderer *> renderers = entity->findChildren<Qt3DRender::QGeometryRenderer *>();
-    for ( Qt3DRender::QGeometryRenderer *r : renderers )
-    {
-      Qgs3DExportObject *object = exporter->processGeometryRenderer( r, objectNamePrefix );
-      if ( !object )
-        continue;
-      object->setupMaterial( materialSettings() );
-      exporter->mObjects.push_back( object );
-    }
-    return renderers.size() != 0;
-  }
 }

@@ -20,8 +20,6 @@
 #include "qgschunkloader.h"
 #include "qgssceneobject3d.h"
 
-#include <Qt3DCore/QEntity>
-
 ///@cond PRIVATE
 
 QgsChunkNode::QgsChunkNode( const QgsChunkNodeId &nodeId, const QgsBox3D &box3D, float error, QgsChunkNode *parent )
@@ -53,7 +51,7 @@ bool QgsChunkNode::allChildChunksResident( QTime currentTime ) const
       return false;         // no there yet
     Q_UNUSED( currentTime ) // seems we do not need this extra time (it just brings extra problems)
     //if (children[i]->entityCreatedTime.msecsTo(currentTime) < 100)
-    //  return false;  // allow some time for upload of stuff within Qt3D (TODO: better way to check it is ready?)
+    //  return false;  // allow some time for the GPU upload (TODO: better way to check it is ready?)
   }
   return true;
 }
@@ -135,22 +133,6 @@ void QgsChunkNode::cancelLoading()
   mState = QgsChunkNode::Skeleton;
 }
 
-void QgsChunkNode::setLoaded( Qt3DCore::QEntity *newEntity )
-{
-  Q_ASSERT( mState == QgsChunkNode::Loading );
-  Q_ASSERT( mLoader );
-  Q_ASSERT( !mLoaderQueueEntry );
-  Q_ASSERT( !mReplacementQueueEntry );
-
-  mEntity = newEntity;
-  mEntityCreatedTime = QTime::currentTime();
-
-  mLoader = nullptr; // not owned by chunk node
-
-  mState = QgsChunkNode::Loaded;
-  mReplacementQueueEntry = new QgsChunkListEntry( this );
-}
-
 void QgsChunkNode::setLoaded( std::unique_ptr<QgsSceneObject3D> sceneObject )
 {
   Q_ASSERT( mState == QgsChunkNode::Loading );
@@ -173,8 +155,6 @@ void QgsChunkNode::unloadChunk()
   Q_ASSERT( hasPayload() );
   Q_ASSERT( mReplacementQueueEntry );
 
-  delete mEntity;
-  mEntity = nullptr;
   mSceneObject.reset();
 
   delete mReplacementQueueEntry;
@@ -247,17 +227,6 @@ void QgsChunkNode::setUpdated()
   mUpdater = nullptr; // not owned by chunk node
 
   mState = QgsChunkNode::Loaded;
-}
-
-void QgsChunkNode::replaceEntity( Qt3DCore::QEntity *newEntity )
-{
-  Q_ASSERT( mState == QgsChunkNode::Updating );
-  Q_ASSERT( mUpdater );
-  Q_ASSERT( mEntity );
-  Q_ASSERT( newEntity );
-
-  mEntity->deleteLater();
-  mEntity = newEntity;
 }
 
 void QgsChunkNode::replaceSceneObject( std::unique_ptr<QgsSceneObject3D> newSceneObject )

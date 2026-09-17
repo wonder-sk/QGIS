@@ -174,16 +174,6 @@
      </property>
     </widget>
    </item>
-   <item row="0" column="0" rowspan="10">
-    <widget class="QgsMaterialPreviewWidget" name="mPreviewWidget" native="true">
-     <property name="minimumSize">
-      <size>
-       <width>200</width>
-       <height>200</height>
-      </size>
-     </property>
-    </widget>
-   </item>
    <item row="9" column="2">
     <spacer name="verticalSpacer">
      <property name="orientation">
@@ -288,12 +278,6 @@
   </layout>
  </widget>
  <customwidgets>
-  <customwidget>
-   <class>QgsMaterialPreviewWidget</class>
-   <extends>QWidget</extends>
-   <header>qgsmaterialpreviewwidget.h</header>
-   <container>1</container>
-  </customwidget>
   <customwidget>
    <class>QgsDoubleSpinBox</class>
    <extends>QDoubleSpinBox</extends>

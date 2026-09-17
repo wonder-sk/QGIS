@@ -32,7 +32,6 @@ Q_NOWARN_DEPRECATED_POP
 #include "qgs3dnavigationwidget.h"
 #include "moc_qgs3dnavigationwidget.cpp"
 
-#include <Qt3DRender/QCamera>
 
 Qgs3DNavigationWidget::Qgs3DNavigationWidget( Qgs3DMapCanvas *canvas, QWidget *parent )
   : QWidget( parent )

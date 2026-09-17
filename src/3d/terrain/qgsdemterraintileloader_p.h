@@ -59,8 +59,6 @@ class QgsDemTerrainTileLoader : public QgsTerrainTileLoader
 
     void start() override;
 
-    Qt3DCore::QEntity *createEntity( Qt3DCore::QEntity *parent ) override;
-
     std::unique_ptr<QgsSceneObject3D> createSceneObject() override;
 
   private slots:

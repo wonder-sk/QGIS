@@ -50,8 +50,8 @@ using namespace Qt::StringLiterals;
  * Renders a whole Qgs3DMapScene through the QRhi engine, offscreen.
  *
  * This is the end to end test of P5: the scene is assembled exactly as the 3D view
- * assembles it, the flat terrain's chunks produce QgsSceneObject3Ds instead of Qt3D
- * entities, and QgsRhi3DEngine turns them into a frame.
+ * assembles it, the flat terrain's chunks produce QgsSceneObject3Ds, and QgsRhi3DEngine
+ * turns them into a frame.
  */
 class TestQgsRhi3DScene : public QgsTest
 {
@@ -138,7 +138,7 @@ void TestQgsRhi3DScene::initTestCase()
 
 QList<QgsChunkNode *> TestQgsRhi3DScene::layerChunkNodes( Qgs3DMapScene *scene, QgsMapLayer *layer )
 {
-  Qt3DCore::QEntity *entity = scene->layerEntity( layer );
+  Qgs3DMapSceneEntity *entity = scene->layerEntity( layer );
 
   // QgsChunkedEntity is not exported, so its metaobject cannot be reached from here and
   // qobject_cast will not link. inherits() asks the same question through the vtable, and
@@ -187,7 +187,7 @@ std::unique_ptr<Qgs3DMapSettings> TestQgsRhi3DScene::createMapSettings( bool wit
   map->setLightSources( { light.clone() } );
 
   // this is what makes the chunk loaders produce scene objects rather than entities
-  map->setRhiEngineEnabled( true );
+
   return map;
 }
 
@@ -224,10 +224,6 @@ void TestQgsRhi3DScene::testOffscreenEngineInitializes()
   QCOMPARE( engine.size(), QSize( 400, 300 ) );
   QVERIFY( engine.sceneRenderer() );
 
-  // the Qt3D scaffolding is present but inert
-  QVERIFY( engine.camera() );
-  QVERIFY( engine.renderSettings() );
-  QVERIFY( engine.frameGraph() );
   QVERIFY( !engine.window() );
 }
 
@@ -239,7 +235,7 @@ void TestQgsRhi3DScene::testFlatTerrainProducesSceneObjects()
   QVERIFY( engine.initialize() );
 
   auto scene = std::make_unique<Qgs3DMapScene>( *map, &engine );
-  engine.setRootEntity( scene.get() );
+
   engine.setScene( scene.get() );
   QVERIFY( renderUntilLoaded( engine, scene.get() ) );
 
@@ -249,12 +245,10 @@ void TestQgsRhi3DScene::testFlatTerrainProducesSceneObjects()
   const QList<QgsChunkNode *> nodes = terrain->activeNodes();
   QVERIFY( !nodes.isEmpty() );
 
-  // every loaded terrain chunk is a scene object rather than a Qt3D entity, and it draws
-  // one textured quad
+  // every loaded terrain chunk draws one textured quad
   for ( QgsChunkNode *node : nodes )
   {
     QVERIFY( node->hasPayload() );
-    QVERIFY( !node->entity() );
     QgsSceneObject3D *object = node->sceneObject();
     QVERIFY( object );
     QCOMPARE( object->parts().size(), size_t( 1 ) );
@@ -271,7 +265,7 @@ void TestQgsRhi3DScene::testRendersTerrain()
   QVERIFY( engine.initialize() );
 
   auto scene = std::make_unique<Qgs3DMapScene>( *map, &engine );
-  engine.setRootEntity( scene.get() );
+
   engine.setScene( scene.get() );
 
   scene->viewZoomFull();
@@ -303,7 +297,7 @@ void TestQgsRhi3DScene::testCameraMovesWhatIsDrawn()
   QVERIFY( engine.initialize() );
 
   auto scene = std::make_unique<Qgs3DMapScene>( *map, &engine );
-  engine.setRootEntity( scene.get() );
+
   engine.setScene( scene.get() );
 
   scene->viewZoomFull();
@@ -336,7 +330,7 @@ void TestQgsRhi3DScene::testOriginShiftDoesNotMoveTheScene()
   QVERIFY( engine.initialize() );
 
   auto scene = std::make_unique<Qgs3DMapScene>( *map, &engine );
-  engine.setRootEntity( scene.get() );
+
   engine.setScene( scene.get() );
 
   // the automatic rebase would undo the shift this test makes, by moving the origin back
@@ -388,7 +382,7 @@ void TestQgsRhi3DScene::testRendersDemTerrain()
   QVERIFY( engine.initialize() );
 
   auto scene = std::make_unique<Qgs3DMapScene>( *map, &engine );
-  engine.setRootEntity( scene.get() );
+
   engine.setScene( scene.get() );
 
   // the DEM's elevation range is only known once tiles have loaded, and viewZoomFull()
@@ -454,7 +448,7 @@ std::unique_ptr<Qgs3DMapSettings> TestQgsRhi3DScene::createPointCloudMapSettings
   light.setDirection( QgsVector3D( 0, 0, -1 ) );
   map->setLightSources( { light.clone() } );
 
-  map->setRhiEngineEnabled( true );
+
   return map;
 }
 
@@ -488,7 +482,7 @@ void TestQgsRhi3DScene::testPointCloudProducesSceneObjects()
   QVERIFY( engine.initialize() );
 
   auto scene = std::make_unique<Qgs3DMapScene>( *map, &engine );
-  engine.setRootEntity( scene.get() );
+
   engine.setScene( scene.get() );
 
   scene->viewZoomFull();
@@ -501,9 +495,6 @@ void TestQgsRhi3DScene::testPointCloudProducesSceneObjects()
   for ( QgsChunkNode *node : nodes )
   {
     QVERIFY( node->hasPayload() );
-    // the loader produces a scene object, so there is no Qt3D entity left to produce
-    QVERIFY( !node->entity() );
-
     QgsSceneObject3D *object = node->sceneObject();
     QVERIFY( object );
     QCOMPARE( object->parts().size(), size_t( 1 ) );
@@ -540,7 +531,7 @@ void TestQgsRhi3DScene::testRendersTriangulatedPointCloud()
   QVERIFY( engine.initialize() );
 
   auto scene = std::make_unique<Qgs3DMapScene>( *map, &engine );
-  engine.setRootEntity( scene.get() );
+
   engine.setScene( scene.get() );
 
   scene->viewZoomFull();
@@ -596,13 +587,13 @@ void TestQgsRhi3DScene::testRendersTiledScene()
 
   QgsDirectionalLightSettings light;
   map->setLightSources( { light.clone() } );
-  map->setRhiEngineEnabled( true );
+
 
   QgsRhi3DEngine engine( QSize( 400, 300 ) );
   QVERIFY( engine.initialize() );
 
   auto scene = std::make_unique<Qgs3DMapScene>( *map, &engine );
-  engine.setRootEntity( scene.get() );
+
   engine.setScene( scene.get() );
 
   scene->viewZoomFull();
@@ -618,7 +609,6 @@ void TestQgsRhi3DScene::testRendersTiledScene()
     QgsSceneObject3D *object = node->sceneObject();
     if ( !object )
       continue;
-    QVERIFY( !node->entity() );
     for ( const std::unique_ptr<QgsSceneObject3D::Part> &part : object->parts() )
     {
       QVERIFY( part->geometry->vertexCount() > 0 );
@@ -651,13 +641,13 @@ void TestQgsRhi3DScene::testRendersInstancedTiledScene()
 
   QgsDirectionalLightSettings light;
   map->setLightSources( { light.clone() } );
-  map->setRhiEngineEnabled( true );
+
 
   QgsRhi3DEngine engine( QSize( 400, 300 ) );
   QVERIFY( engine.initialize() );
 
   auto scene = std::make_unique<Qgs3DMapScene>( *map, &engine );
-  engine.setRootEntity( scene.get() );
+
   engine.setScene( scene.get() );
 
   scene->cameraController()->setLookingAtPoint( QgsVector3D( 0, 0, 0 ), 500, 30, 0 );

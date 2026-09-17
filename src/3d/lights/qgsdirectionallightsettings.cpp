@@ -21,8 +21,6 @@
 
 #include <QDomDocument>
 #include <QString>
-#include <Qt3DCore/QEntity>
-#include <Qt3DRender/QDirectionalLight>
 
 using namespace Qt::StringLiterals;
 
@@ -36,21 +34,6 @@ QgsDirectionalLightSettings *QgsDirectionalLightSettings::clone() const
   auto res = std::make_unique< QgsDirectionalLightSettings >( *this );
   res->mId = mId;
   return res.release();
-}
-
-Qt3DCore::QEntity *QgsDirectionalLightSettings::createEntity( const Qgs3DMapSettings &, Qt3DCore::QEntity *parent ) const
-{
-  Qt3DCore::QEntity *lightEntity = new Qt3DCore::QEntity( parent );
-
-  Qt3DRender::QDirectionalLight *light = new Qt3DRender::QDirectionalLight;
-  light->setColor( Qgs3DUtils::srgbToLinear( color() ) );
-  light->setIntensity( static_cast< float >( intensity() ) );
-  QgsVector3D direction = QgsDirectionalLightSettings::direction();
-  light->setWorldDirection( QVector3D( direction.x(), direction.y(), direction.z() ) );
-
-  lightEntity->addComponent( light );
-
-  return lightEntity;
 }
 
 QDomElement QgsDirectionalLightSettings::writeXml( QDomDocument &doc, const QgsReadWriteContext & ) const

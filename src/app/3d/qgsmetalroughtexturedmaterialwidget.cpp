@@ -28,8 +28,6 @@ QgsMetalRoughTexturedMaterialWidget::QgsMetalRoughTexturedMaterialWidget( QWidge
   : QgsMaterialSettingsWidget( parent )
 {
   setupUi( this );
-  mPreviewWidget->hide();
-  mPreviewWidget->setMaterialType( u"metalroughtextured"_s );
 
   QgsMetalRoughTexturedMaterialSettings defaultMaterial;
   setSettings( &defaultMaterial, nullptr );
@@ -137,14 +135,11 @@ std::unique_ptr<QgsAbstractMaterialSettings> QgsMetalRoughTexturedMaterialWidget
 
 void QgsMetalRoughTexturedMaterialWidget::setPreviewVisible( bool visible )
 {
-  mPreviewWidget->setVisible( visible );
+  Q_UNUSED( visible )
   updatePreview();
 }
 
 void QgsMetalRoughTexturedMaterialWidget::updatePreview()
 {
-  if ( mPreviewWidget->isHidden() )
-    return;
-  const std::unique_ptr<QgsAbstractMaterialSettings> newSettings( settings() );
-  mPreviewWidget->updatePreview( newSettings.get() );
+  // the material preview is not available while the QRhi port has no material handler
 }

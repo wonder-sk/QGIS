@@ -24,7 +24,6 @@
 #include "qgsabstract3drenderer.h"
 #include "qgsabstract3dsymbol.h"
 #include "qgsapplication.h"
-#include "qgscategorizedchunkloader_p.h"
 #include "qgscolorrampimpl.h"
 #include "qgssymbollayerutils.h"
 #include "qgsvectorlayer.h"
@@ -120,16 +119,12 @@ QgsCategorized3DRenderer *QgsCategorized3DRenderer::clone() const
   return renderer;
 }
 
-Qt3DCore::QEntity *QgsCategorized3DRenderer::createEntity( Qgs3DMapSettings *mapSettings ) const
+Qgs3DMapSceneEntity *QgsCategorized3DRenderer::createEntity( Qgs3DMapSettings *mapSettings ) const
 {
-  QgsVectorLayer *vectorLayer = layer();
-
-  if ( !vectorLayer )
-  {
-    return nullptr;
-  }
-
-  return new QgsCategorizedChunkedEntity( mapSettings, vectorLayer, Qgs3DUtils::MINIMUM_VECTOR_Z_ESTIMATE, Qgs3DUtils::MAXIMUM_VECTOR_Z_ESTIMATE, tilingSettings(), this );
+  Q_UNUSED( mapSettings )
+  // the vector layer chunk loaders have not been ported to the QRhi engine yet, so the
+  // layer contributes nothing to a 3D scene
+  return nullptr;
 }
 
 void QgsCategorized3DRenderer::updateSymbols( QgsAbstract3DSymbol *symbol )

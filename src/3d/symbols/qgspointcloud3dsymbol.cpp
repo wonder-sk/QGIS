@@ -16,13 +16,9 @@
 #include "qgspointcloud3dsymbol.h"
 
 #include "qgs3dutils.h"
-#include "qgscolorramptexture.h"
 #include "qgscolorutils.h"
-#include "qgsmaterial.h"
 
 #include <QString>
-#include <Qt3DRender/QParameter>
-#include <Qt3DRender/QTexture>
 
 using namespace Qt::StringLiterals;
 
@@ -174,15 +170,6 @@ void QgsSingleColorPointCloud3DSymbol::setSingleColor( QColor color )
   mSingleColor = color;
 }
 
-void QgsSingleColorPointCloud3DSymbol::fillMaterial( QgsMaterial *mat )
-{
-  Qt3DRender::QParameter *pointSizeParameter = new Qt3DRender::QParameter( "u_pointSize", QVariant::fromValue( mPointSize ) );
-  mat->addParameter( pointSizeParameter );
-  const QColor linearColor = Qgs3DUtils::srgbToLinear( mSingleColor );
-  Qt3DRender::QParameter *singleColorParameter = new Qt3DRender::QParameter( "u_singleColor", QVector3D( linearColor.redF(), linearColor.greenF(), linearColor.blueF() ) );
-  mat->addParameter( singleColorParameter );
-}
-
 // QgsColorRampPointCloud3DSymbol
 
 QgsColorRampPointCloud3DSymbol::QgsColorRampPointCloud3DSymbol()
@@ -253,33 +240,6 @@ void QgsColorRampPointCloud3DSymbol::setColorRampShaderMinMax( double min, doubl
 {
   mColorRampShaderMin = min;
   mColorRampShaderMax = max;
-}
-
-void QgsColorRampPointCloud3DSymbol::fillMaterial( QgsMaterial *mat )
-{
-  Qt3DRender::QParameter *pointSizeParameter = new Qt3DRender::QParameter( "u_pointSize", QVariant::fromValue( mPointSize ) );
-  mat->addParameter( pointSizeParameter );
-  // Create the texture to pass the color ramp
-  Qt3DRender::QTexture1D *colorRampTexture = nullptr;
-  if ( mColorRampShader.colorRampItemList().count() > 0 )
-  {
-    colorRampTexture = new Qt3DRender::QTexture1D( mat );
-    colorRampTexture->addTextureImage( new QgsColorRampTexture( mColorRampShader, 1 ) );
-    colorRampTexture->setMinificationFilter( Qt3DRender::QTexture1D::Linear );
-    colorRampTexture->setMagnificationFilter( Qt3DRender::QTexture1D::Linear );
-    // note -- this texture is an exception, we do NOT set it to srgb format as we do NOT want
-    // it linearised before sampling. That is because we need to do the interpolation on the ramp
-    // in SRGB color space. The shader converts the result after sampling the ramp to linear.
-  }
-
-  // Parameters
-  Qt3DRender::QParameter *colorRampTextureParameter = new Qt3DRender::QParameter( "u_colorRampTexture", colorRampTexture );
-  mat->addParameter( colorRampTextureParameter );
-  Qt3DRender::QParameter *colorRampCountParameter = new Qt3DRender::QParameter( "u_colorRampCount", mColorRampShader.colorRampItemList().count() );
-  mat->addParameter( colorRampCountParameter );
-  const Qgis::ShaderInterpolationMethod colorRampType = mColorRampShader.colorRampType();
-  Qt3DRender::QParameter *colorRampTypeParameter = new Qt3DRender::QParameter( "u_colorRampType", static_cast<int>( colorRampType ) );
-  mat->addParameter( colorRampTypeParameter );
 }
 
 // QgsRgbPointCloud3DSymbol
@@ -386,12 +346,6 @@ void QgsRgbPointCloud3DSymbol::readXml( const QDomElement &elem, const QgsReadWr
     blueContrastEnhancement->readXml( blueContrastElem );
     setBlueContrastEnhancement( blueContrastEnhancement );
   }
-}
-
-void QgsRgbPointCloud3DSymbol::fillMaterial( QgsMaterial *mat )
-{
-  Qt3DRender::QParameter *pointSizeParameter = new Qt3DRender::QParameter( "u_pointSize", QVariant::fromValue( mPointSize ) );
-  mat->addParameter( pointSizeParameter );
 }
 
 
@@ -568,31 +522,4 @@ QgsColorRampShader QgsClassificationPointCloud3DSymbol::colorRampShader() const
   }
   colorRampShader.setColorRampItemList( colorRampItemList );
   return colorRampShader;
-}
-
-
-void QgsClassificationPointCloud3DSymbol::fillMaterial( QgsMaterial *mat )
-{
-  const QgsColorRampShader mColorRampShader = colorRampShader();
-  // Create the texture to pass the color ramp
-  Qt3DRender::QTexture1D *colorRampTexture = nullptr;
-  if ( mColorRampShader.colorRampItemList().count() > 0 )
-  {
-    colorRampTexture = new Qt3DRender::QTexture1D( mat );
-    colorRampTexture->addTextureImage( new QgsColorRampTexture( mColorRampShader, 1 ) );
-    colorRampTexture->setMinificationFilter( Qt3DRender::QTexture1D::Linear );
-    colorRampTexture->setMagnificationFilter( Qt3DRender::QTexture1D::Linear );
-    // note -- this texture is an exception, we do NOT set it to srgb format as we do NOT want
-    // it linearised before sampling. That is because we need to do the interpolation on the ramp
-    // in SRGB color space. The shader converts the result after sampling the ramp to linear.
-  }
-
-  // Parameters
-  Qt3DRender::QParameter *colorRampTextureParameter = new Qt3DRender::QParameter( "u_colorRampTexture", colorRampTexture );
-  mat->addParameter( colorRampTextureParameter );
-  Qt3DRender::QParameter *colorRampCountParameter = new Qt3DRender::QParameter( "u_colorRampCount", mColorRampShader.colorRampItemList().count() );
-  mat->addParameter( colorRampCountParameter );
-  const Qgis::ShaderInterpolationMethod colorRampType = mColorRampShader.colorRampType();
-  Qt3DRender::QParameter *colorRampTypeParameter = new Qt3DRender::QParameter( "u_colorRampType", static_cast<int>( colorRampType ) );
-  mat->addParameter( colorRampTypeParameter );
 }

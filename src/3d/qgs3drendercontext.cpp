@@ -32,7 +32,6 @@ Qgs3DRenderContext::Qgs3DRenderContext( const Qgs3DRenderContext &other )
   , mTerrainSettings( std::unique_ptr<QgsAbstractTerrainSettings>( other.mTerrainSettings->clone() ) )
   , mExpressionContext( other.mExpressionContext )
   , mTextureFilterQuality( other.mTextureFilterQuality )
-  , mRhiEngineEnabled( other.mRhiEngineEnabled )
   , mTerrainGenerator( other.mTerrainGenerator )
 {}
 
@@ -55,7 +54,6 @@ Qgs3DRenderContext &Qgs3DRenderContext::operator=( const Qgs3DRenderContext &oth
   mTerrainSettings.reset( other.mTerrainSettings->clone() );
   mExpressionContext = other.mExpressionContext;
   mTextureFilterQuality = other.mTextureFilterQuality;
-  mRhiEngineEnabled = other.mRhiEngineEnabled;
   mTerrainGenerator = other.mTerrainGenerator;
   return *this;
 }
@@ -77,7 +75,6 @@ Qgs3DRenderContext Qgs3DRenderContext::fromMapSettings( const Qgs3DMapSettings *
   res.mTerrainSettings = std::unique_ptr<QgsAbstractTerrainSettings>( mapSettings->terrainSettings()->clone() );
   res.mTerrainGenerator = mapSettings->terrainGenerator();
   res.mTextureFilterQuality = mapSettings->textureFilterQuality();
-  res.mRhiEngineEnabled = mapSettings->rhiEngineEnabled();
   return res;
 }
 

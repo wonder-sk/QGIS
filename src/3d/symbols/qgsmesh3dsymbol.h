@@ -21,8 +21,6 @@
 #include "qgsabstract3dsymbol.h"
 #include "qgscolorrampshader.h"
 
-#include <Qt3DRender/QCullFace>
-
 class QgsAbstractMaterialSettings;
 
 /**

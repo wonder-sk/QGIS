@@ -111,6 +111,9 @@ class _3D_EXPORT QgsSceneObject3D
      */
     QgsGpuTexture *addTexture( std::unique_ptr<QgsGpuTexture> texture );
 
+    //! Returns the textures the object owns, in the order they were added
+    const std::vector<std::unique_ptr<QgsGpuTexture>> &textures() const { return mTextures; }
+
     /**
      * Sets the transform from the object's own coordinates to scene coordinates.
      *

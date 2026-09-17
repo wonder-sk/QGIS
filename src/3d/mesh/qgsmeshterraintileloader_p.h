@@ -36,8 +36,7 @@ class QgsMeshTerrainTileLoader : public QgsTerrainTileLoader
 
     void start() override;
 
-    //! Create the 3D entity and returns it
-    Qt3DCore::QEntity *createEntity( Qt3DCore::QEntity *parent ) override;
+    std::unique_ptr<QgsSceneObject3D> createSceneObject() override;
 
   private:
     QgsTriangularMesh mTriangularMesh;

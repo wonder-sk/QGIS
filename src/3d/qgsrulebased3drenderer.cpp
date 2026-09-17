@@ -18,11 +18,10 @@
 #include <memory>
 
 #include "qgs3dmapsettings.h"
+#include "qgs3drendercontext.h"
 #include "qgs3dsymbolregistry.h"
 #include "qgs3dutils.h"
 #include "qgsapplication.h"
-#include "qgsfeature3dhandler_p.h"
-#include "qgsrulebasedchunkloader_p.h"
 #include "qgsvectorlayer.h"
 #include "qgsvectorlayer3drenderer.h"
 #include "qgsxmlutils.h"
@@ -48,9 +47,7 @@ QgsAbstract3DRenderer *QgsRuleBased3DRendererMetadata::createRenderer( QDomEleme
   return r;
 }
 
-
 // ---------
-
 
 ////////////////////
 
@@ -115,7 +112,6 @@ void QgsRuleBased3DRenderer::Rule::updateElseRules()
       mElseRules << rule;
   }
 }
-
 
 void QgsRuleBased3DRenderer::Rule::appendChild( QgsRuleBased3DRenderer::Rule *rule )
 {
@@ -247,102 +243,6 @@ QDomElement QgsRuleBased3DRenderer::Rule::save( QDomDocument &doc, const QgsRead
   return ruleElem;
 }
 
-
-void QgsRuleBased3DRenderer::Rule::createHandlers( QgsVectorLayer *layer, QgsRuleBased3DRenderer::RuleToHandlerMap &handlers ) const
-{
-  if ( mSymbol )
-  {
-    // add handler!
-    Q_ASSERT( !handlers.value( this ) );
-    QgsFeature3DHandler *handler = QgsApplication::symbol3DRegistry()->createHandlerForSymbol( layer, mSymbol.get() );
-    if ( handler )
-      handlers[this] = handler;
-  }
-
-  // call recursively
-  for ( Rule *rule : std::as_const( mChildren ) )
-  {
-    rule->createHandlers( layer, handlers );
-  }
-}
-
-
-void QgsRuleBased3DRenderer::Rule::prepare( const Qgs3DRenderContext &context, QSet<QString> &attributeNames, const QgsBox3D &chunkExtent, QgsRuleBased3DRenderer::RuleToHandlerMap &handlers ) const
-{
-  if ( mSymbol )
-  {
-    QgsFeature3DHandler *handler = handlers[this];
-    if ( !handler->prepare( context, attributeNames, chunkExtent ) )
-    {
-      handlers.remove( this );
-      delete handler;
-    }
-  }
-
-  if ( mFilter )
-  {
-    attributeNames.unite( mFilter->referencedColumns() );
-    mFilter->prepare( &context.expressionContext() );
-  }
-
-  // call recursively
-  for ( Rule *rule : std::as_const( mChildren ) )
-  {
-    rule->prepare( context, attributeNames, chunkExtent, handlers );
-  }
-}
-
-QgsRuleBased3DRenderer::Rule::RegisterResult QgsRuleBased3DRenderer::Rule::registerFeature(
-  const QgsFeature &feature, Qgs3DRenderContext &context, const QgsRuleBased3DRenderer::RuleToHandlerMap &handlers
-) const
-{
-  if ( !isFilterOK( feature, context ) )
-    return Filtered;
-
-  bool registered = false;
-
-  // do we have active handler for the rule?
-  if ( handlers.contains( this ) && mIsActive )
-  {
-    handlers[this]->processFeature( feature, context );
-    registered = true;
-  }
-
-  bool matchedAChild = false;
-
-  // call recursively
-  for ( Rule *rule : std::as_const( mChildren ) )
-  {
-    // Don't process else rules yet
-    if ( !rule->isElse() )
-    {
-      const RegisterResult res = rule->registerFeature( feature, context, handlers );
-      // consider inactive items as "matched" so the else rule will ignore them
-      matchedAChild |= ( res == Registered || res == Inactive );
-      registered |= matchedAChild;
-    }
-  }
-
-  // If none of the rules passed then we jump into the else rules and process them.
-  if ( !matchedAChild )
-  {
-    for ( Rule *rule : std::as_const( mElseRules ) )
-    {
-      const RegisterResult res = rule->registerFeature( feature, context, handlers );
-      matchedAChild |= ( res == Registered || res == Inactive );
-      registered |= res != Filtered;
-    }
-  }
-
-  if ( !mIsActive || ( matchedAChild && !registered ) )
-    return Inactive;
-  else if ( registered )
-    return Registered;
-  else
-    return Filtered;
-}
-
-
 bool QgsRuleBased3DRenderer::Rule::isFilterOK( const QgsFeature &f, Qgs3DRenderContext &context ) const
 {
   if ( !mFilter || mElseRule )
@@ -353,9 +253,7 @@ bool QgsRuleBased3DRenderer::Rule::isFilterOK( const QgsFeature &f, Qgs3DRenderC
   return res.toInt() != 0;
 }
 
-
 ////////////////////
-
 
 QgsRuleBased3DRenderer::QgsRuleBased3DRenderer( QgsRuleBased3DRenderer::Rule *root )
   : mRootRule( root )
@@ -382,14 +280,12 @@ QgsRuleBased3DRenderer *QgsRuleBased3DRenderer::clone() const
   return r;
 }
 
-Qt3DCore::QEntity *QgsRuleBased3DRenderer::createEntity( Qgs3DMapSettings *map ) const
+Qgs3DMapSceneEntity *QgsRuleBased3DRenderer::createEntity( Qgs3DMapSettings *map ) const
 {
-  QgsVectorLayer *vl = layer();
-
-  if ( !vl )
-    return nullptr;
-
-  return new QgsRuleBasedChunkedEntity( map, vl, Qgs3DUtils::MINIMUM_VECTOR_Z_ESTIMATE, Qgs3DUtils::MAXIMUM_VECTOR_Z_ESTIMATE, tilingSettings(), mRootRule.get() );
+  Q_UNUSED( map )
+  // the vector layer chunk loaders have not been ported to the QRhi engine yet, so the
+  // layer contributes nothing to a 3D scene
+  return nullptr;
 }
 
 void QgsRuleBased3DRenderer::writeXml( QDomElement &elem, const QgsReadWriteContext &context ) const

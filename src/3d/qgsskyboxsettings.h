@@ -18,7 +18,6 @@
 
 #include "qgis_3d.h"
 #include "qgsabstract3dmapbackgroundsettings.h"
-#include "qgsskyboxentity.h"
 
 #include <QMap>
 #include <QString>

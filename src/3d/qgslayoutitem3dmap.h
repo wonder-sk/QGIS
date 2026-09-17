@@ -31,7 +31,7 @@
 
   class Qgs3DMapScene;
 class Qgs3DMapSettings;
-class QgsOffscreen3DEngine;
+class QgsRhi3DEngine;
 
 /**
  * \ingroup qgis_3d
@@ -124,7 +124,7 @@ class _3D_EXPORT QgsLayoutItem3DMap : public QgsLayoutItem, public QgsTemporalRa
 
   private:
     std::unique_ptr<Qgs3DMapSettings> mSettings;
-    std::unique_ptr<QgsOffscreen3DEngine> mEngine;
+    std::unique_ptr<QgsRhi3DEngine> mEngine;
     Qgs3DMapScene *mScene = nullptr; //!< 3D scene (owned by the 3D engine)
     QImage mCapturedImage;
     QgsCameraPose mCameraPose;

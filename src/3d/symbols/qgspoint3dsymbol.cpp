@@ -16,8 +16,6 @@
 #include "qgspoint3dsymbol.h"
 
 #include "qgs3d.h"
-#include "qgs3dexportobject.h"
-#include "qgs3dsceneexporter.h"
 #include "qgs3dutils.h"
 #include "qgsmarkersymbol.h"
 #include "qgsmaterialregistry.h"
@@ -343,57 +341,6 @@ void QgsPoint3DSymbol::setMaterialSettings( QgsAbstractMaterialSettings *materia
   mMaterialSettings.reset( materialSettings );
 }
 
-bool QgsPoint3DSymbol::exportGeometries( Qgs3DSceneExporter *exporter, Qt3DCore::QEntity *entity, const QString &objectNamePrefix ) const
-{
-  if ( shape() == Qgis::Point3DShape::Model )
-  {
-    Qt3DRender::QSceneLoader *sceneLoader = entity->findChild<Qt3DRender::QSceneLoader *>();
-    if ( sceneLoader )
-    {
-      const QVector<Qgs3DExportObject *> objects = exporter->processSceneLoaderGeometries( sceneLoader, objectNamePrefix );
-      for ( Qgs3DExportObject *obj : objects )
-      {
-        obj->setSmoothEdges( exporter->smoothEdges() );
-        obj->setupMaterial( materialSettings() );
-      }
-      exporter->mObjects << objects;
-    }
-    else
-    {
-      const QList<Qt3DRender::QMesh *> meshes = entity->findChildren<Qt3DRender::QMesh *>();
-      for ( Qt3DRender::QMesh *mesh : meshes )
-      {
-        Qgs3DExportObject *object = exporter->processGeometryRenderer( mesh, objectNamePrefix );
-        if ( !object )
-          continue;
-        object->setSmoothEdges( exporter->smoothEdges() );
-        object->setupMaterial( materialSettings() );
-        exporter->mObjects << object;
-      }
-    }
-    return true;
-  }
-  else if ( shape() == Qgis::Point3DShape::Billboard )
-  {
-    Qgs3DExportObject *obj = exporter->processPoints( entity, objectNamePrefix );
-    if ( obj )
-    {
-      exporter->mObjects << obj;
-      return true;
-    }
-  }
-  else
-  {
-    const QVector<Qgs3DExportObject *> objects = exporter->processInstancedPointGeometry( entity, objectNamePrefix );
-    for ( Qgs3DExportObject *obj : objects )
-    {
-      obj->setupMaterial( materialSettings() );
-      exporter->mObjects << obj;
-    }
-    return true;
-  }
-  return false;
-}
 
 QgsMarkerSymbol *QgsPoint3DSymbol::billboardSymbol() const
 {

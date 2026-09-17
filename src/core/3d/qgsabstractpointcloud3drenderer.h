@@ -22,13 +22,6 @@
 
 class QgsPointCloudRenderer;
 
-#ifndef SIP_RUN
-namespace Qt3DCore
-{
-  class QEntity;
-}
-#endif
-
 /**
  * \ingroup core
  * \brief Base class for point cloud 3D renderers.

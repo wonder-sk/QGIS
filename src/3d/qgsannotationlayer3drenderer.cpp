@@ -17,7 +17,6 @@
 
 #include "qgis.h"
 #include "qgsannotationlayer.h"
-#include "qgsannotationlayerchunkloader_p.h"
 #include "qgsstyle.h"
 
 #include <QString>
@@ -124,36 +123,12 @@ QgsAnnotationLayer3DRenderer *QgsAnnotationLayer3DRenderer::clone() const
   return r.release();
 }
 
-Qt3DCore::QEntity *QgsAnnotationLayer3DRenderer::createEntity( Qgs3DMapSettings *map ) const
+Qgs3DMapSceneEntity *QgsAnnotationLayer3DRenderer::createEntity( Qgs3DMapSettings *map ) const
 {
-  QgsAnnotationLayer *l = layer();
-
-  if ( !l )
-    return nullptr;
-
-  // For some cases we start with a maximal z range because we can't know this upfront, as it potentially involves terrain heights.
-  // This range will be refined after populating the nodes to the actual z range of the generated chunks nodes.
-  // Assuming the vertical height is in meter, then it's extremely unlikely that a real vertical
-  // height will exceed this amount!
-  constexpr double MINIMUM_ANNOTATION_Z_ESTIMATE = -100000;
-  constexpr double MAXIMUM_ANNOTATION_Z_ESTIMATE = 100000;
-
-  double minimumZ = MINIMUM_ANNOTATION_Z_ESTIMATE;
-  double maximumZ = MAXIMUM_ANNOTATION_Z_ESTIMATE;
-  switch ( mAltClamping )
-  {
-    case Qgis::AltitudeClamping::Absolute:
-      // special case where we DO know the exact z range upfront!
-      minimumZ = mZOffset;
-      maximumZ = mZOffset;
-      break;
-
-    case Qgis::AltitudeClamping::Relative:
-    case Qgis::AltitudeClamping::Terrain:
-      break;
-  }
-
-  return new QgsAnnotationLayerChunkedEntity( map, l, mAltClamping, mZOffset, mShowCalloutLines, mCalloutLineColor, mCalloutLineWidth, mTextFormat, minimumZ, maximumZ );
+  Q_UNUSED( map )
+  // the annotation layer chunk loader has not been ported to the QRhi engine yet, so the
+  // layer contributes nothing to a 3D scene
+  return nullptr;
 }
 
 void QgsAnnotationLayer3DRenderer::writeXml( QDomElement &elem, const QgsReadWriteContext &context ) const

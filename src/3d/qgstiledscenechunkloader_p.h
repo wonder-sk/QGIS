@@ -63,7 +63,6 @@ class QgsTiledSceneChunkLoader : public QgsChunkLoader
 
     ~QgsTiledSceneChunkLoader() override;
 
-    Qt3DCore::QEntity *createEntity( Qt3DCore::QEntity *parent ) override;
     std::unique_ptr<QgsSceneObject3D> createSceneObject() override;
 
   private:
@@ -75,7 +74,6 @@ class QgsTiledSceneChunkLoader : public QgsChunkLoader
 
     // a loaded tile is one payload or the other, never both: which one start() builds
     // depends on whether the scene is drawn by the QRhi engine
-    Qt3DCore::QEntity *mEntity = nullptr;
     std::unique_ptr<QgsSceneObject3D> mSceneObject;
 };
 
@@ -132,14 +130,7 @@ class QgsTiledSceneLayerChunkedEntity : public QgsChunkedEntity
     Q_OBJECT
   public:
     explicit QgsTiledSceneLayerChunkedEntity(
-      Qgs3DMapSettings *map,
-      const QgsTiledSceneIndex &index,
-      QgsCoordinateReferenceSystem tileCrs,
-      QgsCoordinateReferenceSystem layerCrs,
-      double maximumScreenError,
-      bool showBoundingBoxes,
-      double zValueScale,
-      double zValueOffset
+      Qgs3DMapSettings *map, const QgsTiledSceneIndex &index, QgsCoordinateReferenceSystem tileCrs, QgsCoordinateReferenceSystem layerCrs, double maximumScreenError, double zValueScale, double zValueOffset
     );
 
     ~QgsTiledSceneLayerChunkedEntity() override;

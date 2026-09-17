@@ -23,15 +23,12 @@
 #include "qgs3dmapsettings.h"
 #include "qgs3dtypes.h"
 #include "qgsaabb.h"
-#include "qgsmaterial.h"
 #include "qgsray3d.h"
 #include "qgsraycastresult.h"
 
 #include <QMatrix3x3>
 #include <QMatrix4x4>
-#include <Qt3DCore/QGeometry>
-#include <Qt3DRender/QCamera>
-#include <Qt3DRender/QCullFace>
+#include <QQuaternion>
 
 #define SIP_NO_FILE
 
@@ -41,39 +38,16 @@ class QgsLineString;
 class QgsPolygon;
 class QgsFeedback;
 
-class QgsAbstract3DEngine;
+class QgsRhi3DEngine;
 class QgsAbstract3DSymbol;
 class Qgs3DMapScene;
 class QgsPointCloudRenderer;
 class QgsPointCloudLayer3DRenderer;
 
-namespace Qt3DExtras
-{
-  class QPhongMaterial;
-}
-
-namespace Qt3DRender
-{
-  class QAbstractTexture;
-}
-
 class QSurface;
 class Qgs3DRenderContext;
 class QgsRayCastContext;
 class QgsMaterialContext;
-
-/**
- * \ingroup qgis_3d
- * \brief Pairs a Qt3D geometry with its material and transform. Used as a return type when loading 3D model files (GLTF, OBJ).
- * \note Not available in Python bindings
- * \since QGIS 4.2
- */
-struct _3D_EXPORT QgsMeshNodeData
-{
-    std::unique_ptr<Qt3DCore::QGeometry> geometry; //!< Geometry
-    std::unique_ptr<QgsMaterial> material;         //!< Material
-    QMatrix4x4 meshTransform;                      //!< Mesh space (raw coordinates) to object space transform
-};
 
 /**
  * \ingroup qgis_3d
@@ -88,14 +62,14 @@ class _3D_EXPORT Qgs3DUtils
      * until the scene is not fully loaded/updated before capturing the image.
      * \since QGIS 3.4
      */
-    static QImage captureSceneImage( QgsAbstract3DEngine &engine, Qgs3DMapScene *scene );
+    static QImage captureSceneImage( QgsRhi3DEngine &engine, Qgs3DMapScene *scene );
 
     /**
      * Waits for a frame to be rendered. Useful to trigger once-per-frame updates.
      * \warning Not to be used outside of tests!
      * \since QGIS 3.42
      */
-    static void waitForFrame( QgsAbstract3DEngine &engine, Qgs3DMapScene *scene );
+    static void waitForFrame( QgsRhi3DEngine &engine, Qgs3DMapScene *scene );
 
     /**
      * Waits for all entities in the scene to be loaded.
@@ -112,14 +86,8 @@ class _3D_EXPORT Qgs3DUtils
      * use Qgs3DUtils::decodeDepth() to get the correct depth value.
      * \since QGIS 3.24
      */
-    static QImage captureSceneDepthBuffer( QgsAbstract3DEngine &engine, Qgs3DMapScene *scene );
+    static QImage captureSceneDepthBuffer( QgsRhi3DEngine &engine, Qgs3DMapScene *scene );
 
-    /**
-     * Calculates approximate usage of GPU memory by an entity
-     * \return GPU memory usage in megabytes
-     * \since QGIS 3.34
-     */
-    static double calculateEntityGpuMemorySize( Qt3DCore::QEntity *entity );
 
     /**
      * Captures 3D animation frames to the selected folder
@@ -196,16 +164,6 @@ class _3D_EXPORT Qgs3DUtils
      */
     static QColor srgbToLinear( const QColor &color );
 
-    /**
-     * Given a QImage \a format, returns the most appropriate corresponding texture format.
-     *
-     * \param format QImage format to convert
-     * \param isSrgb determines whether RGB formats should be interpreted as SRGB color spaces.
-     * \param requiresConversionToRgb will be set to TRUE if the image format is not appropriate for a 3D texture and the image requires conversion to RGB by the caller.
-     *
-     * \since QGIS 4.2
-     */
-    static Qt3DRender::QAbstractTexture::TextureFormat determineTextureFormat( QImage::Format format, bool isSrgb, bool &requiresConversionToRgb );
 
     //! Calculates (x,y,z) positions of (multi)point from the given feature
     static void extractPointPositions(
@@ -286,9 +244,6 @@ class _3D_EXPORT Qgs3DUtils
      * \since QGIS 3.12
      */
     static void estimateVectorLayerZRange( QgsVectorLayer *layer, double &zMin, double &zMax );
-
-    //! Returns phong material settings object based on the Qt3D material
-    static QgsPhongMaterialSettings phongMaterialFromQt3DComponent( Qt3DExtras::QPhongMaterial *material );
 
     //! Convert from clicked point on the screen to a ray in world coordinates
     static QgsRay3D rayFromScreenPoint( const QPoint &point, const QSize &windowSize, const QgsCamera3D *camera );
@@ -387,14 +342,6 @@ class _3D_EXPORT Qgs3DUtils
      */
     static void computeBoundingBoxNearFarPlanes( const QgsAABB &bbox, const QMatrix4x4 &viewMatrix, float &fnear, float &ffar );
 
-    /**
-     * Converts Qgs3DTypes::CullingMode \a mode into its Qt3D equivalent.
-     *
-     * \param mode culling mode
-     *
-     * \since QGIS 3.34
-     */
-    static Qt3DRender::QCullFace::CullingMode qt3DcullingMode( Qgs3DTypes::CullingMode mode );
 
     /**
      * Inserts some define macros into a shader source code.
@@ -539,25 +486,6 @@ class _3D_EXPORT Qgs3DUtils
      */
     static QgsCameraPose lineSegmentToCameraPose( const QgsVector3D &startPoint, const QgsVector3D &endPoint, const QgsDoubleRange &elevationRange, float fieldOfView, const QgsVector3D &worldOrigin );
 
-    /**
-     * Copies the state of \a camera onto the Qt3D camera \a qt3dCamera.
-     *
-     * The Qt3D frame graph, the 3D axis and the material preview still render through a
-     * Qt3DRender::QCamera, while QgsCameraController now owns a QgsCamera3D. This keeps
-     * the Qt3D one a mirror of it, and goes away with the last of Qt3D.
-     *
-     * \note Not available in Python bindings
-     * \since QGIS 3.46
-     */
-    static void applyCameraToQt3D( const QgsCamera3D *camera, Qt3DRender::QCamera *qt3dCamera ) SIP_SKIP;
-
-    /**
-     * Sets the default filtering options for a \a texture.
-     *
-     * \note This should not be called for textures which have special filtering considerations,
-     * eg look up tables, data tables, "screen space" textures, or textures where mipmapping is not appropriate.
-     */
-    static void setTextureFiltering( Qt3DRender::QAbstractTexture *texture, const QgsMaterialContext &context );
 
     // we start with a maximal z range because we can't know this upfront. There's too many
     // factors to consider eg vertex z data, terrain heights, data defined offsets and extrusion heights,...

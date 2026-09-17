@@ -20,14 +20,12 @@
 #include "qgisapp.h"
 #include "qgs3dutils.h"
 #include "qgscameracontroller.h"
-#include "qgsframegraph.h"
 #include "qgsgeometry.h"
 #include "qgsguiutils.h"
 #include "qgslinestring.h"
 #include "qgsrubberband3d.h"
 #include "qgssettingsentryimpl.h"
 #include "qgssettingsregistrygui.h"
-#include "qgswindow3dengine.h"
 
 #include <QString>
 

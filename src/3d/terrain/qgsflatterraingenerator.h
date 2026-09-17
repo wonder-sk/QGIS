@@ -20,8 +20,6 @@
 #include "qgsterraingenerator.h"
 #include "qgsterraintileloader.h"
 
-#include <Qt3DExtras/QPlaneGeometry>
-
 #define SIP_NO_FILE
 
 ///@cond PRIVATE
@@ -37,8 +35,6 @@ class FlatTerrainChunkLoader : public QgsTerrainTileLoader
 
     void start() override;
 
-    Qt3DCore::QEntity *createEntity( Qt3DCore::QEntity *parent ) override;
-
     std::unique_ptr<QgsSceneObject3D> createSceneObject() override;
 
   private:
@@ -47,8 +43,6 @@ class FlatTerrainChunkLoader : public QgsTerrainTileLoader
 
     //! Returns the transform that stretches a unit quad over the tile's extent, without placing it
     QMatrix4x4 tileTransform();
-
-    Qt3DExtras::QPlaneGeometry *mTileGeometry = nullptr;
 };
 
 ///@endcond

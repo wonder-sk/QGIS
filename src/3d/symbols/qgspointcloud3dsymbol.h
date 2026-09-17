@@ -24,8 +24,6 @@
 
 #include <QString>
 
-class QgsMaterial;
-
 using namespace Qt::StringLiterals;
 
 /**
@@ -82,9 +80,6 @@ class _3D_EXPORT QgsPointCloud3DSymbol : public QgsAbstract3DSymbol SIP_ABSTRACT
 
     //! Returns the byte stride for the geometries used to for the vertex buffer
     virtual unsigned int byteStride() = 0;
-    //! Used to fill material object with necessary QParameters (and consequently opengl uniforms)
-    virtual void fillMaterial( QgsMaterial *material ) SIP_SKIP = 0;
-
     /**
      * Returns whether points are triangulated to render solid surface
      *
@@ -231,7 +226,6 @@ class _3D_EXPORT QgsSingleColorPointCloud3DSymbol : public QgsPointCloud3DSymbol
     void setSingleColor( QColor color );
 
     unsigned int byteStride() override { return 3 * sizeof( float ); }
-    void fillMaterial( QgsMaterial *material ) override SIP_SKIP;
 
 
   private:
@@ -302,7 +296,6 @@ class _3D_EXPORT QgsColorRampPointCloud3DSymbol : public QgsPointCloud3DSymbol
     void setColorRampShaderMinMax( double min, double max );
 
     unsigned int byteStride() override { return 4 * sizeof( float ); }
-    void fillMaterial( QgsMaterial *material ) override SIP_SKIP;
 
   private:
     QString mRenderingParameter;
@@ -338,7 +331,6 @@ class _3D_EXPORT QgsRgbPointCloud3DSymbol : public QgsPointCloud3DSymbol
     void readXml( const QDomElement &elem, const QgsReadWriteContext &context ) override;
 
     unsigned int byteStride() override { return 6 * sizeof( float ); }
-    void fillMaterial( QgsMaterial *material ) override SIP_SKIP;
 
     /**
      * Returns the attribute to use for the red channel.
@@ -520,13 +512,12 @@ class _3D_EXPORT QgsClassificationPointCloud3DSymbol : public QgsPointCloud3DSym
     QgsPointCloudCategoryList getFilteredOutCategories() const;
 
     unsigned int byteStride() override { return 5 * sizeof( float ); }
-    void fillMaterial( QgsMaterial *material ) override SIP_SKIP;
 
     /**
      * Returns the categories as an exact color ramp, one break point per category.
      *
-     * The class code of a point indexes this ramp by position, which is how both the
-     * Qt3D and the QRhi point cloud materials colour a classified cloud.
+     * The class code of a point indexes this ramp by position, which is how the point
+     * cloud material colours a classified cloud.
      *
      * \note Not available in Python bindings
      * \since QGIS 4.2

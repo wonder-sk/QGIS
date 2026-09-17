@@ -18,42 +18,33 @@
 
 #include <memory>
 
-#include "qgsabstract3dengine.h"
+#include "qgis_3d.h"
 #include "qgsrhiengine.h"
 #include "qgsscenerenderer.h"
 
 #include <QImage>
+#include <QObject>
 #include <QSize>
 
 #define SIP_NO_FILE
 
 class Qgs3DMapScene;
-class QOffscreenSurface;
+class QColor;
+class QSurface;
 class QWindow;
-
-namespace Qt3DCore
-{
-  class QEntity;
-}
 
 /**
  * \ingroup qgis_3d
- * \brief 3D engine that draws a scene with QRhi instead of Qt3D.
+ * \brief The 3D engine: a graphics device, a render target and the frame drawn into it.
  *
- * This is the third QgsAbstract3DEngine, next to QgsWindow3DEngine and
- * QgsOffscreen3DEngine, and the one meant to outlive them. It owns a QgsRhiEngine, which
- * is the graphics device and the swapchain, and a QgsSceneRenderer, which is the frame.
- * renderFrame() asks the scene for the commands each pass should draw and runs them.
- *
- * It still answers the Qt3D half of QgsAbstract3DEngine - render settings, a camera, a
- * frame graph, a root entity - because Qgs3DMapScene is still partly written against
- * those. Nothing renders them: they are there so that the parts of the scene that have
- * not been ported yet still have something to talk to, and they go when Qt3D does.
+ * It owns a QgsRhiEngine, which is the graphics device and the swapchain or offscreen
+ * target, and a QgsSceneRenderer, which is the frame. renderFrame() asks the scene for
+ * the commands each pass should draw and runs them.
  *
  * \note Not available in Python bindings
  * \since QGIS 3.46
  */
-class _3D_EXPORT QgsRhi3DEngine : public QgsAbstract3DEngine
+class _3D_EXPORT QgsRhi3DEngine : public QObject
 {
     Q_OBJECT
 
@@ -78,15 +69,6 @@ class _3D_EXPORT QgsRhi3DEngine : public QgsAbstract3DEngine
     explicit QgsRhi3DEngine( QSize size, QObject *parent = nullptr );
 
     ~QgsRhi3DEngine() override;
-
-    /**
-     * Returns whether the QRhi engine should be used for 3D views.
-     *
-     * Set QGIS_3D_RHI to a true value to switch a 3D view over to it. This is how the new
-     * engine is tried out while Qt3D still draws by default; the variable goes away once
-     * the port is finished and the QRhi engine is the only one.
-     */
-    static bool isEnabled();
 
     /**
      * Configures \a window so that a swapchain can be created for it.
@@ -126,18 +108,46 @@ class _3D_EXPORT QgsRhi3DEngine : public QgsAbstract3DEngine
      */
     bool renderFrame();
 
-    void setClearColor( const QColor &color ) override;
-    void setFrustumCullingEnabled( bool enabled ) override;
-    void setRootEntity( Qt3DCore::QEntity *root ) override;
-    Qt3DRender::QRenderSettings *renderSettings() override;
-    Qt3DRender::QCamera *camera() override;
-    QSize size() const override;
-    void setSize( QSize s ) override;
-    QSurface *surface() const override;
-    QWindow *window() override { return mWindow; }
+    //! Sets the colour the view is cleared to before anything is drawn
+    void setClearColor( const QColor &color );
 
-    void requestCaptureImage() override;
-    void requestDepthBufferCapture() override;
+    //! Returns the size of the rendering area, in pixels
+    QSize size() const;
+
+    //! Sets the size of the rendering area, in pixels
+    void setSize( QSize s );
+
+    //! Returns the surface the engine renders into
+    QSurface *surface() const;
+
+    //! Returns the window the engine renders into, or NULLPTR if it renders offscreen
+    QWindow *window() { return mWindow; }
+
+    /**
+     * Asks for an image of the next frame, returned through imageCaptured().
+     *
+     * Only an offscreen engine can do this: QRhi cannot read a swapchain's backbuffer
+     * back, so capturing a windowed view means rendering the scene again offscreen.
+     */
+    void requestCaptureImage();
+
+    /**
+     * Asks for the depth buffer of the next frame, returned through depthBufferCaptured().
+     *
+     * \note The depth values are encoded into RGB channels and should be decoded with
+     * Qgs3DUtils::decodeDepth()
+     */
+    void requestDepthBufferCapture();
+
+  signals:
+    //! Emitted after a call to requestCaptureImage() to return the captured image
+    void imageCaptured( const QImage &image );
+
+    //! Emitted after a call to requestDepthBufferCapture() to return the captured depth buffer
+    void depthBufferCaptured( const QImage &image );
+
+    //! Emitted after a call to setSize()
+    void sizeChanged();
 
   private:
     //! Copies the scene's camera, lights and effect settings onto the frame
@@ -156,14 +166,6 @@ class _3D_EXPORT QgsRhi3DEngine : public QgsAbstract3DEngine
     bool mDepthCaptureRequested = false;
     //! TRUE while an image of the finished frame has been asked for and not yet delivered
     bool mImageCaptureRequested = false;
-
-    // The Qt3D half of QgsAbstract3DEngine. Nothing renders any of this; it exists so
-    // that the not yet ported parts of Qgs3DMapScene have something to talk to.
-    std::unique_ptr<QOffscreenSurface> mQt3DSurface;
-    Qt3DCore::QEntity *mQt3DRoot = nullptr;
-    Qt3DCore::QEntity *mQt3DSceneRoot = nullptr;
-    Qt3DRender::QCamera *mQt3DCamera = nullptr;
-    Qt3DRender::QRenderSettings *mQt3DRenderSettings = nullptr;
 };
 
 #endif // QGSRHI3DENGINE_H

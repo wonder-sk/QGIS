@@ -28,8 +28,6 @@ QgsPhongTexturedMaterialWidget::QgsPhongTexturedMaterialWidget( QWidget *parent 
   : QgsMaterialSettingsWidget( parent )
 {
   setupUi( this );
-  mPreviewWidget->hide();
-  mPreviewWidget->setMaterialType( u"phongtextured"_s );
 
   spinShininess->setClearValue( 0, tr( "None" ) );
 
@@ -112,7 +110,7 @@ std::unique_ptr<QgsAbstractMaterialSettings> QgsPhongTexturedMaterialWidget::set
 
 void QgsPhongTexturedMaterialWidget::setPreviewVisible( bool visible )
 {
-  mPreviewWidget->setVisible( visible );
+  Q_UNUSED( visible )
   updatePreview();
 }
 
@@ -132,8 +130,5 @@ void QgsPhongTexturedMaterialWidget::updateWidgetState()
 
 void QgsPhongTexturedMaterialWidget::updatePreview()
 {
-  if ( mPreviewWidget->isHidden() )
-    return;
-  const std::unique_ptr<QgsAbstractMaterialSettings> newSettings( settings() );
-  mPreviewWidget->updatePreview( newSettings.get() );
+  // the material preview is not available while the QRhi port has no material handler
 }

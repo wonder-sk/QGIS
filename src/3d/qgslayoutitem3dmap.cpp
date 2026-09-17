@@ -24,7 +24,7 @@
 #include "qgslayoutitemregistry.h"
 #include "qgslayoutmodel.h"
 #include "qgslayoutrendercontext.h"
-#include "qgsoffscreen3dengine.h"
+#include "qgsrhi3dengine.h"
 
 #include <QString>
 
@@ -161,14 +161,13 @@ void QgsLayoutItem3DMap::draw( QgsLayoutItemRenderContext &context )
 
   if ( !mEngine )
   {
-    mEngine = std::make_unique<QgsOffscreen3DEngine>();
-    connect( mEngine.get(), &QgsAbstract3DEngine::imageCaptured, this, &QgsLayoutItem3DMap::onImageCaptured );
+    mEngine = std::make_unique<QgsRhi3DEngine>( sizePixelsInt );
+    connect( mEngine.get(), &QgsRhi3DEngine::imageCaptured, this, &QgsLayoutItem3DMap::onImageCaptured );
 
-    mEngine->setSize( sizePixelsInt );
     mScene = new Qgs3DMapScene( *mSettings, mEngine.get() );
     connect( mScene, &Qgs3DMapScene::sceneStateChanged, this, &QgsLayoutItem3DMap::onSceneStateChanged );
 
-    mEngine->setRootEntity( mScene );
+    mEngine->setScene( mScene );
   }
 
   if ( mEngine->size() != sizePixelsInt )
@@ -187,7 +186,7 @@ void QgsLayoutItem3DMap::draw( QgsLayoutItemRenderContext &context )
     if ( mDrawing )
       return;
     mDrawing = true;
-    disconnect( mEngine.get(), &QgsAbstract3DEngine::imageCaptured, this, &QgsLayoutItem3DMap::onImageCaptured );
+    disconnect( mEngine.get(), &QgsRhi3DEngine::imageCaptured, this, &QgsLayoutItem3DMap::onImageCaptured );
     disconnect( mScene, &Qgs3DMapScene::sceneStateChanged, this, &QgsLayoutItem3DMap::onSceneStateChanged );
 
     Qgs3DUtils::captureSceneImage( *mEngine.get(), mScene );
@@ -195,7 +194,7 @@ void QgsLayoutItem3DMap::draw( QgsLayoutItemRenderContext &context )
     painter->drawImage( r, img );
     painter->restore();
 
-    connect( mEngine.get(), &QgsAbstract3DEngine::imageCaptured, this, &QgsLayoutItem3DMap::onImageCaptured );
+    connect( mEngine.get(), &QgsRhi3DEngine::imageCaptured, this, &QgsLayoutItem3DMap::onImageCaptured );
     connect( mScene, &Qgs3DMapScene::sceneStateChanged, this, &QgsLayoutItem3DMap::onSceneStateChanged );
     mDrawing = false;
   }

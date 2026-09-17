@@ -41,14 +41,6 @@ class QgsMaterial3D;
 class QgsPhongMaterialSettings;
 class QgsSceneObject3D;
 class QgsTerrainEntity;
-class QgsTerrainTileEntity;
-class QgsMaterialContext;
-class Qgs3DRenderContext;
-
-namespace Qt3DRender
-{
-  class QTexture2D;
-}
 
 
 /**
@@ -68,11 +60,6 @@ class QgsTerrainTileLoader : public QgsChunkLoader
   protected:
     //! Starts asynchronous rendering of map texture
     void loadTexture();
-
-    //! Creates a new texture that is linked to the entity
-    Qt3DRender::QTexture2D *createTexture( QgsTerrainTileEntity *entity, const QgsMaterialContext &context );
-    //! Creates material component for the entity with the rendered map as a texture
-    void createTextureComponent( QgsTerrainTileEntity *entity, bool isShadingEnabled, const QgsPhongMaterialSettings &shadingMaterial, bool useTexture, const Qgs3DRenderContext &context );
 
     /**
      * Builds the material a terrain tile is drawn with in the QRhi engine, taking the

@@ -58,7 +58,7 @@ QgsAbstract3DRenderer *QgsTiledSceneLayer3DRenderer::clone() const
   return r;
 }
 
-Qt3DCore::QEntity *QgsTiledSceneLayer3DRenderer::createEntity( Qgs3DMapSettings *map ) const
+Qgs3DMapSceneEntity *QgsTiledSceneLayer3DRenderer::createEntity( Qgs3DMapSettings *map ) const
 {
   QgsTiledSceneLayer *tsl = layer();
   if ( !tsl || !tsl->dataProvider() )
@@ -72,7 +72,6 @@ Qt3DCore::QEntity *QgsTiledSceneLayer3DRenderer::createEntity( Qgs3DMapSettings 
     tsl->dataProvider()->sceneCrs(),
     tsl->dataProvider()->crs(),
     maximumScreenError(),
-    showBoundingBoxes(),
     qgis::down_cast<const QgsTiledSceneLayerElevationProperties *>( tsl->elevationProperties() )->zScale(),
     qgis::down_cast<const QgsTiledSceneLayerElevationProperties *>( tsl->elevationProperties() )->zOffset()
   );

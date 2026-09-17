@@ -26,7 +26,6 @@
 #include "qgscolorramp.h"
 
 class Qgs3DRenderContext;
-class QgsFeature3DHandler;
 class QgsExpression;
 
 
@@ -153,7 +152,7 @@ class _3D_EXPORT QgsCategorized3DRenderer : public QgsAbstractVectorLayer3DRende
 
     QString type() const override { return "categorized"; }
     QgsCategorized3DRenderer *clone() const override SIP_FACTORY;
-    Qt3DCore::QEntity *createEntity( Qgs3DMapSettings *mapSettings ) const override SIP_SKIP;
+    Qgs3DMapSceneEntity *createEntity( Qgs3DMapSettings *mapSettings ) const override SIP_SKIP;
 
     /**
      * Update all the symbols but leave categories and colors. This method also sets the source

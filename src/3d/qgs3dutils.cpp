@@ -18,7 +18,6 @@
 #include "qgs3d.h"
 #include "qgs3dmapcanvas.h"
 #include "qgs3dmapscene.h"
-#include "qgsabstract3dengine.h"
 #include "qgsabstractgeometry.h"
 #include "qgsabstractterrainsettings.h"
 #include "qgsapplication.h"
@@ -29,10 +28,7 @@
 #include "qgsfeatureiterator.h"
 #include "qgsfeaturerequest.h"
 #include "qgsfeedback.h"
-#include "qgsglobechunkedentity.h"
 #include "qgslinestring.h"
-#include "qgsmaterial3dhandler.h"
-#include "qgsoffscreen3dengine.h"
 #include "qgspointcloud3dsymbol.h"
 #include "qgspointcloudattributebyramprenderer.h"
 #include "qgspointcloudclassifiedrenderer.h"
@@ -42,17 +38,15 @@
 #include "qgspolygon.h"
 #include "qgsraycastcontext.h"
 #include "qgsraycastresult.h"
+#include "qgsrhi3dengine.h"
 #include "qgsterrainentity.h"
 #include "qgsterraingenerator.h"
 #include "qgsvectorlayer.h"
 
+#include <QElapsedTimer>
 #include <QOpenGLContext>
 #include <QOpenGLFunctions>
 #include <QString>
-#include <Qt3DCore/QBuffer>
-#include <Qt3DExtras/QPhongMaterial>
-#include <Qt3DLogic/QFrameAction>
-#include <Qt3DRender/QRenderSettings>
 #include <QtMath>
 
 using namespace Qt::StringLiterals;
@@ -65,22 +59,13 @@ using namespace Qt::StringLiterals;
 // declared here as Qgs3DTypes has no cpp file
 const char *Qgs3DTypes::PROP_NAME_3D_RENDERER_FLAG = "PROP_NAME_3D_RENDERER_FLAG";
 
-void Qgs3DUtils::waitForFrame( QgsAbstract3DEngine &engine, Qgs3DMapScene *scene )
+void Qgs3DUtils::waitForFrame( QgsRhi3DEngine &engine, Qgs3DMapScene *scene )
 {
-  // Set policy to always render frame, so we don't wait forever.
-  Qt3DRender::QRenderSettings::RenderPolicy oldPolicy = engine.renderSettings()->renderPolicy();
-  engine.renderSettings()->setRenderPolicy( Qt3DRender::QRenderSettings::RenderPolicy::Always );
-
-  // Wait for at least one frame to render
-  Qt3DLogic::QFrameAction *frameAction = new Qt3DLogic::QFrameAction();
-  scene->addComponent( frameAction );
-  QEventLoop evLoop;
-  QObject::connect( frameAction, &Qt3DLogic::QFrameAction::triggered, &evLoop, &QEventLoop::quit );
-  evLoop.exec();
-  scene->removeComponent( frameAction );
-  frameAction->deleteLater();
-
-  engine.renderSettings()->setRenderPolicy( oldPolicy );
+  // there is no aspect engine ticking the scene any more: a frame happens because we ask
+  // for one, so "wait for a frame" is simply "render one"
+  QgsApplication::processEvents();
+  scene->onFrameTriggered( 0.0f );
+  engine.renderFrame();
 }
 
 void Qgs3DUtils::waitForEntitiesLoaded( Qgs3DMapScene *scene )
@@ -91,112 +76,47 @@ void Qgs3DUtils::waitForEntitiesLoaded( Qgs3DMapScene *scene )
   }
 }
 
-QImage Qgs3DUtils::captureSceneImage( QgsAbstract3DEngine &engine, Qgs3DMapScene *scene )
+/**
+ * Renders frames until the scene has nothing left to load.
+ *
+ * The chunk loaders run on worker threads, so a single quiet frame only says that a job
+ * has not been posted back yet. A run of them is what says the scene has settled.
+ */
+static void renderUntilSceneIsReady( QgsRhi3DEngine &engine, Qgs3DMapScene *scene )
 {
-  QImage resImage;
-  QEventLoop evLoop;
+  QElapsedTimer timer;
+  timer.start();
 
-  // We need to change render policy to RenderPolicy::Always, since otherwise render capture node won't work
-  engine.renderSettings()->setRenderPolicy( Qt3DRender::QRenderSettings::RenderPolicy::Always );
-
-  waitForFrame( engine, scene );
-
-  auto saveImageFcn = [&evLoop, &resImage]( const QImage &img ) {
-    resImage = img;
-    evLoop.quit();
-  };
-
-  const QMetaObject::Connection conn1 = QObject::connect( &engine, &QgsAbstract3DEngine::imageCaptured, saveImageFcn );
-  QMetaObject::Connection conn2;
-
-  auto requestImageFcn = [&engine, scene] {
-    if ( scene->sceneState() == Qgs3DMapScene::Ready )
-    {
-      engine.renderSettings()->setRenderPolicy( Qt3DRender::QRenderSettings::RenderPolicy::OnDemand );
-      engine.requestCaptureImage();
-    }
-  };
-
-  if ( scene->sceneState() == Qgs3DMapScene::Ready )
+  int idleFrames = 0;
+  while ( idleFrames < 10 && timer.elapsed() < 60000 )
   {
-    requestImageFcn();
+    QgsApplication::processEvents();
+    scene->onFrameTriggered( 0.016f );
+    engine.renderFrame();
+
+    if ( scene->totalPendingJobsCount() == 0 && scene->sceneState() == Qgs3DMapScene::Ready )
+      ++idleFrames;
+    else
+      idleFrames = 0;
   }
-  else
-  {
-    // first wait until scene is loaded
-    conn2 = QObject::connect( scene, &Qgs3DMapScene::sceneStateChanged, requestImageFcn );
-  }
-
-  evLoop.exec();
-
-  QObject::disconnect( conn1 );
-  if ( conn2 )
-    QObject::disconnect( conn2 );
-
-  engine.renderSettings()->setRenderPolicy( Qt3DRender::QRenderSettings::RenderPolicy::OnDemand );
-  return resImage;
 }
 
-QImage Qgs3DUtils::captureSceneDepthBuffer( QgsAbstract3DEngine &engine, Qgs3DMapScene *scene )
+QImage Qgs3DUtils::captureSceneImage( QgsRhi3DEngine &engine, Qgs3DMapScene *scene )
 {
-  QImage resImage;
-  QEventLoop evLoop;
-
-  // We need to change render policy to RenderPolicy::Always, since otherwise render capture node won't work
-  engine.renderSettings()->setRenderPolicy( Qt3DRender::QRenderSettings::RenderPolicy::Always );
-
-  auto requestImageFcn = [&engine, scene] {
-    if ( scene->sceneState() == Qgs3DMapScene::Ready )
-    {
-      engine.renderSettings()->setRenderPolicy( Qt3DRender::QRenderSettings::RenderPolicy::OnDemand );
-      engine.requestDepthBufferCapture();
-    }
-  };
-
-  auto saveImageFcn = [&evLoop, &resImage]( const QImage &img ) {
-    resImage = img;
-    evLoop.quit();
-  };
-
-  QMetaObject::Connection conn1 = QObject::connect( &engine, &QgsAbstract3DEngine::depthBufferCaptured, saveImageFcn );
-  QMetaObject::Connection conn2;
-
-  // Make sure once-per-frame functions run
-  waitForFrame( engine, scene );
-  if ( scene->sceneState() == Qgs3DMapScene::Ready )
-  {
-    requestImageFcn();
-  }
-  else
-  {
-    // first wait until scene is loaded
-    conn2 = QObject::connect( scene, &Qgs3DMapScene::sceneStateChanged, requestImageFcn );
-  }
-
-  evLoop.exec();
-
-  QObject::disconnect( conn1 );
-  if ( conn2 )
-    QObject::disconnect( conn2 );
-
-  engine.renderSettings()->setRenderPolicy( Qt3DRender::QRenderSettings::RenderPolicy::OnDemand );
-  return resImage;
+  renderUntilSceneIsReady( engine, scene );
+  return engine.renderedImage();
 }
 
-
-double Qgs3DUtils::calculateEntityGpuMemorySize( Qt3DCore::QEntity *entity )
+QImage Qgs3DUtils::captureSceneDepthBuffer( QgsRhi3DEngine &engine, Qgs3DMapScene *scene )
 {
-  long long usedGpuMemory = 0;
-  for ( Qt3DCore::QBuffer *buffer : entity->findChildren<Qt3DCore::QBuffer *>() )
-  {
-    usedGpuMemory += buffer->data().size();
-  }
-  for ( Qt3DRender::QTexture2D *tex : entity->findChildren<Qt3DRender::QTexture2D *>() )
-  {
-    // TODO : lift the assumption that the texture is RGBA
-    usedGpuMemory += static_cast< long long >( tex->width() ) * static_cast< long long >( tex->height() ) * 4;
-  }
-  return usedGpuMemory / 1024.0 / 1024.0;
+  renderUntilSceneIsReady( engine, scene );
+
+  QImage result;
+  const QMetaObject::Connection conn = QObject::connect( &engine, &QgsRhi3DEngine::depthBufferCaptured, [&result]( const QImage &image ) { result = image; } );
+  engine.requestDepthBufferCapture();
+  engine.renderFrame();
+  QObject::disconnect( conn );
+  return result;
 }
 
 
@@ -256,12 +176,9 @@ bool Qgs3DUtils::exportAnimation(
     }
   }
 
-  QgsOffscreen3DEngine engine;
-  engine.setSize( outputSize );
+  QgsRhi3DEngine engine( outputSize );
   Qgs3DMapScene *scene = new Qgs3DMapScene( mapSettings, &engine );
-  engine.setRootEntity( scene );
-  // We need to change render policy to RenderPolicy::Always, since otherwise render capture node won't work
-  engine.renderSettings()->setRenderPolicy( Qt3DRender::QRenderSettings::RenderPolicy::Always );
+  engine.setScene( scene );
 
   while ( time <= duration )
   {
@@ -782,15 +699,6 @@ void Qgs3DUtils::estimateVectorLayerZRange( QgsVectorLayer *layer, double &zMin,
   }
 }
 
-QgsPhongMaterialSettings Qgs3DUtils::phongMaterialFromQt3DComponent( Qt3DExtras::QPhongMaterial *material )
-{
-  QgsPhongMaterialSettings settings;
-  settings.setAmbient( material->ambient() );
-  settings.setDiffuse( material->diffuse() );
-  settings.setSpecular( material->specular() );
-  settings.setShininess( material->shininess() );
-  return settings;
-}
 
 QgsRay3D Qgs3DUtils::rayFromScreenPoint( const QPoint &point, const QSize &windowSize, const QgsCamera3D *camera )
 {
@@ -902,7 +810,7 @@ QgsRayCastResult Qgs3DUtils::castRay( Qgs3DMapScene *scene, const QgsRay3D &ray,
   const QList<QgsMapLayer *> keys = scene->layers();
   for ( QgsMapLayer *layer : keys )
   {
-    Qt3DCore::QEntity *entity = scene->layerEntity( layer );
+    Qgs3DMapSceneEntity *entity = scene->layerEntity( layer );
 
     if ( QgsChunkedEntity *chunkedEntity = qobject_cast<QgsChunkedEntity *>( entity ) )
     {
@@ -915,13 +823,6 @@ QgsRayCastResult Qgs3DUtils::castRay( Qgs3DMapScene *scene, const QgsRay3D &ray,
   if ( QgsTerrainEntity *terrain = scene->terrainEntity() )
   {
     const QList<QgsRayCastHit> hits = terrain->rayIntersection( ray, context );
-
-    if ( !hits.isEmpty() )
-      results.addTerrainHits( hits );
-  }
-  if ( QgsGlobeEntity *globe = scene->globeEntity() )
-  {
-    const QList<QgsRayCastHit> hits = globe->rayIntersection( ray, context );
 
     if ( !hits.isEmpty() )
       results.addTerrainHits( hits );
@@ -971,23 +872,6 @@ void Qgs3DUtils::computeBoundingBoxNearFarPlanes( const QgsAABB &bbox, const QMa
     ffar = std::max( ffar, dst );
   }
 }
-
-Qt3DRender::QCullFace::CullingMode Qgs3DUtils::qt3DcullingMode( Qgs3DTypes::CullingMode mode )
-{
-  switch ( mode )
-  {
-    case Qgs3DTypes::NoCulling:
-      return Qt3DRender::QCullFace::NoCulling;
-    case Qgs3DTypes::Front:
-      return Qt3DRender::QCullFace::Front;
-    case Qgs3DTypes::Back:
-      return Qt3DRender::QCullFace::Back;
-    case Qgs3DTypes::FrontAndBack:
-      return Qt3DRender::QCullFace::FrontAndBack;
-  }
-  return Qt3DRender::QCullFace::NoCulling;
-}
-
 
 QByteArray Qgs3DUtils::addDefinesToShaderCode( const QByteArray &shaderCode, const QStringList &defines )
 {
@@ -1246,22 +1130,6 @@ QList<QVector4D> Qgs3DUtils::lineSegmentToClippingPlanes( const QgsVector3D &sta
   return clippingPlanes;
 }
 
-void Qgs3DUtils::applyCameraToQt3D( const QgsCamera3D *camera, Qt3DRender::QCamera *qt3dCamera )
-{
-  qt3dCamera->setPosition( camera->position() );
-  qt3dCamera->setViewCenter( camera->viewCenter() );
-  qt3dCamera->setUpVector( camera->upVector() );
-
-  switch ( camera->projectionType() )
-  {
-    case Qgis::Map3DProjectionType::Perspective:
-      qt3dCamera->lens()->setPerspectiveProjection( camera->fieldOfView(), camera->aspectRatio(), camera->nearPlane(), camera->farPlane() );
-      break;
-    case Qgis::Map3DProjectionType::Orthographic:
-      qt3dCamera->lens()->setOrthographicProjection( camera->left(), camera->right(), camera->bottom(), camera->top(), camera->nearPlane(), camera->farPlane() );
-      break;
-  }
-}
 
 QgsCameraPose Qgs3DUtils::lineSegmentToCameraPose( const QgsVector3D &startPoint, const QgsVector3D &endPoint, const QgsDoubleRange &elevationRange, const float fieldOfView, const QgsVector3D &worldOrigin )
 {
@@ -1295,98 +1163,4 @@ QgsCameraPose Qgs3DUtils::lineSegmentToCameraPose( const QgsVector3D &startPoint
   cameraPose.setHeadingAngle( yawAngle );
 
   return cameraPose;
-}
-
-
-void Qgs3DUtils::setTextureFiltering( Qt3DRender::QAbstractTexture *texture, const QgsMaterialContext &context )
-{
-  texture->setGenerateMipMaps( true );
-  texture->setMagnificationFilter( Qt3DRender::QTexture2D::Linear );
-  texture->setMinificationFilter( Qt3DRender::QTexture2D::LinearMipMapLinear );
-
-  switch ( context.textureFilterQuality() )
-  {
-    case Qgis::TextureFilterQuality::Trilinear:
-      texture->setMaximumAnisotropy( 1 );
-      break;
-    case Qgis::TextureFilterQuality::Anisotropic2x:
-      texture->setMaximumAnisotropy( 2 );
-      break;
-    case Qgis::TextureFilterQuality::Anisotropic4x:
-      texture->setMaximumAnisotropy( 4 );
-      break;
-    case Qgis::TextureFilterQuality::Anisotropic8x:
-      texture->setMaximumAnisotropy( 8 );
-      break;
-    case Qgis::TextureFilterQuality::Anisotropic16x:
-      texture->setMaximumAnisotropy( 16 );
-      break;
-  }
-}
-
-Qt3DRender::QAbstractTexture::TextureFormat Qgs3DUtils::determineTextureFormat( QImage::Format imageFormat, bool isSrgb, bool &requiresConversionToRgb )
-{
-  requiresConversionToRgb = false;
-  switch ( imageFormat )
-  {
-    case QImage::Format_RGBA32FPx4:
-    case QImage::Format_RGBA32FPx4_Premultiplied:
-      return Qt3DRender::QAbstractTexture::RGBA32F;
-
-    case QImage::Format_RGBX32FPx4:
-      return Qt3DRender::QAbstractTexture::RGB32F;
-
-    case QImage::Format_RGBA16FPx4:
-    case QImage::Format_RGBA16FPx4_Premultiplied:
-      return Qt3DRender::QAbstractTexture::RGBA16F;
-
-    case QImage::Format_RGBX16FPx4:
-      return Qt3DRender::QAbstractTexture::RGB16F;
-
-    case QImage::Format_RGBA8888:
-    case QImage::Format_RGBA8888_Premultiplied:
-    case QImage::Format_ARGB32:
-    case QImage::Format_ARGB32_Premultiplied:
-      return isSrgb ? Qt3DRender::QAbstractTexture::SRGB8_Alpha8 : Qt3DRender::QAbstractTexture::RGBA8_UNorm;
-
-    case QImage::Format_RGB32:
-    case QImage::Format_RGB888:
-      return isSrgb ? Qt3DRender::QAbstractTexture::SRGB8 : Qt3DRender::QAbstractTexture::RGB8_UNorm;
-
-    case QImage::Format_Grayscale8:
-    case QImage::Format_Alpha8:
-      return Qt3DRender::QAbstractTexture::R8_UNorm;
-    case QImage::Format_Grayscale16:
-      return Qt3DRender::QAbstractTexture::R16_UNorm;
-
-    case QImage::Format_Invalid:
-    case QImage::Format_Mono:
-    case QImage::Format_MonoLSB:
-    case QImage::Format_Indexed8:
-    case QImage::Format_RGB16:
-    case QImage::Format_ARGB8565_Premultiplied:
-    case QImage::Format_RGB666:
-    case QImage::Format_ARGB6666_Premultiplied:
-    case QImage::Format_RGB555:
-    case QImage::Format_ARGB8555_Premultiplied:
-    case QImage::Format_RGB444:
-    case QImage::Format_ARGB4444_Premultiplied:
-    case QImage::Format_RGBX8888:
-    case QImage::Format_BGR30:
-    case QImage::Format_A2BGR30_Premultiplied:
-    case QImage::Format_RGB30:
-    case QImage::Format_A2RGB30_Premultiplied:
-    case QImage::Format_RGBX64:
-    case QImage::Format_RGBA64:
-    case QImage::Format_RGBA64_Premultiplied:
-    case QImage::Format_BGR888:
-#if QT_VERSION >= QT_VERSION_CHECK( 6, 8, 0 )
-    case QImage::Format_CMYK8888:
-#endif
-    case QImage::NImageFormats:
-      // image format isn't compatible, it needs converting by caller
-      requiresConversionToRgb = true;
-      break;
-  }
-  return isSrgb ? Qt3DRender::QAbstractTexture::SRGB8_Alpha8 : Qt3DRender::QAbstractTexture::RGBA8_UNorm;
 }

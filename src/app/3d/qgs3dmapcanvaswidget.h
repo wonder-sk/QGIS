@@ -135,7 +135,6 @@ class APP_EXPORT Qgs3DMapCanvasWidget : public QWidget
     void changePointCloudAttributeByAboveLine();
     void changePointCloudAttributeByBelowLine();
     void changePointCloudAttributePointFilter();
-    void exportScene();
     void toggleNavigationWidget( bool visibility );
     void toggleEditingToolbar( bool visibility );
     void toggleFpsCounter( bool visibility );

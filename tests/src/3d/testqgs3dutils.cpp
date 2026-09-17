@@ -13,6 +13,8 @@
  *                                                                         *
  ***************************************************************************/
 
+#include <memory>
+
 #include "qgs3d.h"
 #include "qgs3dmapscene.h"
 #include "qgs3dutils.h"
@@ -20,18 +22,18 @@
 #include "qgscamera3d.h"
 #include "qgscameracontroller.h"
 #include "qgsflatterrainsettings.h"
-#include "qgsoffscreen3dengine.h"
 #include "qgspolygon3dsymbol.h"
 #include "qgsrasterlayer.h"
 #include "qgsray3d.h"
 #include "qgsraycastcontext.h"
+#include "qgsrhi3dengine.h"
 #include "qgstest.h"
 #include "qgsvectorlayer.h"
 #include "qgsvectorlayer3drenderer.h"
 
+#include <QFile>
 #include <QSize>
 #include <QString>
-#include <Qt3DRender/QShaderProgram>
 #include <QtMath>
 
 using namespace Qt::StringLiterals;
@@ -97,8 +99,6 @@ class TestQgs3DUtils : public QgsTest
     void testCalculateCascadeSplits();
     void testCalculateViewSpaceOrthographicBounds_data();
     void testCalculateViewSpaceOrthographicBounds();
-    void testDetermineTextureFormat_data();
-    void testDetermineTextureFormat();
 
   private:
     QgsRasterLayer *mLayerRgb;
@@ -283,22 +283,31 @@ void TestQgs3DUtils::testQgsRay3D()
   }
 }
 
+//! Reads a shader source file, which is all QShaderProgram::loadSource() ever did here
+static QByteArray readShaderSource( const QString &path )
+{
+  QFile f( path );
+  if ( !f.open( QIODevice::ReadOnly | QIODevice::Text ) )
+    return QByteArray();
+  return f.readAll();
+}
+
 void TestQgs3DUtils::testDefinesToShaderCode()
 {
   // load the different files
-  const QByteArray shaderCode = Qt3DRender::QShaderProgram::loadSource( QUrl::fromLocalFile( testDataPath( "/3d/shader/sample.frag" ) ) );
+  const QByteArray shaderCode = readShaderSource( testDataPath( "/3d/shader/sample.frag" ) );
   QVERIFY( !shaderCode.isEmpty() );
 
-  const QByteArray shaderCodeWithDefines = Qt3DRender::QShaderProgram::loadSource( QUrl::fromLocalFile( testDataPath( "/3d/shader/sample_with_defines.frag" ) ) );
+  const QByteArray shaderCodeWithDefines = readShaderSource( testDataPath( "/3d/shader/sample_with_defines.frag" ) );
   QVERIFY( !shaderCodeWithDefines.isEmpty() );
 
-  const QByteArray shaderCodeNoVersion = Qt3DRender::QShaderProgram::loadSource( QUrl::fromLocalFile( testDataPath( "/3d/shader/sample_no_version.frag" ) ) );
+  const QByteArray shaderCodeNoVersion = readShaderSource( testDataPath( "/3d/shader/sample_no_version.frag" ) );
   QVERIFY( !shaderCodeNoVersion.isEmpty() );
 
-  const QByteArray shaderCodeNoVersionWithDefines = Qt3DRender::QShaderProgram::loadSource( QUrl::fromLocalFile( testDataPath( "/3d/shader/sample_no_version_with_defines.frag" ) ) );
+  const QByteArray shaderCodeNoVersionWithDefines = readShaderSource( testDataPath( "/3d/shader/sample_no_version_with_defines.frag" ) );
   QVERIFY( !shaderCodeNoVersionWithDefines.isEmpty() );
 
-  const QByteArray shaderCodeWithBaseColorMap = Qt3DRender::QShaderProgram::loadSource( QUrl::fromLocalFile( testDataPath( "/3d/shader/sample_with_basecolormap.frag" ) ) );
+  const QByteArray shaderCodeWithBaseColorMap = readShaderSource( testDataPath( "/3d/shader/sample_with_basecolormap.frag" ) );
   QVERIFY( !shaderCodeWithBaseColorMap.isEmpty() );
 
   const QStringList definesList( { "BASE_COLOR_MAP", "ROUGHNESS_MAP" } );
@@ -379,12 +388,11 @@ void TestQgs3DUtils::testScreenPointToMapCoordinates()
   map.setCrs( mLayerRgb->crs() );
   map.setExtent( mLayerRgb->extent() );
   map.setLayers( QList<QgsMapLayer *>() << mLayerRgb );
-  QgsOffscreen3DEngine engine;
-  const Qgs3DMapScene *scene = new Qgs3DMapScene( map, &engine );
+  QgsRhi3DEngine engine( QSize( 640, 480 ) );
+  // the scene holds GPU resources, so it has to go while the engine is still alive
+  const std::unique_ptr<Qgs3DMapScene> scene( new Qgs3DMapScene( map, &engine ) );
   const QgsPoint mapPoint = Qgs3DUtils::screenPointToMapCoordinates( QPoint( 50, 50 ), QSize( 100, 100 ), scene->cameraController(), &map );
 
-  // this placement is weird, but it fixes the clang-tidy warning
-  delete scene;
   QGSCOMPARENEAR( mapPoint.x(), 321900, 2 );
   QGSCOMPARENEAR( mapPoint.y(), 129901, 2 );
   QGSCOMPARENEAR( mapPoint.z(), -252, 2 );
@@ -472,10 +480,12 @@ void TestQgs3DUtils::test3DSceneRay3D()
 
   // create the 3d scene
   const QSize winSize( 640, 480 ); // default window size
-  QgsOffscreen3DEngine engine;
+  QgsRhi3DEngine engine( QSize( 640, 480 ) );
   engine.setSize( winSize );
-  Qgs3DMapScene *scene = new Qgs3DMapScene( mapSettings, &engine );
-  engine.setRootEntity( scene );
+  // the scene holds GPU resources, so it has to go while the engine is still alive
+  const std::unique_ptr<Qgs3DMapScene> sceneOwner( new Qgs3DMapScene( mapSettings, &engine ) );
+  Qgs3DMapScene *scene = sceneOwner.get();
+  engine.setScene( scene );
 
   scene->cameraController()->setLookingAtPoint( QVector3D( 0, -280, 0 ), 50, 40.0, -10.0 );
 
@@ -526,8 +536,6 @@ void TestQgs3DUtils::test3DSceneRay3D()
 
   const double terrainDistance2 = terrainHits2.constFirst().distance();
   QGSCOMPARENEAR( terrainDistance2, 45.59, 1.0 );
-
-  delete scene;
 }
 
 void TestQgs3DUtils::testSrgbToLinear_data()
@@ -703,52 +711,6 @@ void TestQgs3DUtils::testCalculateViewSpaceOrthographicBounds()
   QGSCOMPARENEAR( actualFar, expectedFar, 0.0001f );
 }
 
-void TestQgs3DUtils::testDetermineTextureFormat_data()
-{
-  QTest::addColumn<QImage::Format>( "imageFormat" );
-  QTest::addColumn<bool>( "useSrgbFor8Bit" );
-  QTest::addColumn<Qt3DRender::QAbstractTexture::TextureFormat>( "expectedFormat" );
-  QTest::addColumn<bool>( "expectedRequiresConversion" );
-
-  QTest::newRow( "RGBA32FPx4" ) << QImage::Format_RGBA32FPx4 << false << Qt3DRender::QAbstractTexture::RGBA32F << false;
-  QTest::newRow( "RGBA32FPx4_Premultiplied" ) << QImage::Format_RGBA32FPx4_Premultiplied << true << Qt3DRender::QAbstractTexture::RGBA32F << false;
-  QTest::newRow( "RGBX32FPx4" ) << QImage::Format_RGBX32FPx4 << false << Qt3DRender::QAbstractTexture::RGB32F << false;
-  QTest::newRow( "RGBA16FPx4" ) << QImage::Format_RGBA16FPx4 << false << Qt3DRender::QAbstractTexture::RGBA16F << false;
-  QTest::newRow( "RGBA16FPx4_Premultiplied" ) << QImage::Format_RGBA16FPx4_Premultiplied << true << Qt3DRender::QAbstractTexture::RGBA16F << false;
-  QTest::newRow( "RGBX16FPx4" ) << QImage::Format_RGBX16FPx4 << false << Qt3DRender::QAbstractTexture::RGB16F << false;
-  QTest::newRow( "RGBA8888 sRGB" ) << QImage::Format_RGBA8888 << true << Qt3DRender::QAbstractTexture::SRGB8_Alpha8 << false;
-  QTest::newRow( "RGBA8888 UNorm" ) << QImage::Format_RGBA8888 << false << Qt3DRender::QAbstractTexture::RGBA8_UNorm << false;
-  QTest::newRow( "ARGB32 sRGB" ) << QImage::Format_ARGB32 << true << Qt3DRender::QAbstractTexture::SRGB8_Alpha8 << false;
-  QTest::newRow( "ARGB32_Premultiplied UNorm" ) << QImage::Format_ARGB32_Premultiplied << false << Qt3DRender::QAbstractTexture::RGBA8_UNorm << false;
-  QTest::newRow( "RGB32 sRGB" ) << QImage::Format_RGB32 << true << Qt3DRender::QAbstractTexture::SRGB8 << false;
-  QTest::newRow( "RGB32 UNorm" ) << QImage::Format_RGB32 << false << Qt3DRender::QAbstractTexture::RGB8_UNorm << false;
-  QTest::newRow( "RGB888 sRGB" ) << QImage::Format_RGB888 << true << Qt3DRender::QAbstractTexture::SRGB8 << false;
-  QTest::newRow( "RGB888 UNorm" ) << QImage::Format_RGB888 << false << Qt3DRender::QAbstractTexture::RGB8_UNorm << false;
-  QTest::newRow( "Grayscale8" ) << QImage::Format_Grayscale8 << true << Qt3DRender::QAbstractTexture::R8_UNorm << false;
-  QTest::newRow( "Alpha8" ) << QImage::Format_Alpha8 << false << Qt3DRender::QAbstractTexture::R8_UNorm << false;
-  QTest::newRow( "Grayscale16" ) << QImage::Format_Grayscale16 << true << Qt3DRender::QAbstractTexture::R16_UNorm << false;
-  QTest::newRow( "Invalid format sRGB" ) << QImage::Format_Invalid << true << Qt3DRender::QAbstractTexture::SRGB8_Alpha8 << true;
-  QTest::newRow( "Invalid format UNorm" ) << QImage::Format_Invalid << false << Qt3DRender::QAbstractTexture::RGBA8_UNorm << true;
-  QTest::newRow( "Mono format" ) << QImage::Format_Mono << false << Qt3DRender::QAbstractTexture::RGBA8_UNorm << true;
-  QTest::newRow( "Indexed8 format" ) << QImage::Format_Indexed8 << true << Qt3DRender::QAbstractTexture::SRGB8_Alpha8 << true;
-  QTest::newRow( "RGB16 format" ) << QImage::Format_RGB16 << false << Qt3DRender::QAbstractTexture::RGBA8_UNorm << true;
-  QTest::newRow( "RGBA64 format" ) << QImage::Format_RGBA64 << true << Qt3DRender::QAbstractTexture::SRGB8_Alpha8 << true;
-  QTest::newRow( "BGR888 format" ) << QImage::Format_BGR888 << false << Qt3DRender::QAbstractTexture::RGBA8_UNorm << true;
-}
-
-void TestQgs3DUtils::testDetermineTextureFormat()
-{
-  QFETCH( QImage::Format, imageFormat );
-  QFETCH( bool, useSrgbFor8Bit );
-  QFETCH( Qt3DRender::QAbstractTexture::TextureFormat, expectedFormat );
-  QFETCH( bool, expectedRequiresConversion );
-
-  bool requiresConversionToRgb = false;
-  Qt3DRender::QAbstractTexture::TextureFormat actualFormat = Qgs3DUtils::determineTextureFormat( imageFormat, useSrgbFor8Bit, requiresConversionToRgb );
-
-  QCOMPARE( actualFormat, expectedFormat );
-  QCOMPARE( requiresConversionToRgb, expectedRequiresConversion );
-}
 
 QGSTEST_MAIN( TestQgs3DUtils )
 #include "testqgs3dutils.moc"

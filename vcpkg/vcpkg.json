@@ -125,7 +125,9 @@
     "3d": {
       "description": "Determines whether QGIS 3D library should be built",
       "dependencies": [
-        "qt3d"
+        {
+          "name": "qtshadertools"
+        }
       ]
     },
     "auth": {
@@ -204,7 +206,6 @@
         {
           "name": "py-pyqt6",
           "features": [
-            "qt3d",
             "qt5compat",
             "qtcharts",
             "qtdeclarative",

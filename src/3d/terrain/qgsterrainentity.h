@@ -33,14 +33,10 @@
 #include "qgschunkedentity.h"
 #include "qgschunkqueuejob.h"
 #include "qgslayerstylewatcher.h"
+#include "qgstilingscheme.h"
 #include "qobjectuniqueptr.h"
 
 #define SIP_NO_FILE
-
-namespace Qt3DCore
-{
-  class QTransform;
-}
 
 class Qgs3DMapSettings;
 class QgsTerrainTextureGenerator;
@@ -60,28 +56,24 @@ class QgsTerrainEntity : public QgsChunkedEntity
     Q_OBJECT
   public:
     //! Constructs terrain entity. The argument maxLevel determines how deep the tree of tiles will be
-    explicit QgsTerrainEntity( Qgs3DMapSettings *map, Qt3DCore::QNode *parent = nullptr );
+    explicit QgsTerrainEntity( Qgs3DMapSettings *map, QObject *parent = nullptr );
 
     ~QgsTerrainEntity() override;
 
     //! Returns pointer to the generator of textures for terrain tiles
     QgsTerrainTextureGenerator *textureGenerator() { return mTextureGenerator.get(); }
 
-    //! Returns the transform attached to the terrain entity
-    Qt3DCore::QTransform *transform() const { return mTerrainTransform; }
     //! Returns the terrain elevation offset (adjusts the terrain position up and down)
     float terrainElevationOffset() const;
 
     QList<QgsRayCastHit> rayIntersection( const QgsRay3D &ray, const QgsRayCastContext &context ) const override;
 
   private slots:
-    void onShowBoundingBoxesChanged();
     void invalidateMapImages();
     void onTerrainElevationOffsetChanged();
 
   private:
     std::unique_ptr<QgsTerrainTextureGenerator> mTextureGenerator;
-    Qt3DCore::QTransform *mTerrainTransform = nullptr;
 
     std::unique_ptr<TerrainMapUpdateJobFactory> mUpdateJobFactory;
     QObjectUniquePtr<QgsLayerStyleWatcher> mLayerWatcher;
@@ -93,7 +85,7 @@ class TerrainMapUpdateJob : public QgsChunkQueueJob
 {
     Q_OBJECT
   public:
-    TerrainMapUpdateJob( QgsTerrainTextureGenerator *textureGenerator, QgsChunkNode *mNode );
+    TerrainMapUpdateJob( QgsTerrainTextureGenerator *textureGenerator, const QgsTilingScheme &tilingScheme, QgsChunkNode *mNode );
 
     void start() override;
 
@@ -104,6 +96,7 @@ class TerrainMapUpdateJob : public QgsChunkQueueJob
 
   private:
     QgsTerrainTextureGenerator *mTextureGenerator = nullptr;
+    QgsTilingScheme mTilingScheme;
     int mJobId = -1;
 };
 

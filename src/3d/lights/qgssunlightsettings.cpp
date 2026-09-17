@@ -22,8 +22,6 @@
 
 #include <QDomDocument>
 #include <QString>
-#include <Qt3DCore/QEntity>
-#include <Qt3DRender/QDirectionalLight>
 
 using namespace Qt::StringLiterals;
 
@@ -61,20 +59,6 @@ QgsVector3D QgsSunLightSettings::direction( const Qgs3DMapSettings &map ) const
   const float z = std::sin( elevationRad );
   const QVector3D sunVector( x, y, z );
   return -sunVector.normalized();
-}
-
-Qt3DCore::QEntity *QgsSunLightSettings::createEntity( const Qgs3DMapSettings &map, Qt3DCore::QEntity *parent ) const
-{
-  Qt3DCore::QEntity *lightEntity = new Qt3DCore::QEntity( parent );
-
-  Qt3DRender::QDirectionalLight *light = new Qt3DRender::QDirectionalLight;
-  light->setColor( color() );
-  light->setIntensity( static_cast< float >( intensity() ) );
-  light->setWorldDirection( direction( map ).toVector3D() );
-
-  lightEntity->addComponent( light );
-
-  return lightEntity;
 }
 
 QDomElement QgsSunLightSettings::writeXml( QDomDocument &doc, const QgsReadWriteContext & ) const

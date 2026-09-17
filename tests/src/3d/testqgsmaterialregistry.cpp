@@ -17,7 +17,6 @@
 
 #include "qgs3d.h"
 #include "qgsabstractmaterialsettings.h"
-#include "qgsmaterial.h"
 #include "qgsmaterialregistry.h"
 #include "qgstest.h"
 

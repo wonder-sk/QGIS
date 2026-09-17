@@ -19,6 +19,8 @@
 #include "qgs3dmapscene.h"
 #include "qgs3dmapsettings.h"
 #include "qgs3dutils.h"
+#include "qgscamera3d.h"
+#include "qgscameracontroller.h"
 #include "qgscoordinatetransform.h"
 #include "qgseventtracing.h"
 #include "qgsgeos.h"
@@ -116,7 +118,7 @@ void Qgs3DMapToolPointCloudChangeAttribute::changeAttributeValue( const QgsGeome
 SelectedPoints Qgs3DMapToolPointCloudChangeAttribute::searchPoints( QgsPointCloudLayer *layer, const QgsGeos &searchPolygon, Qgs3DMapCanvas &canvas, QgsPointCloudIndex &pc )
 {
   MapToPixel3D mapToPixel3D;
-  mapToPixel3D.VP = canvas.camera()->projectionMatrix() * canvas.camera()->viewMatrix();
+  mapToPixel3D.VP = canvas.cameraController()->camera()->projectionMatrix() * canvas.cameraController()->camera()->viewMatrix();
   mapToPixel3D.origin = canvas.mapSettings()->origin();
   mapToPixel3D.canvasSize = canvas.size();
 

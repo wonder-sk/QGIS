@@ -17,12 +17,10 @@
 #include "qgisapp.h"
 #include "qgs3dutils.h"
 #include "qgscameracontroller.h"
-#include "qgsframegraph.h"
 #include "qgsguiutils.h"
 #include "qgslinestring.h"
 #include "qgspoint.h"
 #include "qgsrubberband3d.h"
-#include "qgswindow3dengine.h"
 
 #include <QApplication>
 #include <QMouseEvent>

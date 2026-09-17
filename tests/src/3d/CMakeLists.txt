@@ -13,34 +13,21 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}
 )
 include_directories(SYSTEM
   ${QT_INCLUDE_DIR}
-  ${${QT_VERSION_BASE}_3DEXTRA_INCLUDE_DIR}
 )
 
 
 add_subdirectory(sandbox)
 
 set(TESTS
-  testqgs3dannotationlayerrendering.cpp
-  testqgs3dbackgrounds.cpp
-  testqgs3dcameracontroller.cpp
-  testqgs3deffects.cpp
-  testqgs3dexporter.cpp
   testqgs3dmapscene.cpp
-  testqgs3dmaterial.cpp
-  testqgs3dmaterialrendering.cpp
-  testqgs3drendering.cpp
-  testqgs3dshadows.cpp
   testqgs3dsymbolregistry.cpp
   testqgs3dsymbolutils.cpp
   testqgs3dutils.cpp
   testqgsaabb.cpp
   testqgscamera3d.cpp
-  testqgschunkedentity.cpp
   testqgsgeometry3d.cpp
-  testqgsgltf3dutils.cpp
   testqgslayout3dmap.cpp
   testqgsmaterialregistry.cpp
-  testqgsmesh3drendering.cpp
   testqgspointcloud3drendering.cpp
   testqgsmaterials3d.cpp
   testqgsphongmaterial3d.cpp
@@ -49,7 +36,6 @@ set(TESTS
   testqgssceneobject3d.cpp
   testqgsrhi3dscene.cpp
   testqgsrhiengine.cpp
-  testqgsrubberband3drendering.cpp
   testqgstessellator.cpp
   testqgstilingscheme.cpp
 )

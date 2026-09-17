@@ -17,68 +17,34 @@
 #define QGS3DMAPSCENE_H
 
 #include "qgis_3d.h"
-#include "qgsmapoverlayentity.h"
 #include "qgsrectangle.h"
-#include "qobjectuniqueptr.h"
 
+#include <QObject>
+#include <QTimer>
 #include <QVector4D>
-#include <Qt3DCore/QEntity>
 
-#ifndef SIP_RUN
-namespace Qt3DRender
-{
-  class QRenderSettings;
-  class QCamera;
-} // namespace Qt3DRender
-
-namespace Qt3DLogic
-{
-  class QFrameAction;
-}
-
-namespace Qt3DExtras
-{
-  class QForwardRenderer;
-  class QSkyboxEntity;
-} // namespace Qt3DExtras
-#endif
-
-
-class Qgs3DAxis;
-class QgsAbstract3DEngine;
+class QgsRhi3DEngine;
 class QgsAbstract3DRenderer;
 class QgsMapLayer;
 class Qgs3DMapSettings;
 class QgsTerrainEntity;
-class QgsGlobeEntity;
 class QgsChunkedEntity;
-class QgsSkyboxEntity;
-class QgsSkyboxSettings;
-class QgsGradientBackgroundEntity;
-class Qgs3DMapExportSettings;
 class QgsChunkNode;
 class QgsDoubleRange;
 class Qgs3DMapSceneEntity;
 class QgsCameraController;
-class QgsEnvironmentLight;
 class QgsSceneRenderer;
 
 /**
  * \ingroup qgis_3d
- * \brief Entity that encapsulates our 3D scene - contains all other entities (such as terrain) as children.
+ * \brief Holds our 3D scene - the terrain and every layer's entity.
  */
-#ifndef SIP_RUN
-class _3D_EXPORT Qgs3DMapScene : public Qt3DCore::QEntity
-{
-#else
 class _3D_EXPORT Qgs3DMapScene : public QObject
 {
-#endif
-
     Q_OBJECT
   public:
     //! Constructs a 3D scene based on map settings and Qt 3D renderer configuration
-    Qgs3DMapScene( Qgs3DMapSettings &map, QgsAbstract3DEngine *engine ) SIP_SKIP;
+    Qgs3DMapScene( Qgs3DMapSettings &map, QgsRhi3DEngine *engine ) SIP_SKIP;
 
     //! Returns camera controller
     QgsCameraController *cameraController() const { return mCameraController; }
@@ -89,14 +55,6 @@ class _3D_EXPORT Qgs3DMapScene : public QObject
      * \note Not available in Python bindings
      */
     QgsTerrainEntity *terrainEntity() SIP_SKIP { return mTerrain; }
-
-    /**
-     * Returns globe entity (may be NULLPTR if not using globe scene,
-     * terrain rendering is disabled or when globe is being rebuilt)
-     * \note Not available in Python bindings
-     * \since QGIS 3.44
-     */
-    QgsGlobeEntity *globeEntity() SIP_SKIP { return mGlobe; }
 
     //! Resets camera view to show the whole scene (top view)
     void viewZoomFull();
@@ -138,12 +96,6 @@ class _3D_EXPORT Qgs3DMapScene : public QObject
     double worldSpaceError( double epsilon, double distance ) const;
 
     /**
-     * Exports the scene according to the scene export settings
-     * Returns FALSE if the operation failed
-     */
-    bool exportScene( const Qgs3DMapExportSettings &exportSettings );
-
-    /**
      * Returns the active chunk nodes of \a layer
      *
      * \since QGIS 3.18
@@ -162,7 +114,7 @@ class _3D_EXPORT Qgs3DMapScene : public QObject
      *
      * \since QGIS 3.32
      */
-    Qt3DCore::QEntity *layerEntity( QgsMapLayer *layer ) const SIP_SKIP { return mLayerEntities.value( layer ); }
+    Qgs3DMapSceneEntity *layerEntity( QgsMapLayer *layer ) const SIP_SKIP { return mLayerEntities.value( layer ); }
 
     /**
      * Returns the scene extent in the map's CRS
@@ -180,18 +132,11 @@ class _3D_EXPORT Qgs3DMapScene : public QObject
     QgsDoubleRange elevationRange( bool ignoreTerrain = false ) const;
 
     /**
-     * Returns the 3D axis object
-     *
-     * \since QGIS 3.26
-     */
-    Qgs3DAxis *get3DAxis() const SIP_SKIP { return m3DAxis; }
-
-    /**
      * Returns the abstract 3D engine
      *
      * \since QGIS 3.26
      */
-    QgsAbstract3DEngine *engine() const SIP_SKIP { return mEngine; }
+    QgsRhi3DEngine *engine() const SIP_SKIP { return mEngine; }
 
     /**
      * Returns the 3D map settings.
@@ -302,10 +247,8 @@ class _3D_EXPORT Qgs3DMapScene : public QObject
     /**
      * Appends the commands drawing this scene to \a renderer, for the QRhi engine.
      *
-     * This is what replaces the Qt3D entity tree walk: every chunked entity's active
-     * nodes hand their scene object to the forward pass, and to the shadow pass when
-     * shadows are on. Entities whose loaders have not been ported yet contribute nothing,
-     * which is why they are still drawn by Qt3D.
+     * Every chunked entity's active nodes hand their scene object to the forward pass,
+     * and to the shadow pass when shadows are on.
      *
      * \note Not available in Python bindings
      * \since QGIS 3.46
@@ -364,8 +307,7 @@ class _3D_EXPORT Qgs3DMapScene : public QObject
      * Advances the scene by \a dt seconds: moves the camera, updates the chunked
      * entities and refits the near and far planes.
      *
-     * Under Qt3D this is driven by a Qt3DLogic::QFrameAction; the QRhi engine calls it
-     * itself once per frame, since there is no aspect engine to tick it.
+     * The engine calls this itself once per frame.
      */
     void onFrameTriggered( float dt );
 
@@ -376,29 +318,16 @@ class _3D_EXPORT Qgs3DMapScene : public QObject
     void onLayerRenderer3DChanged();
     void onLayersChanged();
     void createTerrainDeferred();
-    void onBackgroundColorChanged();
-    void updateLights();
     void updateCameraLens();
-    void onBackgroundSettingsChanged();
-    void onShadowSettingsChanged();
-    void onAmbientOcclusionSettingsChanged();
-    void onBloomSettingsChanged();
-    void onColorGradingSettingsChanged();
-    void onEyeDomeShadingSettingsChanged();
     void onMsaaEnabledChanged();
-    void onDebugDepthMapSettingsChanged();
     void onCameraMovementSpeedChanged();
     void onCameraNavigationModeChanged();
-    void onDebugOverlayEnabledChanged();
     void onStopUpdatesChanged();
-    void on3DAxisSettingsChanged();
-    void onShowMapOverlayChanged();
 
     void onOriginChanged();
 
     bool updateCameraNearFarPlanes();
 
-    void applyPendingOverlayUpdate();
 
   private:
 #ifdef SIP_RUN
@@ -408,56 +337,29 @@ class _3D_EXPORT Qgs3DMapScene : public QObject
 
     void addLayerEntity( QgsMapLayer *layer );
     void removeLayerEntity( QgsMapLayer *layer );
-    void addCameraViewCenterEntity( Qt3DRender::QCamera *camera );
-    void addCameraRotationCenterEntity( QgsCameraController *controller );
     void setSceneState( SceneState state );
     void updateSceneState();
     //! \returns whether at least one node was told to update
     bool updateScene( bool forceUpdate = false );
-    void finalizeNewEntity( Qt3DCore::QEntity *newEntity );
     int maximumTextureSize() const;
-
-    void handleClippingOnEntity( QEntity *entity ) const;
-    void handleClippingOnAllEntities() const;
-
-    void schedule2DMapOverlayUpdate();
-    void update2DMapOverlay( const QVector<QgsPointXY> &extent2DAsPoints );
 
   private:
     Qgs3DMapSettings &mMap;
-    QgsAbstract3DEngine *mEngine = nullptr;
-    //! Provides a way to have a synchronous function executed each frame
-    Qt3DLogic::QFrameAction *mFrameAction = nullptr;
+    QgsRhi3DEngine *mEngine = nullptr;
     QgsCameraController *mCameraController = nullptr;
     QgsTerrainEntity *mTerrain = nullptr;
-    QgsGlobeEntity *mGlobe = nullptr;
     QList<Qgs3DMapSceneEntity *> mSceneEntities;
-    //! Entity that shows view center - useful for debugging camera issues
-    Qt3DCore::QEntity *mEntityCameraViewCenter = nullptr;
     //! Keeps track of entities that belong to a particular layer
-    QMap<QgsMapLayer *, Qt3DCore::QEntity *> mLayerEntities;
+    QMap<QgsMapLayer *, Qgs3DMapSceneEntity *> mLayerEntities;
     bool mTerrainUpdateScheduled = false;
     SceneState mSceneState = Ready;
-    //! List of lights in the scene
-    QList<Qt3DCore::QEntity *> mLightEntities;
     QList<QgsMapLayer *> mModelVectorLayers;
-    Qt3DCore::QEntity *mBackgroundEntity = nullptr; // used for skybox and gradient background
-    QgsEnvironmentLight *mEnvironmentLight = nullptr;
-    //! Entity that shows rotation center = useful for debugging camera issues
-    Qt3DCore::QEntity *mEntityRotationCenter = nullptr;
-
-    //! 3d axis visualization
-    Qgs3DAxis *m3DAxis = nullptr;
 
     bool mSceneUpdatesEnabled = true;
     bool mSceneOriginShiftEnabled = true;
 
     QList<QVector4D> mClipPlanesEquations;
     int mMaxClipPlanes = 6;
-
-    //! 2d map overlay
-    QObjectUniquePtr<QgsMapOverlayEntity> mMapOverlayEntity = nullptr;
-    QTimer *mOverlayUpdateTimer = nullptr;
 
     //! Last sampled depth at the screen center, used as fallback when there is no data at the center point
     double mLastCenterDepth = 0.5;

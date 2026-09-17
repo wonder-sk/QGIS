@@ -77,7 +77,7 @@ class _3D_EXPORT QgsAnnotationLayer3DRenderer : public QgsAbstract3DRenderer
 
     QString type() const override;
     QgsAnnotationLayer3DRenderer *clone() const override SIP_FACTORY;
-    Qt3DCore::QEntity *createEntity( Qgs3DMapSettings *map ) const override SIP_SKIP;
+    Qgs3DMapSceneEntity *createEntity( Qgs3DMapSettings *map ) const override SIP_SKIP;
 
     void writeXml( QDomElement &elem, const QgsReadWriteContext &context ) const override;
     void readXml( const QDomElement &elem, const QgsReadWriteContext &context ) override;

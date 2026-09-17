@@ -20,8 +20,6 @@
 #include "qgs3dtypes.h"
 #include "qgsabstract3dsymbol.h"
 
-#include <Qt3DRender/QCullFace>
-
 class QgsAbstractMaterialSettings;
 
 /**
@@ -190,12 +188,6 @@ class _3D_EXPORT QgsPolygon3DSymbol : public QgsAbstract3DSymbol SIP_NODEFAULTCT
      */
     Qgis::ExtrusionFaces extrusionFaces() const { return mExtrusionFaces; }
 
-    /**
-     * Exports the geometries contained within the hierarchy of entity.
-     * Returns whether any objects were exported
-     * \since QGIS 3.16
-     */
-    bool exportGeometries( Qgs3DSceneExporter *exporter, Qt3DCore::QEntity *entity, const QString &objectNamePrefix ) const override SIP_SKIP;
 
   private:
     //! how to handle altitude of vector features

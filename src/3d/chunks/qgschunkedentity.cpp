@@ -17,12 +17,10 @@
 
 #include "qgs3dmapsettings.h"
 #include "qgs3dutils.h"
-#include "qgschunkboundsentity_p.h"
 #include "qgschunklist_p.h"
 #include "qgschunkloader.h"
 #include "qgschunknode.h"
 #include "qgseventtracing.h"
-#include "qgsgeotransform.h"
 #include "qgsmaplayer.h"
 #include "qgssceneobject3d.h"
 
@@ -69,8 +67,6 @@ static double chunkGpuMemorySize( QgsChunkNode *node )
 {
   if ( QgsSceneObject3D *sceneObject = node->sceneObject() )
     return static_cast<double>( sceneObject->gpuMemorySize() ) / 1024.0 / 1024.0;
-  if ( Qt3DCore::QEntity *entity = node->entity() )
-    return Qgs3DUtils::calculateEntityGpuMemorySize( entity );
   return 0.0;
 }
 
@@ -79,7 +75,7 @@ static void addTileTraceEvent( QObject &self, QgsChunkNode &node, QgsEventTracin
   QgsEventTracing::addEvent( eventType, u"3D"_s, name + u" "_s + node.tileId().text(), u"%1 %2"_s.arg( self.objectName(), node.tileId().text() ) );
 }
 
-QgsChunkedEntity::QgsChunkedEntity( Qgs3DMapSettings *mapSettings, float tau, QgsChunkLoaderFactory *loaderFactory, bool ownsFactory, int primitiveBudget, Qt3DCore::QNode *parent )
+QgsChunkedEntity::QgsChunkedEntity( Qgs3DMapSettings *mapSettings, float tau, QgsChunkLoaderFactory *loaderFactory, bool ownsFactory, int primitiveBudget, QObject *parent )
   : Qgs3DMapSceneEntity( mapSettings, parent )
   , mTau( tau )
   , mChunkLoaderFactory( loaderFactory )
@@ -172,25 +168,11 @@ void QgsChunkedEntity::handleSceneUpdate( const SceneContext &sceneContext )
     {
       if ( !node->hasPayload() )
       {
-        QgsDebugError( "Active node has null entity - this should never happen!" );
+        QgsDebugError( "Active node has no scene object - this should never happen!" );
         continue;
       }
 
-      if ( QgsSceneObject3D *sceneObject = node->sceneObject() )
-      {
-        sceneObject->setEnabled( true );
-      }
-      else
-      {
-        node->entity()->setEnabled( true );
-
-        // let's make sure that any entity we're about to show has the right scene origin set
-        const QList<QgsGeoTransform *> transforms = node->entity()->findChildren<QgsGeoTransform *>();
-        for ( QgsGeoTransform *transform : transforms )
-        {
-          transform->setOrigin( mMapSettings->origin() );
-        }
-      }
+      node->sceneObject()->setEnabled( true );
 
 #ifdef QGISDEBUG
       ++enabled;
@@ -203,13 +185,10 @@ void QgsChunkedEntity::handleSceneUpdate( const SceneContext &sceneContext )
   {
     if ( !node->hasPayload() )
     {
-      QgsDebugError( "Active node has null entity - this should never happen!" );
+      QgsDebugError( "Active node has no scene object - this should never happen!" );
       continue;
     }
-    if ( QgsSceneObject3D *sceneObject = node->sceneObject() )
-      sceneObject->setEnabled( false );
-    else
-      node->entity()->setEnabled( false );
+    node->sceneObject()->setEnabled( false );
 #ifdef QGISDEBUG
     ++disabled;
 #endif
@@ -222,14 +201,6 @@ void QgsChunkedEntity::handleSceneUpdate( const SceneContext &sceneContext )
 #else
   unloadNodes();
 #endif
-
-  if ( mBboxesEntity )
-  {
-    QList<QgsBox3D> bboxes;
-    for ( QgsChunkNode *n : std::as_const( mActiveNodes ) )
-      bboxes << n->box3D();
-    mBboxesEntity->setBoxes( bboxes );
-  }
 
   // start a job from queue if there is anything waiting
   startJobs();
@@ -257,8 +228,7 @@ void QgsChunkedEntity::handleSceneUpdate( const SceneContext &sceneContext )
 
 int QgsChunkedEntity::unloadNodes()
 {
-  // the Qt3D entity tree hanging off this entity, plus what the ported chunks hold
-  double usedGpuMemory = Qgs3DUtils::calculateEntityGpuMemorySize( this );
+  double usedGpuMemory = 0.0;
   for ( QgsChunkListEntry *entry = mReplacementQueue->first(); entry; entry = entry->next )
   {
     if ( QgsSceneObject3D *sceneObject = entry->chunk->sceneObject() )
@@ -335,22 +305,6 @@ QgsRange<float> QgsChunkedEntity::getNearFarPlaneRange( const QMatrix4x4 &viewMa
     ffar = std::max( ffar, bboxffar );
   }
   return QgsRange<float>( fnear, ffar );
-}
-
-void QgsChunkedEntity::setShowBoundingBoxes( bool enabled )
-{
-  if ( ( enabled && mBboxesEntity ) || ( !enabled && !mBboxesEntity ) )
-    return;
-
-  if ( enabled )
-  {
-    mBboxesEntity = new QgsChunkBoundsEntity( mRootNode->box3D().center(), this );
-  }
-  else
-  {
-    mBboxesEntity->deleteLater();
-    mBboxesEntity = nullptr;
-  }
 }
 
 void QgsChunkedEntity::updateNodes( const QList<QgsChunkNode *> &nodes, QgsChunkQueueJobFactory *updateJobFactory )
@@ -671,40 +625,18 @@ void QgsChunkedEntity::onActiveJobFinished()
 
     QgsScopedEvent e( "3D", QString( "create" ) );
 
-    // a loader ported to the QRhi engine produces a scene object rather than an entity
+    // mark as loaded + create the scene object
     if ( std::unique_ptr<QgsSceneObject3D> sceneObject = node->loader()->createSceneObject() )
     {
-      mActiveNodes << node;
-      node->setLoaded( std::move( sceneObject ) );
-      mReplacementQueue->insertFirst( node->replacementQueueEntry() );
-      mNeedsUpdate = true;
-      mActiveJobs.removeOne( job );
-      job->deleteLater();
-      startJobs();
-      if ( pendingJobsCount() != oldJobsCount )
-        emit pendingJobsCountChanged();
-      return;
-    }
-
-    // mark as loaded + create entity
-    Qt3DCore::QEntity *entity = node->loader()->createEntity( this );
-
-    if ( entity )
-    {
-      // The returned QEntity is initially enabled, so let's add it to active nodes too.
-      // Soon afterwards updateScene() will be called, which would remove it from the scene
-      // if the node should not be shown anymore. Ideally entities should be initially disabled,
-      // but there seems to be a bug in Qt3D - if entity is disabled initially, showing it
-      // by setting setEnabled(true) is not reliable (entity eventually gets shown, but only after
-      // some more changes in the scene) - see https://github.com/qgis/QGIS/issues/48334
+      // The scene object starts out enabled, so let's add it to active nodes too. Soon
+      // afterwards updateScene() will be called, which removes it again if the node
+      // should not be shown any more.
       mActiveNodes << node;
 
       // load into node (should be in main thread again)
-      node->setLoaded( entity );
+      node->setLoaded( std::move( sceneObject ) );
 
       mReplacementQueue->insertFirst( node->replacementQueueEntry() );
-
-      emit newEntityCreated( entity );
     }
     else
     {
@@ -719,22 +651,14 @@ void QgsChunkedEntity::onActiveJobFinished()
   {
     Q_ASSERT( node->state() == QgsChunkNode::Updating );
 
-    // This is a special case when we're replacing the node's entity
+    // This is a special case when we're replacing the node's scene object
     // with QgsChunkUpdaterFactory passed to updatedNodes(). The returned
     // updater is actually a chunk loader that will give us a completely
-    // new QEntity, so we just delete the old one and use the new one
+    // new scene object, so we just delete the old one and use the new one
     if ( QgsChunkLoader *nodeUpdater = qobject_cast<QgsChunkLoader *>( node->updater() ) )
     {
       if ( std::unique_ptr<QgsSceneObject3D> newSceneObject = nodeUpdater->createSceneObject() )
-      {
         node->replaceSceneObject( std::move( newSceneObject ) );
-      }
-      else
-      {
-        Qt3DCore::QEntity *newEntity = nodeUpdater->createEntity( this );
-        node->replaceEntity( newEntity );
-        emit newEntityCreated( newEntity );
-      }
     }
 
     addTileTraceEvent( *this, *node, QgsEventTracing::AsyncEnd, u"Update"_s );

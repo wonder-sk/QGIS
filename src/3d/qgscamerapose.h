@@ -59,7 +59,7 @@ class _3D_EXPORT QgsCameraPose
     //! Sets heading (yaw) angle in degrees
     void setHeadingAngle( float heading ) { mHeadingAngle = heading; }
 
-    //! Update Qt3D camera view matrix based on the pose
+    //! Updates the camera view matrix based on the pose
     void updateCamera( QgsCamera3D *camera ) SIP_SKIP;
 
     /**

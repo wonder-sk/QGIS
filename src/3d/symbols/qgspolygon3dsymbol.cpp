@@ -16,17 +16,14 @@
 #include "qgspolygon3dsymbol.h"
 
 #include "qgs3d.h"
-#include "qgs3dsceneexporter.h"
 #include "qgs3dutils.h"
 #include "qgscolorutils.h"
 #include "qgsmaterialregistry.h"
 #include "qgsmetalroughmaterialsettings.h"
-#include "qgstessellatedpolygongeometry.h"
 #include "qgsvectorlayer.h"
 #include "qgsvectorlayerelevationproperties.h"
 
 #include <QString>
-#include <Qt3DCore/QEntity>
 
 using namespace Qt::StringLiterals;
 
@@ -171,43 +168,6 @@ void QgsPolygon3DSymbol::setMaterialSettings( QgsAbstractMaterialSettings *mater
   mMaterialSettings.reset( materialSettings );
 }
 
-bool QgsPolygon3DSymbol::exportGeometries( Qgs3DSceneExporter *exporter, Qt3DCore::QEntity *entity, const QString &objectNamePrefix ) const
-{
-  QList<Qt3DCore::QEntity *> subEntities = entity->findChildren<Qt3DCore::QEntity *>( QString(), Qt::FindDirectChildrenOnly );
-  // sort geometries by their name in order to always export them in the same way:
-  std::sort( subEntities.begin(), subEntities.end(), []( const Qt3DCore::QEntity *a, const Qt3DCore::QEntity *b ) { return a->objectName() < b->objectName(); } );
-
-  if ( subEntities.isEmpty() )
-  {
-    const QList<Qt3DRender::QGeometryRenderer *> renderers = entity->findChildren<Qt3DRender::QGeometryRenderer *>();
-    const int startSize = exporter->mObjects.size();
-    for ( Qt3DRender::QGeometryRenderer *renderer : renderers )
-    {
-      Qgs3DExportObject *object = exporter->processGeometryRenderer( renderer, objectNamePrefix );
-      if ( object )
-      {
-        exporter->processEntityMaterial( entity, object );
-        exporter->mObjects.push_back( object );
-      }
-    }
-    return exporter->mObjects.size() > startSize;
-  }
-  else
-  {
-    bool out = false;
-    QString prefix;
-    for ( Qt3DCore::QEntity *e : subEntities )
-    {
-      if ( e->objectName().isEmpty() )
-        prefix = objectNamePrefix;
-      else
-        prefix = e->objectName() + "_";
-
-      out |= exportGeometries( exporter, e, prefix );
-    }
-    return out;
-  }
-}
 
 void QgsPolygon3DSymbol::setRenderedFacade( int side )
 {

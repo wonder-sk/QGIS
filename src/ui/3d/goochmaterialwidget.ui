@@ -210,16 +210,6 @@
      </property>
     </spacer>
    </item>
-   <item row="0" column="0" rowspan="8">
-    <widget class="QgsMaterialPreviewWidget" name="mPreviewWidget" native="true">
-     <property name="minimumSize">
-      <size>
-       <width>200</width>
-       <height>200</height>
-      </size>
-     </property>
-    </widget>
-   </item>
   </layout>
  </widget>
  <customwidgets>
@@ -237,12 +227,6 @@
    <class>QgsColorButton</class>
    <extends>QToolButton</extends>
    <header>qgscolorbutton.h</header>
-   <container>1</container>
-  </customwidget>
-  <customwidget>
-   <class>QgsMaterialPreviewWidget</class>
-   <extends>QWidget</extends>
-   <header>qgsmaterialpreviewwidget.h</header>
    <container>1</container>
   </customwidget>
  </customwidgets>

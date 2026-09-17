@@ -16,24 +16,22 @@
 #include "qgsquantizedmeshterraingenerator.h"
 
 #include "qgs3dmapsettings.h"
+#include "qgs3drendercontext.h"
 #include "qgsabstractterrainsettings.h"
 #include "qgsapplication.h"
 #include "qgschunkloader.h"
 #include "qgschunknode.h"
 #include "qgscoordinatetransform.h"
-#include "qgsgeotransform.h"
 #include "qgsgltf3dutils.h"
 #include "qgslogger.h"
-#include "qgsmaterial3dhandler.h"
-#include "qgsmesh3dentity_p.h"
+#include "qgsmaterialcontext.h"
 #include "qgsmeshlayerutils.h"
-#include "qgsmetalroughmaterial.h"
 #include "qgsproject.h"
 #include "qgsquantizedmeshdataprovider.h"
 #include "qgsquantizedmeshtiles.h"
 #include "qgsrectangle.h"
+#include "qgssceneobject3d.h"
 #include "qgsterrainentity.h"
-#include "qgsterraintileentity_p.h"
 #include "qgsterraintileloader.h"
 #include "qgstiledsceneindex.h"
 #include "qgstiledscenelayer.h"
@@ -42,12 +40,7 @@
 #include "qgstriangularmesh.h"
 #include "qgsvector3d.h"
 
-#include <QComponent>
-#include <QDiffuseSpecularMaterial>
-#include <QEntity>
-#include <QPhongMaterial>
 #include <QString>
-#include <QTextureMaterial>
 #include <QThreadPool>
 #include <QtGlobal>
 
@@ -63,13 +56,12 @@ class QgsQuantizedMeshTerrainChunkLoader : public QgsTerrainTileLoader
   public:
     QgsQuantizedMeshTerrainChunkLoader( QgsTerrainEntity *terrain, QgsChunkNode *node, long long tileId, QgsTiledSceneIndex index, const QgsCoordinateTransform &tileCrsToMapCrs );
     void start() override;
-    Qt3DCore::QEntity *createEntity( Qt3DCore::QEntity *parent ) override;
+    std::unique_ptr<QgsSceneObject3D> createSceneObject() override;
 
   protected:
     void onTextureLoaded() override;
 
   private:
-    QgsTerrainTileEntity *mEntity = nullptr;
     bool mMeshLoaded = false;
     bool mTextureLoaded = false;
     std::mutex mFinishedMutex;
@@ -138,28 +130,10 @@ void QgsQuantizedMeshTerrainChunkLoader::start()
         qmTile.generateNormals();
       }
 
-      tinygltf::Model model = qmTile.toGltf( true, 100, true );
-
-      QStringList errors;
-      Qt3DCore::QEntity *gltfEntity = QgsGltf3DUtils::parsedGltfToEntity( model, entityTransform, uri, context, &errors );
-      if ( !errors.isEmpty() )
-      {
-        QgsDebugError( "gltf load errors: " + errors.join( '\n' ) );
-        emit finished();
-        return;
-      }
-
-      QgsTerrainTileEntity *terrainEntity = new QgsTerrainTileEntity( node->tileId() );
-      // We count on only having one mesh.
-      Q_ASSERT( gltfEntity->children().size() == 1 );
-      gltfEntity->children()[0]->setParent( terrainEntity );
-
-      QgsGeoTransform *transform = new QgsGeoTransform;
-      transform->setGeoTranslation( chunkOrigin );
-      terrainEntity->addComponent( transform );
-
-      terrainEntity->moveToThread( QgsApplication::instance()->thread() );
-      mEntity = terrainEntity;
+      // TODO: build a QgsSceneObject3D from the glTF the tile decodes to. The pieces are
+      // all there - QgsGltf3DUtils::addGltfToSceneObject() and the textured terrain
+      // material - but the tile's own material has to be replaced by the terrain one,
+      // which the Qt3D version did by swapping a component.
     }
     catch ( QgsQuantizedMeshParsingException &ex )
     {
@@ -177,44 +151,10 @@ void QgsQuantizedMeshTerrainChunkLoader::start()
   } );
 }
 
-Qt3DCore::QEntity *QgsQuantizedMeshTerrainChunkLoader::createEntity( Qt3DCore::QEntity *parent )
+std::unique_ptr<QgsSceneObject3D> QgsQuantizedMeshTerrainChunkLoader::createSceneObject()
 {
-  if ( mEntity )
-  {
-    mEntity->setParent( parent );
-    Qgs3DMapSettings *map = terrain()->mapSettings();
-
-    Qgs3DRenderContext context = Qgs3DRenderContext::fromMapSettings( map );
-
-    Qt3DRender::QTexture2D *texture = createTexture( mEntity, QgsMaterialContext::fromRenderContext( context ) );
-
-    // Copied from part of QgsTerrainTileLoader::createTextureComponent, since we can't use that directly on the GLTF entity.
-    Qt3DRender::QMaterial *material = nullptr;
-    if ( map->isTerrainShadingEnabled() )
-    {
-      const QgsPhongMaterialSettings &shadingMaterial = map->terrainShadingMaterial();
-      Qt3DExtras::QDiffuseSpecularMaterial *diffuseMapMaterial = new Qt3DExtras::QDiffuseSpecularMaterial;
-      diffuseMapMaterial->setDiffuse( QVariant::fromValue( texture ) );
-      diffuseMapMaterial->setAmbient( shadingMaterial.ambient() );
-      diffuseMapMaterial->setSpecular( shadingMaterial.specular() );
-      diffuseMapMaterial->setShininess( shadingMaterial.shininess() );
-      material = diffuseMapMaterial;
-    }
-    else
-    {
-      Qt3DExtras::QTextureMaterial *textureMaterial = new Qt3DExtras::QTextureMaterial;
-      textureMaterial->setTexture( texture );
-      material = textureMaterial;
-    }
-    // Get the child that actually has the mesh and add the texture
-    Qt3DCore::QEntity *gltfEntity = mEntity->findChild<Qt3DCore::QEntity *>();
-    // Remove default material
-    auto oldMaterial = gltfEntity->componentsOfType<QgsMetalRoughMaterial>();
-    Q_ASSERT( oldMaterial.size() > 0 );
-    gltfEntity->removeComponent( oldMaterial[0] );
-    gltfEntity->addComponent( material );
-  }
-  return mEntity;
+  // quantized mesh terrain is not drawn by the QRhi engine yet - see start()
+  return nullptr;
 }
 
 void QgsQuantizedMeshTerrainChunkLoader::onTextureLoaded()

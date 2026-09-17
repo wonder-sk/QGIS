@@ -23,8 +23,6 @@
 #include "qgs3ddebugwidget.h"
 #include "qgs3dmapcanvas.h"
 #include "qgs3dmapconfigwidget.h"
-#include "qgs3dmapexportsettings.h"
-#include "qgs3dmapexportwidget.h"
 #include "qgs3dmapscene.h"
 #include "qgs3dmapsettings.h"
 #include "qgs3dmaptoolidentify.h"
@@ -43,7 +41,6 @@
 #include "qgsdockablewidgethelper.h"
 #include "qgselevationprofile.h"
 #include "qgsflatterrainsettings.h"
-#include "qgsframegraph.h"
 #include "qgsgui.h"
 #include "qgshelp.h"
 #include "qgsidentifyresultsdialog.h"
@@ -64,7 +61,6 @@
 #include "qgssettings.h"
 #include "qgssettingstree.h"
 #include "qgsshortcutsmanager.h"
-#include "qgswindow3dengine.h"
 
 #include <QAction>
 #include <QActionGroup>
@@ -268,7 +264,6 @@ Qgs3DMapCanvasWidget::Qgs3DMapCanvasWidget( const QString &name, bool isDocked )
 
   mExportMenu->addAction( QgsApplication::getThemeIcon( u"mActionSaveMapAsImage.svg"_s ), tr( "Save as Image…" ), this, &Qgs3DMapCanvasWidget::saveAsImage )->setObjectName( u"m3DActionSaveAsImage"_s );
 
-  mExportMenu->addAction( QgsApplication::getThemeIcon( u"3d.svg"_s ), tr( "Export 3D Scene" ), this, &Qgs3DMapCanvasWidget::exportScene )->setObjectName( u"m3DActionExportScene"_s );
 
   toolBar->addSeparator();
 
@@ -468,8 +463,8 @@ Qgs3DMapCanvasWidget::Qgs3DMapCanvasWidget( const QString &name, bool isDocked )
 
   QgsMapToolIdentifyAction *identifyTool2D = QgisApp::instance()->identifyMapTool();
   QgsIdentifyResultsDialog *resultDialog = identifyTool2D->resultsDialog();
-  connect( resultDialog, &QgsIdentifyResultsDialog::featureHighlighted, mCanvas, &Qgs3DMapCanvas::highlightFeature );
-  connect( resultDialog, &QgsIdentifyResultsDialog::highlightsCleared, mCanvas, &Qgs3DMapCanvas::clearHighlights );
+  // highlighting identified features in the 3D view needs the vector feature handlers,
+  // which have not been ported to the QRhi engine yet
 
   mMapToolIdentify = new Qgs3DMapToolIdentify( mCanvas );
 
@@ -991,39 +986,6 @@ void Qgs3DMapCanvasWidget::configure()
   mConfigureDialog->show();
 }
 
-void Qgs3DMapCanvasWidget::exportScene()
-{
-  QDialog dlg( this );
-  dlg.setWindowTitle( tr( "Export 3D Scene" ) );
-  dlg.setObjectName( u"3DSceneExportDialog"_s );
-  QgsGui::enableAutoGeometryRestore( &dlg );
-
-  Qgs3DMapExportSettings exportSettings;
-  Qgs3DMapExportWidget exportWidget( mCanvas->scene(), &exportSettings );
-
-  QDialogButtonBox *buttons = new QDialogButtonBox( QDialogButtonBox::Cancel | QDialogButtonBox::Help | QDialogButtonBox::Ok, &dlg );
-
-  connect( buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept );
-  connect( buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject );
-  connect( buttons, &QDialogButtonBox::helpRequested, &dlg, [] { QgsHelp::openHelp( u"map_views/3d_map_view.html"_s ); } );
-
-  QVBoxLayout *layout = new QVBoxLayout( &dlg );
-  layout->addWidget( &exportWidget, 1 );
-  layout->addWidget( buttons );
-  if ( dlg.exec() )
-  {
-    const bool success = exportWidget.exportScene();
-    const QString exportFileUri = exportSettings.exportFileUri();
-    if ( success )
-    {
-      mMessageBar->pushMessage( tr( "Export 3D scene" ), tr( "Successfully exported scene to <a href=\"%1\">%2</a>" ).arg( exportFileUri, QDir::toNativeSeparators( exportFileUri ) ), Qgis::MessageLevel::Success, 0 );
-    }
-    else
-    {
-      mMessageBar->pushMessage( tr( "Export 3D scene" ), tr( "Unable to export scene to <a href=\"%1\">%2</a>" ).arg( exportFileUri, QDir::toNativeSeparators( exportFileUri ) ), Qgis::MessageLevel::Warning, 0 );
-    }
-  }
-}
 
 void Qgs3DMapCanvasWidget::onMainCanvasLayersChanged()
 {

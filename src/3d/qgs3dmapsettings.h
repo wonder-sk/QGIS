@@ -36,7 +36,6 @@
 
 #include <QColor>
 #include <QMatrix4x4>
-#include <Qt3DRender/QCamera>
 
 class QgsMapLayer;
 class QgsRasterLayer;
@@ -806,26 +805,6 @@ class _3D_EXPORT Qgs3DMapSettings : public QObject, public QgsTemporalRangeObjec
      */
     void setTerrainRenderingEnabled( bool terrainRenderingEnabled );
 
-    /**
-     * Returns whether the scene is drawn by the QRhi engine rather than by Qt3D.
-     *
-     * Chunk loaders that have been ported produce a QgsSceneObject3D when this is set and
-     * a Qt3DCore::QEntity when it is not. This is not saved with the project and goes away
-     * once Qt3D does; it is a property of the view doing the drawing, not of the map.
-     *
-     * \note Not available in Python bindings
-     * \since QGIS 3.46
-     */
-    bool rhiEngineEnabled() const SIP_SKIP { return mRhiEngineEnabled; }
-
-    /**
-     * Sets whether the scene is drawn by the QRhi engine rather than by Qt3D.
-     *
-     * \see rhiEngineEnabled()
-     * \note Not available in Python bindings
-     * \since QGIS 3.46
-     */
-    void setRhiEngineEnabled( bool enabled ) SIP_SKIP { mRhiEngineEnabled = enabled; }
 
     /**
      * Returns the renderer usage
@@ -1324,7 +1303,6 @@ class _3D_EXPORT Qgs3DMapSettings : public QObject, public QgsTemporalRangeObjec
     double mDebugDepthMapSize = 0.2;
 
     bool mTerrainRenderingEnabled = true;
-    bool mRhiEngineEnabled = false;
 
     Qgis::RendererUsage mRendererUsage;
 

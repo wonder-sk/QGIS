@@ -25,7 +25,6 @@
 #include "qgssettingsentryenumflag.h"
 
 #include <QString>
-#include <Qt3DRender/QCamera>
 
 #include "moc_qgs3doptions.cpp"
 

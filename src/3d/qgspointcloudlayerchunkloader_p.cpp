@@ -34,12 +34,7 @@
 #include "qgsraycastingutils.h"
 #include "qgssceneobject3d.h"
 
-#include <QPointSize>
 #include <QString>
-#include <Qt3DCore/QAttribute>
-#include <Qt3DRender/QGraphicsApiFilter>
-#include <Qt3DRender/QShaderProgram>
-#include <Qt3DRender/QTechnique>
 #include <QtConcurrentRun>
 
 #include "moc_qgspointcloudlayerchunkloader_p.cpp"
@@ -133,23 +128,8 @@ void QgsPointCloudLayerChunkLoader::cancel()
   mContext.cancelRendering();
 }
 
-Qt3DCore::QEntity *QgsPointCloudLayerChunkLoader::createEntity( Qt3DCore::QEntity *parent )
-{
-  QgsPointCloudIndex pc = mFactory->mPointCloudIndex;
-  const QgsChunkNodeId nodeId = mNode->tileId();
-  const QgsPointCloudNodeId pcNode( nodeId.d, nodeId.x, nodeId.y, nodeId.z );
-  Q_ASSERT( pc.hasNode( pcNode ) );
-
-  Qt3DCore::QEntity *entity = new Qt3DCore::QEntity( parent );
-  mHandler->finalize( entity, mContext );
-  return entity;
-}
-
 std::unique_ptr<QgsSceneObject3D> QgsPointCloudLayerChunkLoader::createSceneObject()
 {
-  if ( !mFactory->mRenderContext.rhiEngineEnabled() )
-    return nullptr;
-
   // the handler is only built in start(), and only for a symbol type it recognises
   if ( !mHandler )
     return nullptr;
@@ -368,7 +348,6 @@ QgsPointCloudLayerChunkedEntity::QgsPointCloudLayerChunkedEntity(
   const QgsCoordinateTransform &coordinateTransform,
   QgsPointCloud3DSymbol *symbol,
   float maximumScreenSpaceError,
-  bool showBoundingBoxes,
   double zValueScale,
   double zValueOffset,
   int pointBudget
@@ -377,8 +356,6 @@ QgsPointCloudLayerChunkedEntity::QgsPointCloudLayerChunkedEntity(
   , mLayer( pcl )
   , mIndexPosition( indexPosition )
 {
-  setShowBoundingBoxes( showBoundingBoxes );
-
   if ( pcl->supportsEditing() )
   {
     mChunkUpdaterFactory = std::make_unique<QgsChunkUpdaterFactory>( mChunkLoaderFactory );

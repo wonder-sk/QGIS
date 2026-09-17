@@ -23,14 +23,12 @@
 #include "qgs3dutils.h"
 #include "qgsabstractterrainsettings.h"
 #include "qgscameracontroller.h"
-#include "qgsframegraph.h"
 #include "qgsmaplayer.h"
 #include "qgspoint.h"
 #include "qgsraycastcontext.h"
 #include "qgsrubberband3d.h"
 #include "qgssettingsentryimpl.h"
 #include "qgssettingsregistrygui.h"
-#include "qgswindow3dengine.h"
 
 #include <QKeyEvent>
 #include <QString>

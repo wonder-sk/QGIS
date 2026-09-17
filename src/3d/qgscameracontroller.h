@@ -233,9 +233,8 @@ class _3D_EXPORT QgsCameraController : public QObject
     /**
      * Handles a mouse button press in the 3D view.
      *
-     * Input used to arrive through Qt3DInput's handlers, which needed an entity tree and
-     * an input aspect to deliver it. The 3D view forwards ordinary Qt events instead, so
-     * these four are the controller's whole input surface.
+     * The 3D view forwards ordinary Qt events to the controller, so these four are its
+     * whole input surface.
      * \since QGIS 3.46
      */
     void handleMousePressEvent( QMouseEvent *event );

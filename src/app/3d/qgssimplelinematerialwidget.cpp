@@ -28,8 +28,6 @@ QgsSimpleLineMaterialWidget::QgsSimpleLineMaterialWidget( QWidget *parent )
   : QgsMaterialSettingsWidget( parent )
 {
   setupUi( this );
-  mPreviewWidget->hide();
-  mPreviewWidget->setMaterialType( u"simpleline"_s );
 
   QgsSimpleLineMaterialSettings defaultMaterial;
   setSettings( &defaultMaterial, nullptr );
@@ -72,14 +70,11 @@ std::unique_ptr<QgsAbstractMaterialSettings> QgsSimpleLineMaterialWidget::settin
 
 void QgsSimpleLineMaterialWidget::setPreviewVisible( bool visible )
 {
-  mPreviewWidget->setVisible( visible );
+  Q_UNUSED( visible )
   updatePreview();
 }
 
 void QgsSimpleLineMaterialWidget::updatePreview()
 {
-  if ( mPreviewWidget->isHidden() )
-    return;
-  const std::unique_ptr<QgsAbstractMaterialSettings> newSettings( settings() );
-  mPreviewWidget->updatePreview( newSettings.get() );
+  // the material preview is not available while the QRhi port has no material handler
 }

@@ -28,7 +28,6 @@ class QgsReadWriteContext;
 class QgsMaterialSettingsWidget SIP_EXTERNAL;
 class QgsAbstractMaterialSettings;
 #ifndef SIP_RUN
-class QgsAbstractMaterial3DHandler;
 #endif
 
 /**
@@ -97,12 +96,6 @@ class CORE_EXPORT QgsMaterialSettingsAbstractMetadata
      */
     virtual QgsMaterialSettingsWidget *createWidget() SIP_FACTORY { return nullptr; }
 
-    /**
-     * Returns 3D handler relating to the material.
-     *
-     * \note Not available in Python bindings
-     */
-    virtual const QgsAbstractMaterial3DHandler *material3DHandler() { return nullptr; }
 #endif
 
   private:
@@ -174,20 +167,6 @@ class CORE_EXPORT QgsMaterialSettingsMetadata : public QgsMaterialSettingsAbstra
      */
     void setWidgetFunction( QgsMaterialSettingsWidgetFunc function ) { mWidgetFunc = function; }
 
-    /**
-     * Returns the material settings' 3D handler.
-     *
-     * \see setHandler()
-     */
-    const QgsAbstractMaterial3DHandler *handler() const { return mHandler; }
-
-    /**
-     * Sets the material settings' 3D \a handler.
-     *
-     * \see handler()
-     */
-    void setHandler( QgsAbstractMaterial3DHandler *handler ) { mHandler = handler; }
-
     QgsAbstractMaterialSettings *create() override SIP_FACTORY { return mCreateFunc ? mCreateFunc() : nullptr; }
     bool supportsTechnique( Qgis::MaterialRenderingTechnique technique ) const override { return mSupportsTechniqueFunc ? mSupportsTechniqueFunc( technique ) : true; }
     QgsMaterialSettingsWidget *createWidget() override SIP_FACTORY { return mWidgetFunc ? mWidgetFunc() : nullptr; }
@@ -196,7 +175,6 @@ class CORE_EXPORT QgsMaterialSettingsMetadata : public QgsMaterialSettingsAbstra
     QgsMaterialSettingsCreateFunc mCreateFunc;
     QgsMaterialSettingsSupportsTechniqueFunc mSupportsTechniqueFunc;
     QgsMaterialSettingsWidgetFunc mWidgetFunc;
-    QgsAbstractMaterial3DHandler *mHandler = nullptr;
 };
 #endif
 

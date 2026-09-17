@@ -28,8 +28,6 @@ QgsGoochMaterialWidget::QgsGoochMaterialWidget( QWidget *parent )
   : QgsMaterialSettingsWidget( parent )
 {
   setupUi( this );
-  mPreviewWidget->hide();
-  mPreviewWidget->setMaterialType( u"gooch"_s );
 
   QgsGoochMaterialSettings defaultMaterial;
   setSettings( &defaultMaterial, nullptr );
@@ -133,14 +131,11 @@ std::unique_ptr<QgsAbstractMaterialSettings> QgsGoochMaterialWidget::settings()
 
 void QgsGoochMaterialWidget::setPreviewVisible( bool visible )
 {
-  mPreviewWidget->setVisible( visible );
+  Q_UNUSED( visible )
   updatePreview();
 }
 
 void QgsGoochMaterialWidget::updatePreview()
 {
-  if ( mPreviewWidget->isHidden() )
-    return;
-  const std::unique_ptr<QgsAbstractMaterialSettings> newSettings( settings() );
-  mPreviewWidget->updatePreview( newSettings.get() );
+  // the material preview is not available while the QRhi port has no material handler
 }

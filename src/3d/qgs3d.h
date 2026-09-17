@@ -26,26 +26,10 @@
 
 class QgsMaterialRegistry;
 class Qgs3DTerrainRegistry;
-class QgsAbstractMaterial3DHandler;
 class QgsAbstractMaterialSettings;
-class QgsMaterial;
-class QgsMaterialContext;
-class QgsUnlitMaterial;
 class QgsExpressionContext;
 class QgsSettingsEntryBool;
 template<class T> class QgsSettingsEntryEnumFlag;
-
-#ifndef SIP_RUN
-namespace Qt3DCore
-{
-  class QGeometry;
-}
-
-namespace Qt3DRender
-{
-  class QEffect;
-}
-#endif
 
 /**
  * \ingroup gui
@@ -86,28 +70,6 @@ class _3D_EXPORT Qgs3D
     static Qgs3DTerrainRegistry *terrainRegistry();
 
 #ifndef SIP_RUN
-    /**
-     * Creates a new QgsMaterial object representing the material \a settings.
-     *
-     * The \a technique argument specifies the rendering technique which will be used with the returned
-     * material.
-     * \since QGIS 4.2
-     */
-    static QgsMaterial *toMaterial( const QgsAbstractMaterialSettings *settings, Qgis::MaterialRenderingTechnique technique, const QgsMaterialContext &context );
-
-    /**
-     * Creates a new highlight material, consisting of an unlit material respecting
-     * the user's map highlight color.
-     *
-     * \since QGIS 4.2
-     */
-    static QgsUnlitMaterial *createHighlightMaterial();
-
-    /**
-     * Returns the handler to use for a material \a settings.
-     */
-    static const QgsAbstractMaterial3DHandler *handlerForMaterialSettings( const QgsAbstractMaterialSettings *settings );
-
     // if you change this, also update the corresponding constant in shadows.inc.frag!
     //! Number of shadow map cascades
     static constexpr int NUM_SHADOW_CASCADES = 4;
@@ -116,11 +78,8 @@ class _3D_EXPORT Qgs3D
      * Default value of the map3d/gpuMemoryLimit setting, in megabytes.
      *
      * The budget a chunked entity unloads its least recently used chunks to stay within.
-     * It was 500 while the Qt3D engine measured a texture loaded from an image as one
-     * texel - QAbstractTexture::width() and height() default to 1 and are never written
-     * back from the backend - so in practice it only ever bounded geometry. The QRhi
-     * engine measures textures properly, and on a textured scene they are the larger
-     * half, so the equivalent budget is several times the old number.
+     * Textures are counted as well as geometry, and on a textured scene they are the
+     * larger half, which is why this is several times the pre-QRhi number.
      *
      * \since QGIS 4.2
      */
@@ -138,14 +97,6 @@ class _3D_EXPORT Qgs3D
     bool mInitialized = false;
 
     Qgs3DTerrainRegistry *mTerrainRegistry = nullptr;
-    std::unique_ptr< QgsAbstractMaterial3DHandler > mNullMaterialHandler;
-    std::unique_ptr< QgsAbstractMaterial3DHandler > mPhongMaterialHandler;
-    std::unique_ptr< QgsAbstractMaterial3DHandler > mPhongTexturedMaterialHandler;
-    std::unique_ptr< QgsAbstractMaterial3DHandler > mSimpleLineMaterialHandler;
-    std::unique_ptr< QgsAbstractMaterial3DHandler > mGoochMaterialHandler;
-    std::unique_ptr< QgsAbstractMaterial3DHandler > mMetalRoughMaterialHandler;
-    std::unique_ptr< QgsAbstractMaterial3DHandler > mMetalRoughTexturedMaterialHandler;
-    std::unique_ptr< QgsAbstractMaterial3DHandler > mUnlitMaterialHandler;
 };
 
 #endif // QGS3D_H

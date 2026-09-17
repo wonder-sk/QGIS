@@ -29,10 +29,7 @@ class QgsReadWriteContext;
 class Qgs3DMapSettings;
 
 #ifndef SIP_RUN
-namespace Qt3DCore
-{
-  class QEntity;
-}
+class Qgs3DMapSceneEntity;
 #endif
 
 /**
@@ -78,8 +75,12 @@ class CORE_EXPORT QgsAbstract3DRenderer SIP_ABSTRACT
     virtual QString type() const = 0;
     //! Returns a cloned instance
     virtual QgsAbstract3DRenderer *clone() const = 0 SIP_FACTORY;
-    //! Returns a 3D entity that will be used to show renderer's data in 3D scene
-    virtual Qt3DCore::QEntity *createEntity( Qgs3DMapSettings *map ) const SIP_SKIP = 0;
+    /**
+     * Returns a 3D entity that will be used to show renderer's data in 3D scene.
+     *
+     * May return NULLPTR when the renderer has nothing to show.
+     */
+    virtual Qgs3DMapSceneEntity *createEntity( Qgs3DMapSettings *map ) const SIP_SKIP = 0;
 
     //! Writes renderer's properties to given XML element
     virtual void writeXml( QDomElement &elem, const QgsReadWriteContext &context ) const = 0;

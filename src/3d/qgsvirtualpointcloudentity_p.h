@@ -36,7 +36,6 @@
 #define SIP_NO_FILE
 
 class QgsAABB;
-class QgsChunkBoundsEntity;
 class QgsPointCloudLayer;
 class QgsVirtualPointCloudProvider;
 class QgsPointCloud3DSymbol;
@@ -47,9 +46,7 @@ class Qgs3DMapSettings;
  * \ingroup qgis_3d
  * \brief Implementation of entity that handles virtual point cloud sub indexes
  *
- * This entity is parent to a QgsChunkBoundsEntity that renders all sub indexes' bounding boxes, as well as all individual
- * QgsPointCloudLayerChunkedEntities.
- *
+ * This entity holds all individual QgsPointCloudLayerChunkedEntities.
  *
  * \since QGIS 3.32
  */
@@ -59,15 +56,7 @@ class QgsVirtualPointCloudEntity : public Qgs3DMapSceneEntity
   public:
     //! Constructs
     QgsVirtualPointCloudEntity(
-      Qgs3DMapSettings *map,
-      QgsPointCloudLayer *layer,
-      const QgsCoordinateTransform &coordinateTransform,
-      QgsPointCloud3DSymbol *symbol,
-      float maxScreenError,
-      bool showBoundingBoxes,
-      double zValueScale,
-      double zValueOffset,
-      int pointBudget
+      Qgs3DMapSettings *map, QgsPointCloudLayer *layer, const QgsCoordinateTransform &coordinateTransform, QgsPointCloud3DSymbol *symbol, float maxScreenError, double zValueScale, double zValueOffset, int pointBudget
     );
 
     //! Destructs
@@ -104,7 +93,6 @@ class QgsVirtualPointCloudEntity : public Qgs3DMapSceneEntity
 
     QgsPointCloudLayer *mLayer = nullptr;
     QMap<int, QgsChunkedEntity *> mChunkedEntitiesMap;
-    QgsChunkBoundsEntity *mBboxesEntity = nullptr;
     QList<QgsPointCloudLayerChunkedEntity *> mOverviewEntities;
     QList<QgsBox3D> mBboxes;
     QgsCoordinateTransform mCoordinateTransform;
@@ -113,7 +101,6 @@ class QgsVirtualPointCloudEntity : public Qgs3DMapSceneEntity
     double mZValueOffset = 0;
     int mPointBudget = 1000000;
     float mMaximumScreenSpaceError = -1.;
-    bool mShowBoundingBoxes = false;
 };
 
 /// @endcond

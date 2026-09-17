@@ -29,8 +29,6 @@ QgsPhongMaterialWidget::QgsPhongMaterialWidget( QWidget *parent, bool hasOpacity
   , mHasOpacity( hasOpacity )
 {
   setupUi( this );
-  mPreviewWidget->hide();
-  mPreviewWidget->setMaterialType( u"phong"_s );
 
   // Ensure the widgets expand without widening the label column.
   mGridLayout->setColumnStretch( 2, 1 );
@@ -193,7 +191,7 @@ void QgsPhongMaterialWidget::setHasOpacity( const bool opacity )
 
 void QgsPhongMaterialWidget::setPreviewVisible( bool visible )
 {
-  mPreviewWidget->setVisible( visible );
+  Q_UNUSED( visible )
   updatePreview();
 }
 
@@ -213,8 +211,5 @@ void QgsPhongMaterialWidget::updateWidgetState()
 
 void QgsPhongMaterialWidget::updatePreview()
 {
-  if ( mPreviewWidget->isHidden() )
-    return;
-  const std::unique_ptr<QgsAbstractMaterialSettings> newSettings( settings() );
-  mPreviewWidget->updatePreview( newSettings.get() );
+  // the material preview is not available while the QRhi port has no material handler
 }

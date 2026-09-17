@@ -40,4 +40,3 @@
 %Include auto_generated/terrain/qgsmeshterrainsettings.sip
 %Include auto_generated/terrain/qgsonlinedemterrainsettings.sip
 %Include auto_generated/terrain/qgsquantizedmeshterrainsettings.sip
-%Include auto_generated/qgs3dmapexportsettings.sip

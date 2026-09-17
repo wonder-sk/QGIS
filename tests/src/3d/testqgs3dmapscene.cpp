@@ -21,11 +21,11 @@
 #include "qgs3dutils.h"
 #include "qgscameracontroller.h"
 #include "qgsflatterraingenerator.h"
-#include "qgsoffscreen3dengine.h"
 #include "qgspointcloud3dsymbol.h"
 #include "qgspointcloudlayer.h"
 #include "qgspointcloudlayer3drenderer.h"
 #include "qgsprojectviewsettings.h"
+#include "qgsrhi3dengine.h"
 #include "qgstest.h"
 #include "qgsvectorlayer.h"
 
@@ -97,9 +97,11 @@ void TestQgs3DMapScene::testOriginShift()
   flatTerrain->setCrs( map.crs(), map.transformContext() );
   map.setTerrainGenerator( flatTerrain );
 
-  QgsOffscreen3DEngine engine;
-  Qgs3DMapScene *scene = new Qgs3DMapScene( map, &engine );
-  engine.setRootEntity( scene );
+  QgsRhi3DEngine engine( QSize( 640, 480 ) );
+  // the scene holds GPU resources, so it has to go while the engine is still alive
+  const std::unique_ptr<Qgs3DMapScene> sceneOwner( new Qgs3DMapScene( map, &engine ) );
+  Qgs3DMapScene *scene = sceneOwner.get();
+  engine.setScene( scene );
 
   QgsVector3D webMercatorRome( 1'390'000, 5'146'000, 0 );
 
@@ -144,8 +146,6 @@ void TestQgs3DMapScene::testOriginShift()
   QCOMPARE( scene->cameraController()->lookingAtMapPoint(), webMercatorRome );
   QCOMPARE( scene->mapSettings()->origin(), QgsVector3D( 1'390'000, 5'146'000, 1'000 ) );
   QCOMPARE( scene->cameraController()->camera()->position(), QVector3D( 0, 0, -500 ) );
-
-  delete scene;
 }
 
 void TestQgs3DMapScene::testElevationRange()
@@ -159,9 +159,11 @@ void TestQgs3DMapScene::testElevationRange()
   flatTerrain->setCrs( map.crs(), map.transformContext() );
   map.setTerrainGenerator( flatTerrain );
 
-  QgsOffscreen3DEngine engine;
-  Qgs3DMapScene *scene = new Qgs3DMapScene( map, &engine );
-  engine.setRootEntity( scene );
+  QgsRhi3DEngine engine( QSize( 640, 480 ) );
+  // the scene holds GPU resources, so it has to go while the engine is still alive
+  const std::unique_ptr<Qgs3DMapScene> sceneOwner( new Qgs3DMapScene( map, &engine ) );
+  Qgs3DMapScene *scene = sceneOwner.get();
+  engine.setScene( scene );
 
   QgsSingleColorPointCloud3DSymbol *symbol = new QgsSingleColorPointCloud3DSymbol();
   symbol->setSingleColor( QColor( 255, 0, 0 ) );

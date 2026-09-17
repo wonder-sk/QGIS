@@ -10,13 +10,10 @@
 
 
 
-
-
 class Qgs3DMapScene : QObject
 {
 %Docstring(signature="appended")
-Entity that encapsulates our 3D scene - contains all other entities
-(such as terrain) as children.
+Holds our 3D scene - the terrain and every layer's entity.
 %End
 
 %TypeHeaderCode
@@ -28,7 +25,6 @@ Entity that encapsulates our 3D scene - contains all other entities
 %Docstring
 Returns camera controller
 %End
-
 
 
     void viewZoomFull();
@@ -76,12 +72,6 @@ coordinates), this function estimates the error in world space. Takes
 into account camera's field of view and the screen (3D view) size.
 %End
 
-    bool exportScene( const Qgs3DMapExportSettings &exportSettings );
-%Docstring
-Exports the scene according to the scene export settings Returns
-``False`` if the operation failed
-%End
-
 
 
 
@@ -105,7 +95,6 @@ Returns the scene's elevation range
 
 .. versionadded:: 3.30
 %End
-
 
 
     Qgs3DMapSettings *mapSettings() const;
@@ -270,9 +259,7 @@ Updates the temporale entities
 Advances the scene by ``dt`` seconds: moves the camera, updates the
 chunked entities and refits the near and far planes.
 
-Under Qt3D this is driven by a Qt3DLogic.QFrameAction; the QRhi engine
-calls it itself once per frame, since there is no aspect engine to tick
-it.
+The engine calls this itself once per frame.
 %End
 
   private:

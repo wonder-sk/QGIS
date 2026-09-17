@@ -16,7 +16,6 @@
 #include "qgs3dapputils.h"
 
 #include "qgs3d.h"
-#include "qgs3dicongenerator.h"
 #include "qgs3dsymbolregistry.h"
 #include "qgsapplication.h"
 #include "qgsgoochmaterialwidget.h"
@@ -51,5 +50,6 @@ void Qgs3DAppUtils::initialize()
   qgis::down_cast<QgsMaterialSettingsMetadata *>( Qgs3D::materialRegistry()->materialSettingsMetadata( u"metalroughtextured"_s ) )->setWidgetFunction( QgsMetalRoughTexturedMaterialWidget::create );
   qgis::down_cast<QgsMaterialSettingsMetadata *>( Qgs3D::materialRegistry()->materialSettingsMetadata( u"unlit"_s ) )->setWidgetFunction( QgsUnlitMaterialWidget::create );
 
-  QgsStyleModel::setIconGenerator( new Qgs3DIconGenerator( QgsApplication::defaultStyleModel() ) );
+  // 3D symbol and material icons need a material preview scene, which has not been
+  // ported to the QRhi engine yet
 }

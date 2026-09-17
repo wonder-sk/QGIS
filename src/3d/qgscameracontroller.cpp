@@ -26,9 +26,9 @@
 #include "qgsray3d.h"
 #include "qgsraycastcontext.h"
 #include "qgsraycasthit.h"
+#include "qgsrhi3dengine.h"
 #include "qgsterrainentity.h"
 #include "qgsvector3d.h"
-#include "qgswindow3dengine.h"
 
 #include <QDomDocument>
 #include <QMouseEvent>

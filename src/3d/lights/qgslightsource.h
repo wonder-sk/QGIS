@@ -30,13 +30,6 @@ class QgsProject;
 class QDomElement;
 class QDomDocument;
 
-#ifndef SIP_RUN
-namespace Qt3DCore
-{
-  class QEntity;
-}
-#endif
-
 /**
  * \ingroup qgis_3d
  * \brief Base class for light sources in 3d scenes.
@@ -64,11 +57,6 @@ class _3D_EXPORT QgsLightSource SIP_ABSTRACT
      * \since QGIS 4.2
      */
     QString id() const { return mId; }
-
-    /**
-     * Creates an entity representing the light source.
-     */
-    virtual Qt3DCore::QEntity *createEntity( const Qgs3DMapSettings &map, Qt3DCore::QEntity *parent ) const SIP_SKIP = 0;
 
     /**
      * Writes the light source's configuration to a new DOM element and returns it.

@@ -10,7 +10,6 @@
 
 
 
-
 class QgsPointCloud3DSymbol : QgsAbstract3DSymbol /Abstract/
 {
 %Docstring(signature="appended")
@@ -72,7 +71,6 @@ Sets the point size
 %Docstring
 Returns the byte stride for the geometries used to for the vertex buffer
 %End
-
     bool renderAsTriangles() const;
 %Docstring
 Returns whether points are triangulated to render solid surface

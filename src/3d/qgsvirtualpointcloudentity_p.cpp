@@ -16,7 +16,6 @@
 #include "qgsvirtualpointcloudentity_p.h"
 
 #include "qgs3dutils.h"
-#include "qgschunkboundsentity_p.h"
 #include "qgspointcloudlayer.h"
 #include "qgspointcloudlayerchunkloader_p.h"
 #include "qgsvirtualpointcloudprovider.h"
@@ -32,7 +31,6 @@ QgsVirtualPointCloudEntity::QgsVirtualPointCloudEntity(
   const QgsCoordinateTransform &coordinateTransform,
   QgsPointCloud3DSymbol *symbol,
   float maximumScreenSpaceError,
-  bool showBoundingBoxes,
   double zValueScale,
   double zValueOffset,
   int pointBudget
@@ -44,7 +42,6 @@ QgsVirtualPointCloudEntity::QgsVirtualPointCloudEntity(
   , mZValueOffset( zValueOffset )
   , mPointBudget( pointBudget )
   , mMaximumScreenSpaceError( maximumScreenSpaceError )
-  , mShowBoundingBoxes( showBoundingBoxes )
 {
   mSymbol.reset( symbol );
   const QgsRectangle mapExtent = Qgs3DUtils::tryReprojectExtent2D( map->extent(), map->crs(), layer->crs(), map->transformContext() );
@@ -65,19 +62,15 @@ QgsVirtualPointCloudEntity::QgsVirtualPointCloudEntity(
     // Overview indexes start at -2 and decrease, see QgsPointCloudLayerChunkedEntity::resolveIndex()
     const int ovId = -i - 2;
     QgsPointCloudLayerChunkedEntity *ovEnt(
-      new QgsPointCloudLayerChunkedEntity( mapSettings(), mLayer, ovId, mCoordinateTransform, dynamic_cast<QgsPointCloud3DSymbol *>( mSymbol->clone() ), mMaximumScreenSpaceError, false, mZValueScale, mZValueOffset, mPointBudget )
+      new QgsPointCloudLayerChunkedEntity( mapSettings(), mLayer, ovId, mCoordinateTransform, dynamic_cast<QgsPointCloud3DSymbol *>( mSymbol->clone() ), mMaximumScreenSpaceError, mZValueScale, mZValueOffset, mPointBudget )
     );
     ovEnt->setParent( this );
     connect( ovEnt, &QgsChunkedEntity::pendingJobsCountChanged, this, &Qgs3DMapSceneEntity::pendingJobsCountChanged );
-    connect( ovEnt, &QgsChunkedEntity::newEntityCreated, this, &Qgs3DMapSceneEntity::newEntityCreated );
     mOverviewEntities.append( ovEnt );
-    emit newEntityCreated( ovEnt );
   }
 
   // this is a rather arbitrary point, it could be somewhere else, ideally near the actual data
-  QgsVector3D boundsEntityOrigin( mapExtent.center().x(), mapExtent.center().y(), 0 );
 
-  mBboxesEntity = new QgsChunkBoundsEntity( boundsEntityOrigin, this );
   updateBboxEntity();
   connect( this, &QgsVirtualPointCloudEntity::subIndexNeedsLoading, provider(), [p = provider()]( int i ) { p->loadSubIndex( i ); }, Qt::QueuedConnection );
   connect( provider(), &QgsVirtualPointCloudProvider::subIndexLoaded, this, &QgsVirtualPointCloudEntity::createChunkedEntityForSubIndex );
@@ -112,13 +105,11 @@ void QgsVirtualPointCloudEntity::createChunkedEntityForSubIndex( int i )
     return;
 
   QgsPointCloudLayerChunkedEntity *newChunkedEntity
-    = new QgsPointCloudLayerChunkedEntity( mapSettings(), mLayer, i, mCoordinateTransform, static_cast<QgsPointCloud3DSymbol *>( mSymbol->clone() ), mMaximumScreenSpaceError, mShowBoundingBoxes, mZValueScale, mZValueOffset, mPointBudget );
+    = new QgsPointCloudLayerChunkedEntity( mapSettings(), mLayer, i, mCoordinateTransform, static_cast<QgsPointCloud3DSymbol *>( mSymbol->clone() ), mMaximumScreenSpaceError, mZValueScale, mZValueOffset, mPointBudget );
 
   mChunkedEntitiesMap.insert( i, newChunkedEntity );
   newChunkedEntity->setParent( this );
   connect( newChunkedEntity, &QgsChunkedEntity::pendingJobsCountChanged, this, &Qgs3DMapSceneEntity::pendingJobsCountChanged );
-  connect( newChunkedEntity, &QgsChunkedEntity::newEntityCreated, this, &Qgs3DMapSceneEntity::newEntityCreated );
-  emit newEntityCreated( newChunkedEntity );
 }
 
 void QgsVirtualPointCloudEntity::handleSceneUpdate( const SceneContext &sceneContext )
@@ -255,7 +246,9 @@ void QgsVirtualPointCloudEntity::updateBboxEntity()
     }
   }
 
-  mBboxesEntity->setBoxes( bboxes );
+  // TODO: draw these. The debug bounding box entity was Qt3D's; a QRhi one would be a
+  // wireframe box geometry in the forward pass.
+  Q_UNUSED( bboxes )
 }
 
 void QgsVirtualPointCloudEntity::setRenderSubIndexAsBbox( int i, bool asBbox )

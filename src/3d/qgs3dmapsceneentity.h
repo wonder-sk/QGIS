@@ -32,9 +32,9 @@
 #include "qgssettings.h"
 
 #include <QMatrix4x4>
+#include <QObject>
 #include <QString>
 #include <QVector3D>
-#include <Qt3DCore/QEntity>
 
 #define SIP_NO_FILE
 
@@ -48,13 +48,13 @@ class Qgs3DMapSettings;
  * \brief Abstract entity that all entities rendered in a Qgs3DMapScene inherit
  * \since QGIS 3.32
  */
-class Qgs3DMapSceneEntity : public Qt3DCore::QEntity
+class Qgs3DMapSceneEntity : public QObject
 {
     Q_OBJECT
   public:
     //! Constructs a chunked entity
-    Qgs3DMapSceneEntity( Qgs3DMapSettings *mapSettings, Qt3DCore::QNode *parent = nullptr )
-      : Qt3DCore::QEntity( parent )
+    Qgs3DMapSceneEntity( Qgs3DMapSettings *mapSettings, QObject *parent = nullptr )
+      : QObject( parent )
       , mMapSettings( mapSettings )
     {
       const QgsSettings settings;
@@ -102,6 +102,12 @@ class Qgs3DMapSceneEntity : public Qt3DCore::QEntity
     //! Returns whether the entity has reached GPU memory limit
     bool hasReachedGpuMemoryLimit() const { return mHasReachedGpuMemoryLimit; }
 
+    //! Returns whether the entity contributes anything to the rendered scene
+    bool isEnabled() const { return mEnabled; }
+
+    //! Sets whether the entity contributes anything to the rendered scene
+    void setEnabled( bool enabled ) { mEnabled = enabled; }
+
   protected:
     //! Sets whether the GPU memory limit has been reached
     void setHasReachedGpuMemoryLimit( bool reached ) { mHasReachedGpuMemoryLimit = reached; }
@@ -110,11 +116,11 @@ class Qgs3DMapSceneEntity : public Qt3DCore::QEntity
     //! Emitted when the number of pending jobs changes (some jobs have finished or some jobs have been just created)
     void pendingJobsCountChanged();
 
-    //! Emitted when a new 3D entity has been created. Other components can use that to do extra work
-    void newEntityCreated( Qt3DCore::QEntity *entity );
-
   protected:
     Qgs3DMapSettings *mMapSettings = nullptr;
+
+    //! Whether the entity contributes anything to the rendered scene
+    bool mEnabled = true;
 
     //! Limit how much GPU memory this entity can use
     double mGpuMemoryLimit = Qgs3D::DEFAULT_GPU_MEMORY_LIMIT_MB; // in megabytes

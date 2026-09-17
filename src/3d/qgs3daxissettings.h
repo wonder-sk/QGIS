@@ -61,12 +61,12 @@ class _3D_EXPORT Qgs3DAxisSettings
     //! Sets the defaultl axis viewport size in millimeters
     void setDefaultViewportSize( int size ) { mDefaultViewportSize = size; }
 
-    //! Returns the minimal axis viewport ratio (see Qt3DRender::QViewport::normalizedRect())
+    //! Returns the minimal axis viewport ratio
     double minViewportRatio() const { return mMinViewportRatio; }
     //! Sets the minimal axis viewport ratio between 0-1
     void setMinViewportRatio( double ratio );
 
-    //! Returns the maximal axis viewport ratio (see Qt3DRender::QViewport::normalizedRect())
+    //! Returns the maximal axis viewport ratio
     double maxViewportRatio() const { return mMaxViewportRatio; }
     //! Sets the maximal axis viewport ratio between 0-1
     void setMaxViewportRatio( double ratio );

@@ -40,7 +40,6 @@ class QgsChunkNode;
 class QgsChunkList;
 class QgsChunkQueueJob;
 class QgsChunkLoaderFactory;
-class QgsChunkBoundsEntity;
 class QgsChunkQueueJobFactory;
 class QgsRay3D;
 class QgsRayCastContext;
@@ -56,9 +55,7 @@ class QgsChunkedEntity : public Qgs3DMapSceneEntity
     Q_OBJECT
   public:
     //! Constructs a chunked entity
-    QgsChunkedEntity(
-      Qgs3DMapSettings *mapSettings, float tau, QgsChunkLoaderFactory *loaderFactory, bool ownsFactory, int primitivesBudget = std::numeric_limits<int>::max(), Qt3DCore::QNode *parent = nullptr
-    );
+    QgsChunkedEntity( Qgs3DMapSettings *mapSettings, float tau, QgsChunkLoaderFactory *loaderFactory, bool ownsFactory, int primitivesBudget = std::numeric_limits<int>::max(), QObject *parent = nullptr );
     ~QgsChunkedEntity() override;
 
     //! Called when e.g. camera changes and entity may need updated
@@ -71,9 +68,6 @@ class QgsChunkedEntity : public Qgs3DMapSceneEntity
     bool needsUpdate() const override { return mNeedsUpdate; }
 
     QgsRange<float> getNearFarPlaneRange( const QMatrix4x4 &viewMatrix ) const override;
-
-    //! Determines whether bounding boxes of tiles should be shown (for debugging)
-    void setShowBoundingBoxes( bool enabled );
 
     //! update already loaded nodes (add to the queue)
     void updateNodes( const QList<QgsChunkNode *> &nodes, QgsChunkQueueJobFactory *updateJobFactory );
@@ -148,9 +142,6 @@ class QgsChunkedEntity : public Qgs3DMapSceneEntity
     // TODO: max. length for loading queue
 
     QTime mCurrentTime;
-
-    //! Entity that shows bounding boxes of active chunks (NULLPTR if not enabled)
-    QgsChunkBoundsEntity *mBboxesEntity = nullptr;
 
     //! jobs that are currently being processed (asynchronously in worker threads)
     QList<QgsChunkQueueJob *> mActiveJobs;

@@ -495,9 +495,6 @@ void QgsApplication::init( QString profileFolder )
     *sAuthDbUri() = u"QSQLITE://"_s + *sAuthDbDirPath() + u"qgis-auth.db"_s;
   }
 
-  // force use of OpenGL renderer for Qt3d.
-  qputenv( "QT3D_RENDERER", "opengl" );
-
   // store system environment variables passed to application, before they are adjusted
   QMap<QString, QString> systemEnvVarMap;
   QString passfile( u"QGIS_AUTH_PASSWORD_FILE"_s ); // QString, for comparison

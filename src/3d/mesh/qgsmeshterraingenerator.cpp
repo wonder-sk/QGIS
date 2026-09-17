@@ -19,12 +19,11 @@
 
 #include "qgs3dmapsettings.h"
 #include "qgs3drendercontext.h"
-#include "qgsmaterial3dhandler.h"
-#include "qgsmesh3dentity_p.h"
 #include "qgsmeshlayer.h"
 #include "qgsmeshlayer3drenderer.h"
 #include "qgsmeshlayerutils.h"
 #include "qgsmeshterraintileloader_p.h"
+#include "qgssceneobject3d.h"
 #include "qgsterrainentity.h"
 
 #include "moc_qgsmeshterraingenerator.cpp"
@@ -40,14 +39,12 @@ void QgsMeshTerrainTileLoader::start()
   loadTexture();
 }
 
-Qt3DCore::QEntity *QgsMeshTerrainTileLoader::createEntity( Qt3DCore::QEntity *parent )
+std::unique_ptr<QgsSceneObject3D> QgsMeshTerrainTileLoader::createSceneObject()
 {
-  Qgs3DRenderContext context = Qgs3DRenderContext::fromMapSettings( terrain()->mapSettings() );
-  QgsMesh3DTerrainTileEntity *entity = new QgsMesh3DTerrainTileEntity( context, mTriangularMesh, mSymbol.get(), mNode->tileId(), parent );
-  entity->build();
-  createTexture( entity, QgsMaterialContext::fromRenderContext( context ) );
-
-  return entity;
+  // TODO: mesh terrain is not drawn by the QRhi engine yet. QgsMeshGeometry3D and
+  // QgsMeshMaterial3D both exist; what is missing is the scene object that puts the
+  // terrain tile's triangular mesh and the terrain texture together.
+  return nullptr;
 }
 
 //

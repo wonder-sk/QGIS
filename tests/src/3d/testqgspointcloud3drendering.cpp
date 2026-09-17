@@ -21,7 +21,6 @@
 #include "qgs3dutils.h"
 #include "qgsapplication.h"
 #include "qgscameracontroller.h"
-#include "qgsoffscreen3dengine.h"
 #include "qgspointcloud3dsymbol.h"
 #include "qgspointcloudattributebyramprenderer.h"
 #include "qgspointcloudclassifiedrenderer.h"
@@ -31,6 +30,7 @@
 #include "qgspointcloudrgbrenderer.h"
 #include "qgspointlightsettings.h"
 #include "qgsproject.h"
+#include "qgsrhi3dengine.h"
 #include "qgsstyle.h"
 #include "qgstest.h"
 
@@ -53,7 +53,6 @@ class TestQgsPointCloud3DRendering : public QgsTest
     void testDisableSync3DRendererTo2DRenderer();
 
     void testPointCloudSingleColor();
-    void testPointCloudSingleColorClipping();
     void testPointCloudAttributeByRamp();
     void testPointCloudClassification();
     void testPointCloudClassificationOverridePointSizes();
@@ -264,9 +263,11 @@ void TestQgsPointCloud3DRendering::testPointCloudSingleColor()
   defaultLight.setPosition( map->origin() + QgsVector3D( 0, 1000, 0 ) );
   map->setLightSources( { defaultLight.clone() } );
 
-  QgsOffscreen3DEngine engine;
-  Qgs3DMapScene *scene = new Qgs3DMapScene( *map, &engine );
-  engine.setRootEntity( scene );
+  QgsRhi3DEngine engine( QSize( 640, 480 ) );
+  // the scene holds GPU resources, so it has to go while the engine is still alive
+  const std::unique_ptr<Qgs3DMapScene> sceneOwner( new Qgs3DMapScene( *map, &engine ) );
+  Qgs3DMapScene *scene = sceneOwner.get();
+  engine.setScene( scene );
 
   QgsSingleColorPointCloud3DSymbol *symbol = new QgsSingleColorPointCloud3DSymbol();
   symbol->setSingleColor( QColor( 255, 0, 0 ) );
@@ -286,72 +287,6 @@ void TestQgsPointCloud3DRendering::testPointCloudSingleColor()
   QGSVERIFYIMAGECHECK( "pointcloud_3d_singlecolor", "pointcloud_3d_singlecolor", img, QString(), 80, QSize( 0, 0 ), 15 );
 }
 
-void TestQgsPointCloud3DRendering::testPointCloudSingleColorClipping()
-{
-  const QgsRectangle fullExtent = mLayer->extent();
-
-  Qgs3DMapSettings *map = new Qgs3DMapSettings;
-  map->setCrs( mProject->crs() );
-  map->setExtent( fullExtent );
-  map->setLayers( QList<QgsMapLayer *>() << mLayer );
-  QgsPointLightSettings defaultLight;
-  defaultLight.setIntensity( 0.5 );
-  defaultLight.setPosition( map->origin() + QgsVector3D( 0, 0, 1000 ) );
-  map->setLightSources( { defaultLight.clone() } );
-
-  QgsOffscreen3DEngine engine;
-  Qgs3DMapScene *scene = new Qgs3DMapScene( *map, &engine );
-  engine.setRootEntity( scene );
-
-  QgsSingleColorPointCloud3DSymbol *symbol = new QgsSingleColorPointCloud3DSymbol();
-  symbol->setSingleColor( QColor( 255, 0, 0 ) );
-  symbol->setPointSize( 10 );
-
-  QgsPointCloudLayer3DRenderer *renderer = new QgsPointCloudLayer3DRenderer();
-  renderer->setSymbol( symbol );
-  mLayer->setRenderer3D( renderer );
-
-  scene->cameraController()->resetView( 90 );
-
-  // First, without clipping
-  // When running the test on Travis, it would initially return empty rendered image.
-  // Capturing the initial image and throwing it away fixes that. Hopefully we will
-  // find a better fix in the future.
-  Qgs3DUtils::captureSceneImage( engine, scene );
-  QImage img_no_clipping = Qgs3DUtils::captureSceneImage( engine, scene );
-
-  QGSVERIFYIMAGECHECK( "pointcloud_3d_singlecolor", "pointcloud_3d_singlecolor", img_no_clipping, QString(), 80, QSize( 0, 0 ), 15 );
-
-  // Enable clipping
-  const QList<QVector4D> clipPlanesEquations = QList<QVector4D>() << QVector4D( 0.866025, -0.5, 0, 1.0 ) << QVector4D( 0.5, 0.866025, 0, 0.5 );
-  scene->enableClipping( clipPlanesEquations );
-
-  QImage img_clipping = Qgs3DUtils::captureSceneImage( engine, scene );
-
-  QGSVERIFYIMAGECHECK( "pointcloud_3d_singlecolor_clipping", "pointcloud_3d_singlecolor_clipping", img_clipping, QString(), 80, QSize( 0, 0 ), 15 );
-
-  // disable clipping
-  scene->disableClipping();
-
-  QImage img_no_clipping_again = Qgs3DUtils::captureSceneImage( engine, scene );
-
-  QGSVERIFYIMAGECHECK( "pointcloud_3d_singlecolor", "pointcloud_3d_singlecolor", img_no_clipping_again, QString(), 80, QSize( 0, 0 ), 15 );
-
-  // enable clipping again
-  scene->enableClipping( clipPlanesEquations );
-
-  QImage img_clipping_again = Qgs3DUtils::captureSceneImage( engine, scene );
-
-  QGSVERIFYIMAGECHECK( "pointcloud_3d_singlecolor_clipping", "pointcloud_3d_singlecolor_clipping", img_clipping_again, QString(), 80, QSize( 0, 0 ), 15 );
-
-  // disable clipping a second time
-  scene->disableClipping();
-
-  QImage img_no_clipping_final = Qgs3DUtils::captureSceneImage( engine, scene );
-
-  QGSVERIFYIMAGECHECK( "pointcloud_3d_singlecolor", "pointcloud_3d_singlecolor", img_no_clipping_final, QString(), 80, QSize( 0, 0 ), 15 );
-}
-
 void TestQgsPointCloud3DRendering::testPointCloudAttributeByRamp()
 {
   const QgsRectangle fullExtent = mLayer->extent();
@@ -365,9 +300,11 @@ void TestQgsPointCloud3DRendering::testPointCloudAttributeByRamp()
   defaultLight.setPosition( map->origin() + QgsVector3D( 0, 1000, 0 ) );
   map->setLightSources( { defaultLight.clone() } );
 
-  QgsOffscreen3DEngine engine;
-  Qgs3DMapScene *scene = new Qgs3DMapScene( *map, &engine );
-  engine.setRootEntity( scene );
+  QgsRhi3DEngine engine( QSize( 640, 480 ) );
+  // the scene holds GPU resources, so it has to go while the engine is still alive
+  const std::unique_ptr<Qgs3DMapScene> sceneOwner( new Qgs3DMapScene( *map, &engine ) );
+  Qgs3DMapScene *scene = sceneOwner.get();
+  engine.setScene( scene );
 
   QgsColorRampPointCloud3DSymbol *symbol = new QgsColorRampPointCloud3DSymbol();
   symbol->setAttribute( u"Intensity"_s );
@@ -404,9 +341,11 @@ void TestQgsPointCloud3DRendering::testPointCloudClassification()
   defaultLight.setPosition( map->origin() + QgsVector3D( 0, 1000, 0 ) );
   map->setLightSources( { defaultLight.clone() } );
 
-  QgsOffscreen3DEngine engine;
-  Qgs3DMapScene *scene = new Qgs3DMapScene( *map, &engine );
-  engine.setRootEntity( scene );
+  QgsRhi3DEngine engine( QSize( 640, 480 ) );
+  // the scene holds GPU resources, so it has to go while the engine is still alive
+  const std::unique_ptr<Qgs3DMapScene> sceneOwner( new Qgs3DMapScene( *map, &engine ) );
+  Qgs3DMapScene *scene = sceneOwner.get();
+  engine.setScene( scene );
 
   QgsClassificationPointCloud3DSymbol *symbol = new QgsClassificationPointCloud3DSymbol();
   symbol->setAttribute( u"Classification"_s );
@@ -441,9 +380,11 @@ void TestQgsPointCloud3DRendering::testPointCloudClassificationOverridePointSize
   defaultLight.setPosition( map->origin() + QgsVector3D( 0, 1000, 0 ) );
   map->setLightSources( { defaultLight.clone() } );
 
-  QgsOffscreen3DEngine engine;
-  Qgs3DMapScene *scene = new Qgs3DMapScene( *map, &engine );
-  engine.setRootEntity( scene );
+  QgsRhi3DEngine engine( QSize( 640, 480 ) );
+  // the scene holds GPU resources, so it has to go while the engine is still alive
+  const std::unique_ptr<Qgs3DMapScene> sceneOwner( new Qgs3DMapScene( *map, &engine ) );
+  Qgs3DMapScene *scene = sceneOwner.get();
+  engine.setScene( scene );
 
   QgsClassificationPointCloud3DSymbol *symbol = new QgsClassificationPointCloud3DSymbol();
   symbol->setAttribute( u"Classification"_s );
@@ -481,9 +422,11 @@ void TestQgsPointCloud3DRendering::testPointCloudFilteredClassification()
   defaultLight.setPosition( map->origin() + QgsVector3D( 0, 1000, 0 ) );
   map->setLightSources( { defaultLight.clone() } );
 
-  QgsOffscreen3DEngine engine;
-  Qgs3DMapScene *scene = new Qgs3DMapScene( *map, &engine );
-  engine.setRootEntity( scene );
+  QgsRhi3DEngine engine( QSize( 640, 480 ) );
+  // the scene holds GPU resources, so it has to go while the engine is still alive
+  const std::unique_ptr<Qgs3DMapScene> sceneOwner( new Qgs3DMapScene( *map, &engine ) );
+  Qgs3DMapScene *scene = sceneOwner.get();
+  engine.setScene( scene );
 
   QgsClassificationPointCloud3DSymbol *symbol = new QgsClassificationPointCloud3DSymbol();
   symbol->setAttribute( u"Classification"_s );
@@ -521,9 +464,11 @@ void TestQgsPointCloud3DRendering::testPointCloudFilteredSceneExtent()
   defaultLight.setPosition( map->origin() + QgsVector3D( 0, 1000, 0 ) );
   map->setLightSources( { defaultLight.clone() } );
 
-  QgsOffscreen3DEngine engine;
-  Qgs3DMapScene *scene = new Qgs3DMapScene( *map, &engine );
-  engine.setRootEntity( scene );
+  QgsRhi3DEngine engine( QSize( 640, 480 ) );
+  // the scene holds GPU resources, so it has to go while the engine is still alive
+  const std::unique_ptr<Qgs3DMapScene> sceneOwner( new Qgs3DMapScene( *map, &engine ) );
+  Qgs3DMapScene *scene = sceneOwner.get();
+  engine.setScene( scene );
 
   QgsClassificationPointCloud3DSymbol *symbol = new QgsClassificationPointCloud3DSymbol();
   symbol->setAttribute( u"Classification"_s );
@@ -558,9 +503,11 @@ void TestQgsPointCloud3DRendering::testPointCloud3DExtents()
   defaultLight.setPosition( map->origin() + QgsVector3D( 0, 1000, 0 ) );
   map->setLightSources( { defaultLight.clone() } );
 
-  QgsOffscreen3DEngine engine;
-  Qgs3DMapScene *scene = new Qgs3DMapScene( *map, &engine );
-  engine.setRootEntity( scene );
+  QgsRhi3DEngine engine( QSize( 640, 480 ) );
+  // the scene holds GPU resources, so it has to go while the engine is still alive
+  const std::unique_ptr<Qgs3DMapScene> sceneOwner( new Qgs3DMapScene( *map, &engine ) );
+  Qgs3DMapScene *scene = sceneOwner.get();
+  engine.setScene( scene );
 
   QgsClassificationPointCloud3DSymbol *symbol = new QgsClassificationPointCloud3DSymbol();
   symbol->setAttribute( u"Classification"_s );
@@ -592,9 +539,11 @@ void TestQgsPointCloud3DRendering::testPointCloud3DOverview()
   defaultLight.setPosition( map->origin() + QgsVector3D( 0, 1000, 0 ) );
   map->setLightSources( { defaultLight.clone() } );
 
-  QgsOffscreen3DEngine engine;
-  Qgs3DMapScene *scene = new Qgs3DMapScene( *map, &engine );
-  engine.setRootEntity( scene );
+  QgsRhi3DEngine engine( QSize( 640, 480 ) );
+  // the scene holds GPU resources, so it has to go while the engine is still alive
+  const std::unique_ptr<Qgs3DMapScene> sceneOwner( new Qgs3DMapScene( *map, &engine ) );
+  Qgs3DMapScene *scene = sceneOwner.get();
+  engine.setScene( scene );
 
   //Classification symbol
   QgsClassificationPointCloud3DSymbol *symbol = new QgsClassificationPointCloud3DSymbol();

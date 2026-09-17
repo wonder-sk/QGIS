@@ -354,9 +354,7 @@ if (WITH_3D)
     3d/qgs3danimationwidget.cpp
     3d/qgs3danimationexportdialog.cpp
     3d/qgs3dapputils.cpp
-    3d/qgs3dicongenerator.cpp
     3d/qgs3dmapconfigwidget.cpp
-    3d/qgs3dmapexportwidget.cpp
     3d/qgs3dmaptoolidentify.cpp
     3d/qgs3dmaptoolmeasureline.cpp
     3d/qgs3dmaptoolpointcloudchangeattributepaintbrush.cpp
@@ -371,7 +369,6 @@ if (WITH_3D)
     3d/qgsgoochmaterialwidget.cpp
     3d/qgslightswidget.cpp
     3d/qgsline3dsymbolwidget.cpp
-    3d/qgsmaterialpreviewwidget.cpp
     3d/qgsmesh3dsymbolwidget.cpp
     3d/qgsmetalroughmaterialwidget.cpp
     3d/qgsmetalroughtexturedmaterialwidget.cpp

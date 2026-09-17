@@ -38,8 +38,6 @@
 
 #include <QFutureWatcher>
 #include <QVector3D>
-#include <Qt3DCore/QBuffer>
-#include <Qt3DCore/QGeometry>
 
 #define SIP_NO_FILE
 
@@ -113,7 +111,6 @@ class QgsPointCloudLayerChunkLoader : public QgsChunkLoader
 
     void start() override;
     void cancel() override;
-    Qt3DCore::QEntity *createEntity( Qt3DCore::QEntity *parent ) override;
     std::unique_ptr<QgsSceneObject3D> createSceneObject() override;
 
   private:
@@ -145,7 +142,6 @@ class QgsPointCloudLayerChunkedEntity : public QgsChunkedEntity
       const QgsCoordinateTransform &coordinateTransform,
       QgsPointCloud3DSymbol *symbol,
       float maxScreenError,
-      bool showBoundingBoxes,
       double zValueScale,
       double zValueOffset,
       int pointBudget

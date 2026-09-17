@@ -24,11 +24,6 @@
 class QgsAABB;
 class QgsRay3D;
 
-namespace Qt3DRender
-{
-  class QGeometryRenderer;
-} // namespace Qt3DRender
-
 namespace QgsRayCastingUtils
 {
 
@@ -44,13 +39,6 @@ namespace QgsRayCastingUtils
    */
   bool rayTriangleIntersection( const QgsRay3D &ray, float maxDist, const QVector3D &a, const QVector3D &b, const QVector3D &c, QVector3D &uvw, float &t );
 
-  /**
-   * Tests whether a triangular mesh is intersected by a ray. Returns whether an intersection
-   * was found. If found, it outputs the point at which the intersection happened in world coordinates and
-   * the index of the intersecting triangle.
-   * \since QGIS 4.0
-   */
-  bool rayMeshIntersection( Qt3DRender::QGeometryRenderer *geometryRenderer, const QgsRay3D &r, float maxDist, const QMatrix4x4 &worldTransform, QVector3D &intPt, int &triangleIndex );
 
 } // namespace QgsRayCastingUtils
 
