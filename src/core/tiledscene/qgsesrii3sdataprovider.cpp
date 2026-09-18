@@ -289,9 +289,21 @@ QVector< long long > QgsEsriI3STiledSceneIndex::getTiles( const QgsTiledSceneReq
 {
   QVector< long long > results;
 
+  // The traversal deliberately holds no lock of its own: it can fetch hierarchy, which
+  // blocks on the network, and mLock is wanted on every frame by the 3D scene update on
+  // the main thread. Each accessor it calls takes the lock for itself, so every read is
+  // consistent even though the traversal as a whole is not atomic - another thread adding
+  // nodes while it runs only means the result reflects a slightly newer hierarchy.
   std::function< void( long long )> traverseNode;
   traverseNode = [&request, &traverseNode, &results, this]( long long nodeId ) {
-    QgsTiledSceneTile t = getTile( nodeId );
+    const QgsTiledSceneTile t = getTile( nodeId );
+
+    // an id the index does not know gives a default constructed tile, whose id is -1. The
+    // old code went on to look that up in the node map and dereferenced the end iterator;
+    // there is simply nothing to traverse, so say so.
+    if ( t.id() < 0 )
+      return;
+
     if ( !request.filterBox().isNull() && !t.boundingVolume().intersects( request.filterBox() ) )
       return;
 
@@ -305,13 +317,13 @@ QVector< long long > QgsEsriI3STiledSceneIndex::getTiles( const QgsTiledSceneReq
       }
 
       // now we should have children available (if any)
-      auto it = mNodeMap.constFind( t.id() );
-      for ( long long childId : it.value().childNodeIndexes )
+      const QVector< long long > childIds = childTileIds( t.id() );
+      for ( long long childId : childIds )
       {
         traverseNode( childId );
       }
 
-      if ( it.value().childNodeIndexes.isEmpty() )
+      if ( childIds.isEmpty() )
       {
         // there are no children available, so we use this tile even though we want more detail
         results << t.id();
@@ -325,8 +337,12 @@ QVector< long long > QgsEsriI3STiledSceneIndex::getTiles( const QgsTiledSceneReq
     }
   };
 
-  QMutexLocker locker( &mLock );
-  long long startNodeId = request.parentTileId() == -1 ? mRootNodeIndex : request.parentTileId();
+  long long startNodeId = request.parentTileId();
+  if ( startNodeId == -1 )
+  {
+    QMutexLocker locker( &mLock );
+    startNodeId = mRootNodeIndex;
+  }
   traverseNode( startNodeId );
 
   return results;
@@ -360,18 +376,24 @@ Qgis::TileChildrenAvailability QgsEsriI3STiledSceneIndex::childAvailability( lon
 
 bool QgsEsriI3STiledSceneIndex::fetchHierarchy( long long id, QgsFeedback *feedback )
 {
-  QMutexLocker locker( &mLock );
-  auto it = mNodeMap.constFind( id );
-  if ( it == mNodeMap.constEnd() )
-    return false;
-
-  // gather all the missing node pages to get information about child nodes
+  // Work out what is missing under the lock, then let go of it before fetching anything.
+  // mLock is also taken by getTile(), childTileIds() and childAvailability(), which the
+  // 3D scene update calls from the main thread on every frame the camera moves, so a lock
+  // held across a network request freezes the GUI for the length of that request.
   QSet<int> nodePagesToFetch;
-  for ( long long childId : it.value().childNodeIndexes )
   {
-    int nodePageIndex = static_cast<int>( childId / mNodesPerPage );
-    if ( !mCachedNodePages.contains( nodePageIndex ) )
-      nodePagesToFetch.insert( nodePageIndex );
+    QMutexLocker locker( &mLock );
+    const auto it = mNodeMap.constFind( id );
+    if ( it == mNodeMap.constEnd() )
+      return false;
+
+    // gather all the missing node pages to get information about child nodes
+    for ( long long childId : it.value().childNodeIndexes )
+    {
+      const int nodePageIndex = static_cast<int>( childId / mNodesPerPage );
+      if ( !mCachedNodePages.contains( nodePageIndex ) )
+        nodePagesToFetch.insert( nodePageIndex );
+    }
   }
 
   bool success = true;
@@ -427,6 +449,10 @@ QByteArray QgsEsriI3STiledSceneIndex::fetchContent( const QString &uri, QgsFeedb
 
 bool QgsEsriI3STiledSceneIndex::fetchNodePage( int nodePage, QgsFeedback *feedback )
 {
+  // Retrieving the page blocks - an HTTP request for a remote service - and must happen
+  // with mLock released. Only mRootUrl is read here, and that never changes after the
+  // index is constructed. Parsing the result does touch shared state, so that part takes
+  // the lock again below.
   QByteArray nodePageContent;
   if ( !mRootUrl.isLocalFile() )
   {
@@ -450,6 +476,13 @@ bool QgsEsriI3STiledSceneIndex::fetchNodePage( int nodePage, QgsFeedback *feedba
       return false;
     }
   }
+
+  QMutexLocker locker( &mLock );
+
+  // another thread may have fetched and parsed this very page while we were waiting for
+  // the network, in which case there is nothing left to do
+  if ( mCachedNodePages.contains( nodePage ) )
+    return true;
 
   try
   {

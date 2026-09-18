@@ -754,6 +754,19 @@ class TestQgsEsriI3sLayer(unittest.TestCase):
             request.setParentTileId(1)
             self.assertEqual(index.getTiles(request), [5, 6, 7, 8])
 
+            # a parent tile the index has never heard of yields nothing, rather than
+            # looking up a tile that is not there and walking off the end of the map
+            request = QgsTiledSceneRequest()
+            request.setParentTileId(9999)
+            self.assertEqual(index.getTiles(request), [])
+
+            # the same has to hold for the accessors the 3D scene update calls every frame
+            self.assertEqual(index.childTileIds(9999), [])
+            self.assertEqual(index.getTile(9999).id(), -1)
+            self.assertEqual(
+                index.childAvailability(9999), Qgis.TileChildrenAvailability.NoChildren
+            )
+
     def test_slpk_single_node(self):
         """Test loading from a single node SLPK file"""
         slpk_path = os.path.join(TEST_DATA_DIR, "i3s/single_node.slpk")
