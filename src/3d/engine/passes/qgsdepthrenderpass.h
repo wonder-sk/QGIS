@@ -15,6 +15,8 @@
 #ifndef QGSDEPTHRENDERPASS_H
 #define QGSDEPTHRENDERPASS_H
 
+#include <memory>
+
 #include "qgis_3d.h"
 #include "qgsdepthrendermaterial3d.h"
 #include "qgsgpurendertarget.h"
@@ -68,9 +70,28 @@ class _3D_EXPORT QgsDepthRenderPass
      * Records the pass and queues the readback. Must be called inside a frame.
      *
      * \a quad is the geometry every full screen pass draws. Returns FALSE if nothing was
-     * drawn, in which case no readback was queued either.
+     * drawn, in which case no readback was queued either - which is also what happens
+     * while an earlier readback has not yet been turned into an image by
+     * collectReadback(), whether because it is still in flight or because it landed in
+     * this very frame.
      */
     bool render( QgsRhiEngine *engine, QgsGraphicsPipelineCache *cache, const QgsScreenQuad *quad );
+
+    /**
+     * Returns TRUE while a queued readback has not been written back by the GPU.
+     *
+     * A frame rendered into a window is only submitted when it ends, so its readback lands
+     * a frame or two later. Waiting for it costs a full pipeline stall, so the pass does
+     * not: it reports that one is in flight, and image() keeps the previous one until it
+     * arrives.
+     */
+    bool isReadbackPending() const { return mReadback && mReadback->pending; }
+
+    //! Returns TRUE if a readback has arrived and has not been taken yet
+    bool hasNewImage() const { return mHasNewImage; }
+
+    //! Returns the collected image and marks it as taken, so hasNewImage() turns FALSE
+    QImage takeImage();
 
     /**
      * Turns whatever the queued readback has produced into image().
@@ -86,14 +107,32 @@ class _3D_EXPORT QgsDepthRenderPass
     QImage image() const { return mImage; }
 
   private:
+    /**
+     * What one queued readback needs, kept in a block of its own that outlives the pass.
+     *
+     * QRhi holds a raw pointer to \a result from the moment the readback is queued until
+     * the backend writes it back, which is a frame or two later for a frame presented to
+     * a window - and the view can be resized or closed in the meantime. The callback
+     * stored inside \a result holds a reference to this block, so the memory the backend
+     * writes into stays alive even once the pass has let go of it. That reference is a
+     * cycle on purpose: the backend destroys the callback right after calling it, which
+     * is what breaks it.
+     */
+    struct Readback
+    {
+        QRhiReadbackResult result;
+        //! TRUE until the backend has written result back
+        bool pending = true;
+    };
+
     QgsGpuRenderTarget mTarget;
     QgsRenderPass mPass { u"depth"_s };
     QgsDepthRenderMaterial3D mMaterial;
 
-    // The backend writes into this when the GPU reaches the copy, which can be after the
-    // frame that queued it has been submitted. It is a member rather than a local for
-    // that reason, and releaseGpuResources() must not run while one is still in flight.
-    QRhiReadbackResult mReadback;
+    //! The readback queued but not yet turned into mImage, or null when there is none
+    std::shared_ptr<Readback> mReadback;
+    //! TRUE once a readback has been turned into mImage and nobody has taken it yet
+    bool mHasNewImage = false;
     QImage mImage;
 };
 

@@ -113,6 +113,7 @@ class TestQgsRenderPasses3D : public QgsTest
 
     void testDepthPassReadback();
     void testDepthReadbackSwitchedOnAfterPrepare();
+    void testDepthReadbackIsNotOverwrittenBeforeCollect();
     void testOutputOrientation();
     void testAmbientOcclusionOpenSurface();
     void testBloomChainSizes();
@@ -1405,6 +1406,75 @@ void TestQgsRenderPasses3D::testSceneRendererResize()
   // device is lost and rebuilt
   renderer.releaseGpuResources();
   QVERIFY( renderer.prepare( engine.get(), QSize( 64, 64 ) ) );
+}
+
+void TestQgsRenderPasses3D::testDepthReadbackIsNotOverwrittenBeforeCollect()
+{
+  if ( skipIfNoPixels() )
+    QSKIP( "The Null backend draws no pixels" );
+
+  auto engine = makeEngine();
+  QVERIFY( engine );
+
+  QgsSceneRenderer renderer;
+  QVERIFY( renderer.prepare( engine.get(), QSize( 64, 64 ) ) );
+
+  QMatrix4x4 view;
+  const QVector3D eye( 5.0f, 5.0f, 30.0f );
+  view.lookAt( eye, QVector3D( 5.0f, 5.0f, 0.0f ), QVector3D( 0.0f, 1.0f, 0.0f ) );
+  QMatrix4x4 projection;
+  projection.perspective( 45.0f, 1.0f, 1.0f, 100.0f );
+  renderer.setCamera( view, projection, eye, 45.0f, 1.0f, 100.0f );
+  renderer.setClearColor( QColor( 0, 0, 0 ) );
+
+  QgsGpuBuffer buffer;
+  QgsGeometry3D geometry;
+  makeQuad( buffer, geometry );
+  QgsUnlitMaterial3D material;
+
+  QgsRenderCommand command;
+  command.geometry = &geometry;
+  command.material = &material;
+
+  renderer.setDepthReadbackEnabled( true );
+
+  // The frame a readback comes back in is not the frame that collects it: QRhi reports a
+  // completed readback from inside beginFrame(), and finishFrame() runs after endFrame().
+  // So there is always one frame in which the answer has landed and nobody has read it,
+  // and the pass must not spend that frame queueing a new readback over the top of it -
+  // if it does, on a window it never stops doing it and no depth buffer is ever produced.
+  // This frame draws the square, the next one draws nothing, and the answer that survives
+  // says which of the two the collected depth belongs to.
+  renderer.clearCommands();
+  renderer.forwardPass().addCommand( command, QgsForwardRenderPass::Group::Opaque );
+
+  QVERIFY( engine->beginFrame() );
+  QVERIFY( renderer.renderFrame( engine.get() ) );
+  engine->endFrame();
+
+  renderer.clearCommands();
+
+  QVERIFY( engine->beginFrame() );
+  QVERIFY( renderer.renderFrame( engine.get() ) );
+  engine->endFrame();
+
+  renderer.finishFrame( engine.get() );
+  QVERIFY( renderer.hasNewDepthImage() );
+
+  const QImage depth = renderer.takeDepthImage();
+  QVERIFY( !depth.isNull() );
+  // the square is much nearer than the far plane, so this is the first frame's depth and
+  // not the empty second one, which would encode to pure blue everywhere
+  QVERIFY2( centerPixel( depth ).blue() < 255, qPrintable( centerPixel( depth ).name() ) );
+
+  // and the pass is free again, so the empty scene's depth comes back from the next frame
+  QVERIFY( engine->beginFrame() );
+  QVERIFY( renderer.renderFrame( engine.get() ) );
+  engine->endFrame();
+  renderer.finishFrame( engine.get() );
+
+  QVERIFY( renderer.hasNewDepthImage() );
+  QCOMPARE( centerPixel( renderer.takeDepthImage() ), QColor( 0, 0, 255 ) );
 }
 
 QGSTEST_MAIN( TestQgsRenderPasses3D )
